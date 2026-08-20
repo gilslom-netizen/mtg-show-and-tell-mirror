@@ -150,24 +150,57 @@ interface SolveAttempt {
   taps: { iid: IID; produce: ManaKind }[];
 }
 
+function sourceSignature(s: ManaSource): string {
+  return [...s.produces].sort().join('');
+}
+
 function trySolveSlots(
   slots: Slot[],
   pool: ManaPool,
   sources: ManaSource[],
 ): SolveAttempt | null {
-  // Most constrained slots first — colored before hybrid before generic.
-  const ordered = [...slots].sort((a, b) => a.accepts.length - b.accepts.length);
+  // Only the restricted slots need searching. Generic slots accept anything, so
+  // once every coloured requirement is placed they are just a counting problem —
+  // permuting them is what made a naive solver take seconds on a ten-mana spell.
+  const restricted = slots
+    .filter((s) => s.accepts.length < MANA_KINDS.length)
+    .sort((a, b) => a.accepts.length - b.accepts.length);
+  const genericCount = slots.length - restricted.length;
 
   const remainingPool = clonePool(pool);
   const used = new Set<IID>();
   const taps: { iid: IID; produce: ManaKind }[] = [];
   const fromPool = emptyPool();
 
-  const recurse = (i: number): boolean => {
-    if (i >= ordered.length) return true;
-    const slot = ordered[i];
+  const finish = (): boolean => {
+    const poolLeft = poolTotal(remainingPool);
+    const free = sources.filter((s) => !used.has(s.iid));
+    if (poolLeft + free.length < genericCount) return false;
 
-    // 1. Spend floating mana first — it drains at end of phase, so it is free to use.
+    // Only commit once the count is known to work, so there is nothing to undo.
+    let need = genericCount;
+    for (const k of MANA_KINDS) {
+      while (need > 0 && remainingPool[k] > 0) {
+        remainingPool[k]--;
+        fromPool[k]++;
+        need--;
+      }
+    }
+    // Spend the least flexible remaining sources on generic first.
+    for (const src of [...free].sort((a, b) => a.produces.length - b.produces.length)) {
+      if (need === 0) break;
+      used.add(src.iid);
+      taps.push({ iid: src.iid, produce: src.produces[0] });
+      need--;
+    }
+    return need === 0;
+  };
+
+  const recurse = (i: number): boolean => {
+    if (i >= restricted.length) return finish();
+    const slot = restricted[i];
+
+    // 1. Floating mana first — it drains at end of phase, so it is free to use.
     for (const kind of slot.accepts) {
       if (remainingPool[kind] > 0) {
         remainingPool[kind]--;
@@ -178,15 +211,20 @@ function trySolveSlots(
       }
     }
 
-    // 2. Then tap sources, least flexible first so the flexible ones survive
-    //    for the generic slots that come later.
+    // 2. Then tap sources, least flexible first so the flexible ones survive for
+    //    later slots. Sources producing the same set are interchangeable, so only
+    //    one of each kind is tried.
     const candidates = sources
       .filter((s) => !used.has(s.iid) && s.produces.some((k) => slot.accepts.includes(k)))
       .sort((a, b) => a.produces.length - b.produces.length);
 
+    const tried = new Set<string>();
     for (const src of candidates) {
-      const kinds = src.produces.filter((k) => slot.accepts.includes(k));
-      for (const kind of kinds) {
+      const sig = sourceSignature(src);
+      if (tried.has(sig)) continue;
+      tried.add(sig);
+      for (const kind of src.produces) {
+        if (!slot.accepts.includes(kind)) continue;
         used.add(src.iid);
         taps.push({ iid: src.iid, produce: kind });
         if (recurse(i + 1)) return true;

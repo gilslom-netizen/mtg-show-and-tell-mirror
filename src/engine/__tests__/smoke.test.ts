@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { testGame } from './harness';
 import { MAINDECK, MAINDECK_SIZE } from '../deck';
-import { ORACLE, allOracleIds, manaValueOfCard as _mv, oracleByName } from '../oracle';
+import { ORACLE, allOracleIds, oracleByName } from '../oracle';
 import { scriptedOracleIds } from '../cards';
 
 describe('setup', () => {

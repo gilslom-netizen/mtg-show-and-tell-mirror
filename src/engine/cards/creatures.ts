@@ -1,6 +1,6 @@
 import { isProtectedFrom } from '../effects';
 import { frontFace } from '../oracle';
-import { battlefield, isType } from '../state';
+import { battlefield, cardName, isType } from '../state';
 import type { CardScript } from '../script-types';
 import { ATRAXA_TYPES, type IID, type PlayerId, type TargetRef } from '../types';
 
@@ -124,14 +124,13 @@ export const hullbreakerHorror: CardScript = {
           // That is how the mirror gets through Veil of Summer and Mistrise Village.
           const i = ctx.state.stack.indexOf(t.iid);
           if (i >= 0) ctx.state.stack.splice(i, 1);
-          ctx.log(`returns ${frontFace(spell.oracleId).name} from the stack to its owner's hand`, [
-            t.iid,
-          ]);
+          ctx.log(`returns ${cardName(spell)} from the stack to its owner's hand`, [t.iid]);
           yield* ctx.moveTo(t.iid, 'hand');
         } else if (t.kind === 'permanent') {
           const perm = ctx.card(t.iid);
           if (!perm || perm.zone !== 'battlefield') return;
-          ctx.log(`returns ${frontFace(perm.oracleId).name} to its owner's hand`, [t.iid]);
+          // cardName, not frontFace: the target may be an Army token with no oracle entry.
+          ctx.log(`returns ${cardName(perm)} to its owner's hand`, [t.iid]);
           yield* ctx.moveTo(t.iid, 'hand');
         }
       },

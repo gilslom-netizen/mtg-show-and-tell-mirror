@@ -239,6 +239,13 @@ export class Game {
     }
     if (s.priorityPlayer !== player) throw new Error(`${player} does not have priority`);
 
+    // Every non-pass intent must match something the engine itself considers legal.
+    // Without this a client could simply ask to cast for free with no Omniscience
+    // on the battlefield, or play a second land.
+    if (intent.t !== 'passPriority' && !this.isLegalIntent(player, intent)) {
+      throw new Error(`Illegal intent: ${JSON.stringify(intent)}`);
+    }
+
     switch (intent.t) {
       case 'passPriority':
         this.doPass(player);
@@ -310,6 +317,10 @@ export class Game {
 
   legalActions(player: PlayerId): LegalAction[] {
     return enumerateLegalActions(this.state, player);
+  }
+
+  private isLegalIntent(player: PlayerId, intent: Intent): boolean {
+    return this.legalActions(player).some((a) => sameIntent(a.intent, intent));
   }
 
   // -------------------------------------------------------------------------
@@ -857,7 +868,6 @@ export class Game {
         this.isLegalTarget(t, spell.iid, spell.controller),
       );
       if (!anyLegal) {
-        s.stack.pop();
         logLine(s, `${cardName(spell)} fizzles — no legal targets`, {
           player: spell.controller,
           iids: [spell.iid],
@@ -868,15 +878,17 @@ export class Game {
       }
     }
 
-    s.stack.pop();
     this.events.push({ t: 'spellResolved', iid: spell.iid });
 
+    // CR 608.2m — the spell stays on the stack for the whole of its resolution and
+    // is only put into the graveyard as the final step. Popping it first would leave
+    // it in no zone at all while the script waits on a choice.
     if (script?.resolve) {
       const ctx = this.makeCtx(spell, spell.controller, spell.targets ?? [], spell.chosenModes ?? [], {});
       yield* script.resolve(ctx);
     }
 
-    // Permanents hit the battlefield; everything else goes to the graveyard.
+    // moveCardRaw removes it from the stack on the way out.
     if (isPermanentCard(spell)) {
       yield* this.putOntoBattlefield(spell.iid, { controller: spell.controller });
     } else {
@@ -894,7 +906,7 @@ export class Game {
     if (obj.targets && obj.targets.length > 0) {
       const anyLegal = obj.targets.some((t) => this.isLegalTarget(t, sourceIid, obj.controller));
       if (!anyLegal) {
-        s.stack.pop();
+        removeFromStack(s, obj.iid);
         logLine(s, `${obj.abilityLabel ?? 'Ability'} fizzles — no legal targets`, {
           player: obj.controller,
           iids: [sourceIid],
@@ -904,7 +916,7 @@ export class Game {
       }
     }
 
-    s.stack.pop();
+    // Same as a spell: the ability stays on the stack while it resolves.
     if (ability && (ability.kind === 'triggered' || ability.kind === 'activated')) {
       // The source may already be gone; the ability still resolves using LKI.
       const selfForCtx = source ?? obj;
@@ -917,6 +929,7 @@ export class Game {
       );
       yield* ability.resolve(ctx);
     }
+    removeFromStack(s, obj.iid);
     delete s.cards[obj.iid];
   }
 
@@ -933,8 +946,6 @@ export class Game {
       });
       return false;
     }
-    const i = s.stack.indexOf(spellIid);
-    if (i >= 0) s.stack.splice(i, 1);
     this.events.push({ t: 'spellCountered', iid: spellIid, by: byIid });
     logLine(s, `${cardName(spell)} is countered`, { player: spell.controller, iids: [spellIid] });
     this.emit(moveCardRaw(s, spellIid, 'graveyard'));
@@ -1191,7 +1202,7 @@ export class Game {
         this.events.push({ t: 'tapped', iid });
       }
     }
-    logLine(s, `attacks with ${res.iids.map((i) => cardName(s.cards[i])).join(', ')}`, {
+    logLine(s, `attacks with ${res.iids.map((i) => nameOf(s, i)).join(', ')}`, {
       player: ap,
       iids: res.iids,
     });
@@ -1202,6 +1213,12 @@ export class Game {
     const s = this.state;
     if (!s.combat || s.combat.attackers.length === 0) return;
     const defender = otherPlayer(s.activePlayer);
+    // An attacker can die between the two steps — an Orcish Bowmasters ping on an
+    // Army token removes the object entirely — so re-check who is still there.
+    const attackers = s.combat.attackers.filter(
+      (iid) => s.cards[iid] && s.cards[iid].zone === 'battlefield',
+    );
+    if (attackers.length === 0) return;
     const blockers = battlefield(s, defender)
       .filter((c) => isType(c, 'Creature') && !c.tapped)
       .map((c) => c.iid);
@@ -1210,7 +1227,7 @@ export class Game {
     const res = (yield this.request({
       kind: 'declareBlockers',
       player: defender,
-      attackers: s.combat.attackers,
+      attackers,
       blockers,
       prompt: 'Declare blockers',
     })) as ChoiceResponse;
@@ -1224,7 +1241,7 @@ export class Game {
       logLine(
         s,
         `blocks: ${res.blocks
-          .map((b) => `${cardName(s.cards[b.blocker])} blocks ${cardName(s.cards[b.attacker])}`)
+          .map((b) => `${nameOf(s, b.blocker)} blocks ${nameOf(s, b.attacker)}`)
           .join('; ')}`,
         { player: defender },
       );
@@ -1240,7 +1257,7 @@ export class Game {
         min: list.length,
         max: list.length,
         ordered: true,
-        prompt: `Damage assignment order for ${cardName(s.cards[atk])}`,
+        prompt: `Damage assignment order for ${nameOf(s, atk)}`,
         from: 'battlefield',
       });
       s.combat.damageOrder[atk] = ordered;
@@ -1276,15 +1293,20 @@ export class Game {
         continue;
       }
 
-      // Assign in order; deathtouch means 1 damage is lethal.
+      // Assign in damage-assignment order; deathtouch makes 1 damage lethal.
+      // Everything left over goes onto the last blocker rather than evaporating:
+      // nothing here has trample, so that is always at least as good for the
+      // attacker, and it is what lifelink actually pays out on.
       let remaining = power;
       const deathtouch = hasKeyword(atk, 'Deathtouch');
-      for (const bIid of blockers) {
+      for (let i = 0; i < blockers.length; i++) {
         if (remaining <= 0) break;
+        const bIid = blockers[i];
         const b = s.cards[bIid];
         if (!b) continue;
+        const isLast = i === blockers.length - 1;
         const lethal = deathtouch ? 1 : Math.max(1, getToughness(b) - b.damage);
-        const assign = Math.min(remaining, lethal);
+        const assign = isLast ? remaining : Math.min(remaining, lethal);
         remaining -= assign;
         this.dealDamage({
           sourceIid: atkIid,
@@ -1859,6 +1881,36 @@ export class Game {
 // ---------------------------------------------------------------------------
 // Free functions
 // ---------------------------------------------------------------------------
+
+/** Card name that tolerates an object that has already ceased to exist. */
+function nameOf(s: GameState, iid: IID): string {
+  const c = s.cards[iid];
+  return c ? cardName(c) : '(gone)';
+}
+
+function removeFromStack(s: GameState, iid: IID): void {
+  const i = s.stack.indexOf(iid);
+  if (i >= 0) s.stack.splice(i, 1);
+}
+
+/** Structural comparison that ignores optional flags the client may omit. */
+function sameIntent(a: Intent, b: Intent): boolean {
+  if (a.t !== b.t) return false;
+  switch (a.t) {
+    case 'playLand':
+      return (
+        b.t === 'playLand' && a.iid === b.iid && (a.face ?? 'front') === (b.face ?? 'front')
+      );
+    case 'castSpell':
+      return b.t === 'castSpell' && a.iid === b.iid && Boolean(a.free) === Boolean(b.free);
+    case 'activateAbility':
+      return b.t === 'activateAbility' && a.iid === b.iid && a.index === b.index;
+    case 'tapForMana':
+      return b.t === 'tapForMana' && a.iid === b.iid && a.kind === b.kind;
+    default:
+      return true;
+  }
+}
 
 function sameTarget(a: TargetRef, b: TargetRef): boolean {
   if (a.kind !== b.kind) return false;

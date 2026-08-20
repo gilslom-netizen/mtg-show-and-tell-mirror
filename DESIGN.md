@@ -160,8 +160,8 @@ G) Waterlogged Teachings מחפש Hullbreaker Horror / Orcish Bowmasters (יש �
 | שכבה | בחירה | הערה |
 |---|---|---|
 | שפה | **TypeScript 5.x** (strict) | |
-| Monorepo | **pnpm workspaces** + Turborepo | |
-| מנוע | TS טהור + **Immer** | reducers אימוטביליים |
+| חבילה | **npm יחיד** עם תיקיות מופרדות | ראו הערת הסטייה מתחת לעץ התיקיות |
+| מנוע | TS טהור, state משתנה + snapshots | `structuredClone`/JSON לצילומי מצב; פשוט יותר מ־Immer ומספיק מהיר |
 | שרת | **Node 22** + `ws` (WebSocket גולמי) | Socket.IO מיותר; אין צורך ב־fallbacks |
 | התמדה | **SQLite** (better-sqlite3) | לוגי מאצ'ים, replays, פרופילים |
 | לקוח | **React 19 + Vite** | |
@@ -179,38 +179,49 @@ mtg-show-and-tell-mirror/
 ├── DESIGN.md                      ← המסמך הזה
 ├── data/
 │   ├── oracle-cards.json          ← נתוני Scryfall קפואים (25 קלפים)
-│   ├── decklist.json              ← 60 מיין + 15 סייד + considering board
+│   ├── decklist.json              ← 60 מיין + 15 סייד
 │   └── format.json                ← restricted list, גודל דק, חיים
-├── packages/
-│   ├── protocol/                  ← טיפוסים משותפים: Intent, PlayerView, Event
-│   ├── engine/
-│   │   ├── src/
-│   │   │   ├── state.ts           ← GameState, CardInstance, Zone
-│   │   │   ├── rng.ts             ← xoshiro128** עם seed ב־state
-│   │   │   ├── turn.ts            ← phases, steps, priority
-│   │   │   ├── stack.ts           ← הטלה, ביטול, פתרון
-│   │   │   ├── sba.ts             ← state-based actions
-│   │   │   ├── mana.ts            ← pool, cost parsing, auto-tap solver
-│   │   │   ├── effects.ts         ← RuleModifier registry + layers
-│   │   │   ├── choices.ts         ← ChoiceRequest/Response, generators
-│   │   │   ├── legal.ts           ← hasAnyLegalAction, enumerateActions
-│   │   │   ├── redact.ts          ← GameState → PlayerView
-│   │   │   └── cards/             ← סקריפט לכל קלף
-│   │   │       ├── index.ts
-│   │   │       ├── showAndTell.ts
-│   │   │       ├── omniscience.ts
-│   │   │       └── ... (25 קבצים)
-│   │   └── test/
+├── src/
+│   ├── engine/                    ← טהור: בלי רשת, בלי DOM, בלי זמן
+│   │   ├── types.ts               ← GameState, CardInstance, Choice*, Event*
+│   │   ├── rng.ts                 ← xoshiro128** עם seed בתוך ה־state
+│   │   ├── oracle.ts              ← טוען את data/oracle-cards.json ומפרסר type lines
+│   │   ├── state.ts               ← זונות, מאפיינים, שאילתות
+│   │   ├── mana.ts                ← פרסור עלויות + פותר התשלום
+│   │   ├── effects.ts             ← hexproof-from / can't-be-countered / flash
+│   │   ├── script-types.ts        ← ה־DSL: Ctx, CardScript, Ability
+│   │   ├── game.ts                ← לולאת התור, פריוריטי, סטאק, SBA, קרב
+│   │   ├── redact.ts              ← GameState → PlayerView
+│   │   ├── deck.ts                ← טוען את הדק
+│   │   ├── cards/                 ← סקריפטים, מקובצים לפי תפקיד
+│   │   │   ├── index.ts           ← הרישום
+│   │   │   ├── lands.ts           ├ 9 קרקעות
+│   │   │   ├── cantrips.ts        ├ Brainstorm, Dig, Bargain, Planar, Borne
+│   │   │   ├── tutors.ts          ├ Demonic, Assemble, Waterlogged
+│   │   │   ├── combo.ts           ├ Show and Tell, Omniscience
+│   │   │   ├── creatures.ts       ├ Atraxa, Hullbreaker, Bowmasters
+│   │   │   └── interaction.ts     └ Mana Drain, Veil of Summer
+│   │   └── __tests__/
 │   │       ├── harness.ts         ← ה־DSL לבדיקות
-│   │       ├── cards/*.test.ts    ← בדיקת יחידה לכל קלף
-│   │       ├── interactions/*.test.ts ← מטריצת §15
-│   │       ├── invariants.test.ts ← fuzz + property
-│   │       └── redaction.test.ts  ← בדיקות דליפת מידע
-│   └── ui-kit/                    ← קומפוננטות קלף/זונה משותפות
-└── apps/
-    ├── server/                    ← lobby, match runner, persistence
-    └── client/                    ← React
+│   │       ├── bot.ts             ← בוט אקראי ל־fuzzing ולבדיקת דטרמיניזם
+│   │       ├── show-and-tell.test.ts
+│   │       ├── omniscience.test.ts
+│   │       ├── interaction.test.ts
+│   │       ├── cards.test.ts
+│   │       ├── mana.test.ts
+│   │       ├── redaction.test.ts
+│   │       └── invariants.test.ts
+│   ├── protocol/                  ← טיפוסי ההודעות המשותפים
+│   ├── server/                    ← lobby, match runner, WebSocket
+│   └── client/                    ← React
 ```
+
+> **סטייה מודעת מהתכנון המקורי:** במקום pnpm workspaces עם ארבע חבילות, זו חבילת npm
+> אחת עם הפרדה ברורה בתיקיות. `npm install && npm run dev` עובד מיד, ואין שכבת build
+> שצריך לתחזק. ההפרדה הלוגית נשמרה במלואה — `src/engine` לא מייבא כלום מ־`src/client`
+> או מ־`src/server`. באותו אופן, סקריפטי הקלפים מקובצים לפי תפקיד (6 קבצים) במקום
+> קובץ לכל קלף (25 קבצים); הרישום ב־`cards/index.ts` נשאר נקודת הכניסה היחידה.
+
 
 ---
 
@@ -1531,12 +1542,14 @@ nightly:     10k משחקי fuzz + כל ה־E2E + בדיקת עדכון Scryfall
 | 26 | Drain על `Show and Tell` | 3 מאנה |
 | 27 | Drain על `Atraxa` | 7 מאנה |
 | 28 | Drain על `Waterlogged Teachings` (פן קדמי) | 4 מאנה |
-| 29 ⭐ | Drain מול `Veil of Summer` | הביטול נכשל; **אין מאנה** |
-| 30 ⭐ | Drain מול `Mistrise Village` | הביטול נכשל; **אין מאנה** |
-| 31 ⭐ | Drain על `Hullbreaker Horror` | **לא חוקי כמטרה?** לא — חוקי למקד, אבל הביטול לא עובד; אין מאנה |
+| 29 ⭐ | Drain מול `Veil of Summer` | הביטול נכשל — אבל **המאנה כן מגיעה** (ראו הערה למטה) |
+| 30 ⭐ | Drain מול `Mistrise Village` | הביטול נכשל; **המאנה כן מגיעה** |
+| 31 ⭐ | Drain על `Hullbreaker Horror` | חוקי למקד; הביטול לא עובד; **המאנה כן מגיעה** |
+| 31b ⭐ | המטרה כבר לא על הסטאק | Mana Drain **פוקע** — ואז **אין מאנה** |
 | 32 | Drain על Drain | הפנימי מתבטל; מאנה = 2 |
 | 33 ⭐ | מאנה לא נוצלה בפייז הראשי | **נשפכת** בסוף הפייז; אין mana burn |
 | 34 | Drain בתור של היריב | המאנה מגיעה בפייז הראשי הבא **שלך** |
+| 34b | Drain בפייז הראשי המוקדם שלך | המאנה מגיעה ב**פייז הראשי המאוחר של אותו תור** |
 | 35 | Drain + מאנה → Omniscience באותו פייז | הקומבו עובד |
 
 ### 15.4 Orcish Bowmasters
@@ -1555,7 +1568,8 @@ nightly:     10k משחקי fuzz + כל ה־E2E + בדיקת עדכון Scryfall
 | 45 ⭐ | **שני** Bowmasters + Brainstorm של היריב | **6 טריגרים**; טוקן אחד + 5 מונים → Army 5/5 |
 | 46 | Amass ראשון | נוצר טוקן `Orc Army` 0/0 שחור, ואז מון → 1/1 |
 | 47 | Army בלי מונים (תיאורטי) | מת ב־SBA |
-| 48 ⭐ | היריב עם `Veil of Summer` | הטריגר עולה, **אין מטרה חוקית** → מוסר מהסטאק, **וגם ה־Amass לא קורה** |
+| 48 ⭐ | היריב עם `Veil of Summer` | היריב וקבועיו **יורדים מרשימת המטרות**; אתה עדיין מטרה חוקית לעצמך, ולכן הטריגר נפתר וה־Amass **כן** קורה |
+| 48b | טריגר Bowmasters בלי שום מטרה חוקית בכלל | מוסר מהסטאק — **וגם ה־Amass לא קורה** |
 | 49 | מיקוד ב־Atraxa (7/7) | 1 נזק, לא מת |
 | 50 | Bowmasters מת בתגובה לטריגר | הטריגר עדיין נפתר (LKI) |
 | 51 | Brainstorm כשהיריב ב־2 חיים | 3 טריגרים → יכול להרוג |
@@ -1738,6 +1752,8 @@ auto-pass + השהיה אקראית, hold priority, `TriggerPolicy`, מצב Omni
 | 7 | **דליפת מידע דרך תזמון auto-pass** | 🟡 | השהיה אקראית קבועה 150–400ms |
 | 8 | **greedy auto-tap נתקע על `Assemble the Team`** | 🟡 | solver + property test מול brute force |
 | 9 | **`Veil of Summer` נועל hexproof לא נכון** | 🟡 | בדיקה 55 (קבוע חדש לא מוגן) |
+| 9b | **הנחה ש־Veil מבטל את כל האפקט של המבטל** | 🟠 | בדיקה 29 — המאנה של Drain כן מגיעה |
+| 9c | **הוצאת ספל מהסטאק לפני שהוא סיים להיפתר** | 🔴 קלף "נעלם" מכל הזונות | CR 608.2m; נתפס ע"י בדיקת שימור הקלפים ב־fuzz |
 | 10 | **לולאה אינסופית** (Horror מול Horror) | 🟡 | תקרת פעולות + זיהוי loop + הצעת draw |
 | 11 | **עדכון Oracle של WotC משנה קלף** | 🟡 | `pnpm sync:cards` נכשל על שינוי טקסט |
 | 12 | **undo מאפשר רמאות** | 🟠 | 3 תנאי ה־safe window (§11.3), נאכפים בשרת |

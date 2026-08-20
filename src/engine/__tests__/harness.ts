@@ -82,6 +82,29 @@ export class Seat {
     }
   }
 
+  /**
+   * Put n untapped blue-producing lands onto the battlefield.
+   * Saves every test from spelling out a manabase.
+   */
+  manaBase(n: number): IID[] {
+    // Ordered so that small manabases still cover B, G and W — several cards in
+    // the deck need an off-colour pip off very few lands.
+    const preferred = [
+      'Watery Grave', // U/B
+      'Breeding Pool', // U/G
+      'Undercity Sewers', // U/B
+      'Hedge Maze', // U/G
+      'Hallowed Fountain', // U/W
+      'Island', // U
+      'Watery Grave',
+      'Breeding Pool',
+      'Mystic Sanctuary',
+      'Mistrise Village',
+    ];
+    if (n > preferred.length) throw new Error(`Only ${preferred.length} blue sources exist`);
+    return this.battlefield(...preferred.slice(0, n));
+  }
+
   life(n: number): void {
     this.t.game.state.players[this.id].life = n;
   }
@@ -200,8 +223,10 @@ export class TestGame {
     const at = stepAt(idx);
     s.phase = at.phase;
     s.step = at.step;
-    s.stepInitialized = true;
-    s.priorityPlayer = s.activePlayer;
+    // Let the step's turn-based actions run, so beginning a test in
+    // declare_attackers actually asks for attackers.
+    s.stepInitialized = false;
+    s.priorityPlayer = null;
     s.passed = [];
     this.game.advance();
     return this;
@@ -389,6 +414,16 @@ export class TestGame {
     }
   }
 
+  /** Pass priority until a choice opens up, without answering anything. */
+  passToChoice(limit = 60): void {
+    let guard = 0;
+    while (!this.game.state.pendingChoice && this.game.state.winner === null && guard++ < limit) {
+      const p = this.game.state.priorityPlayer;
+      if (!p) break;
+      this.game.submitIntent(p, { t: 'passPriority' });
+    }
+  }
+
   /** Pass priority (auto-answering prompts) until a condition holds. */
   passUntilCondition(pred: () => boolean, limit = 600): void {
     let guard = 0;
@@ -430,6 +465,41 @@ export class TestGame {
 
   countEvents(t: GameEvent['t'], predicate?: (e: GameEvent) => boolean): number {
     return this.game.events.filter((e) => e.t === t && (!predicate || predicate(e))).length;
+  }
+
+  /** How many times a named card's triggered ability has fired so far. */
+  countTriggers(cardNameOrId: string): number {
+    const oracleId = oracleByName(cardNameOrId).oracleId;
+    return this.game.events.filter(
+      (e) => e.t === 'abilityTriggered' && this.game.state.cards[e.sourceIid]?.oracleId === oracleId,
+    ).length;
+  }
+
+  /** Number of draw events for a player. */
+  countDraws(player: PlayerId): number {
+    return this.game.events.filter((e) => e.t === 'draw' && e.player === player).length;
+  }
+
+  clearEvents(): void {
+    this.game.events = [];
+  }
+
+  /**
+   * Whether a named spell was countered. Checking the graveyard is not enough —
+   * a resolved instant or sorcery ends up there too.
+   */
+  wasCountered(name: string): boolean {
+    const oracleId = oracleByName(name).oracleId;
+    return this.game.events.some(
+      (e) => e.t === 'spellCountered' && this.game.state.cards[e.iid]?.oracleId === oracleId,
+    );
+  }
+
+  wasResolved(name: string): boolean {
+    const oracleId = oracleByName(name).oracleId;
+    return this.game.events.some(
+      (e) => e.t === 'spellResolved' && this.game.state.cards[e.iid]?.oracleId === oracleId,
+    );
   }
 
   stackNames(): string[] {

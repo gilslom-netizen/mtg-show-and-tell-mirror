@@ -1,3 +1,4 @@
+export type { RngState } from './types';
 import type { RngState } from './types';
 
 /**
