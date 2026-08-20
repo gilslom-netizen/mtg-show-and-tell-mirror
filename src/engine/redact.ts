@@ -1,0 +1,284 @@
+import { enumerateLegalActions, type LegalAction } from './game';
+import { currentFace } from './state';
+import type {
+  ActiveEffect,
+  CardInstance,
+  ChoiceRequest,
+  CombatState,
+  GameState,
+  IID,
+  LogEntry,
+  ManaPool,
+  OracleId,
+  Phase,
+  PlayerId,
+  Step,
+  TargetRef,
+  ZoneName,
+} from './types';
+
+/**
+ * Turning the authoritative state into what one player is allowed to see.
+ *
+ * The rule this file lives by: build the view from scratch, field by field.
+ * Never spread GameState and delete the secrets — a `delete` that is forgotten
+ * when a new field is added is exactly how hidden information leaks, and in this
+ * format knowing the top of the opponent's library or their Show and Tell pick is
+ * the whole game.
+ */
+
+export interface CardView {
+  iid: IID;
+  oracleId: OracleId;
+  owner: PlayerId;
+  controller: PlayerId;
+  zone: ZoneName;
+  tapped: boolean;
+  summoningSick: boolean;
+  damage: number;
+  counters: Record<string, number>;
+  face: 'front' | 'back';
+  isToken: boolean;
+  tokenName?: string;
+  power?: number;
+  toughness?: number;
+  attacking?: boolean;
+  /** Stack objects. */
+  isAbility?: boolean;
+  abilityLabel?: string;
+  abilitySource?: IID;
+  targets?: TargetRef[];
+  castForFree?: boolean;
+}
+
+export interface PlayerPublicView {
+  id: PlayerId;
+  life: number;
+  handCount: number;
+  libraryCount: number;
+  graveyardCount: number;
+  exileCount: number;
+  manaPool: ManaPool;
+  landDropsUsed: number;
+  landDropsAllowed: number;
+  spellsCastThisTurnCount: number;
+  hasLost: boolean;
+  mulligansTaken: number;
+}
+
+/** A pending choice with every trace of the other player's hidden information gone. */
+export type ChoiceView =
+  | Exclude<ChoiceRequest, { kind: 'simultaneousSecret' }>
+  | {
+      kind: 'simultaneousSecret';
+      id: string;
+      prompt: string;
+      /** Only ever this viewer's own options. */
+      myOptions: { iid: IID; disabledReason?: string }[];
+      myPrompt: string;
+      /** Whether each side has committed — but never what they committed to. */
+      opponentLockedIn: boolean;
+      iHaveLockedIn: boolean;
+    };
+
+export interface PlayerView {
+  gameId: string;
+  viewer: PlayerId;
+  mode: GameState['mode'];
+  turn: number;
+  activePlayer: PlayerId;
+  phase: Phase;
+  step: Step;
+  priorityPlayer: PlayerId | null;
+  passed: PlayerId[];
+  winner: PlayerId | 'draw' | null;
+  endReason: string | null;
+
+  players: Record<PlayerId, PlayerPublicView>;
+  /** Your hand, in order. */
+  hand: IID[];
+  /** Card objects for everything you are allowed to see. */
+  cards: Record<IID, CardView>;
+  battlefield: Record<PlayerId, IID[]>;
+  graveyard: Record<PlayerId, IID[]>;
+  exile: Record<PlayerId, IID[]>;
+  stack: IID[];
+
+  combat: CombatState | null;
+  effects: ActiveEffect[];
+  delayedMana: { controller: PlayerId; amount: number }[];
+
+  choice: ChoiceView | null;
+  /** True when a choice is pending but it belongs to the other player. */
+  waitingOnOpponentChoice: boolean;
+
+  log: LogEntry[];
+  legalActions: LegalAction[];
+  /** Convenience flag for the client's Omniscience mode. */
+  omniscienceActive: boolean;
+}
+
+function viewCard(state: GameState, c: CardInstance): CardView {
+  const face = currentFace(c);
+  const out: CardView = {
+    iid: c.iid,
+    oracleId: c.oracleId,
+    owner: c.owner,
+    controller: c.controller,
+    zone: c.zone,
+    tapped: c.tapped,
+    summoningSick: c.summoningSick,
+    damage: c.damage,
+    counters: { ...c.counters },
+    face: c.face,
+    isToken: c.isToken,
+  };
+  if (c.isToken && c.token) {
+    out.tokenName = c.token.name;
+  }
+  if (face.power !== null) {
+    out.power = (Number(face.power) || 0) + (c.counters['+1/+1'] ?? 0);
+    out.toughness = (Number(face.toughness) || 0) + (c.counters['+1/+1'] ?? 0);
+  }
+  if (c.attacking) out.attacking = true;
+  if (c.isAbility) {
+    out.isAbility = true;
+    out.abilityLabel = c.abilityLabel;
+    out.abilitySource = c.abilitySource;
+  }
+  if (c.targets) out.targets = c.targets;
+  if (c.castForFree) out.castForFree = true;
+  void state;
+  return out;
+}
+
+/** Which card ids this viewer is entitled to see the identity of. */
+function visibleIids(state: GameState, viewer: PlayerId): Set<IID> {
+  const out = new Set<IID>();
+  const add = (ids: IID[]) => ids.forEach((i) => out.add(i));
+
+  for (const p of ['p1', 'p2'] as PlayerId[]) {
+    add(state.zones[p].battlefield);
+    add(state.zones[p].graveyard);
+    add(state.zones[p].exile);
+  }
+  add(state.stack);
+  add(state.zones[viewer].hand);
+
+  // Cards a pending choice legitimately shows this player (a search, a surveil,
+  // Atraxa's public reveal).
+  const pc = state.pendingChoice;
+  if (pc) {
+    if (pc.kind === 'chooseCards' && (pc.player === viewer || pc.publicReveal)) {
+      add(pc.options.map((o) => o.iid));
+    }
+    if (pc.kind === 'simultaneousSecret') {
+      add(pc.requests[viewer].options.map((o) => o.iid));
+    }
+  }
+
+  // Ability stack objects reference their source, which may have left the battlefield.
+  for (const iid of state.stack) {
+    const c = state.cards[iid];
+    if (c?.abilitySource !== undefined) out.add(c.abilitySource);
+  }
+  return out;
+}
+
+function redactChoice(state: GameState, viewer: PlayerId): ChoiceView | null {
+  const pc = state.pendingChoice;
+  if (!pc) return null;
+
+  if (pc.kind === 'simultaneousSecret') {
+    const opponent: PlayerId = viewer === 'p1' ? 'p2' : 'p1';
+    return {
+      kind: 'simultaneousSecret',
+      id: pc.id,
+      prompt: pc.prompt,
+      // Only this player's own options. Sending pc.requests wholesale would hand
+      // over the opponent's entire hand.
+      myOptions: pc.requests[viewer].options.map((o) => ({
+        iid: o.iid,
+        disabledReason: o.disabledReason,
+      })),
+      myPrompt: pc.requests[viewer].prompt,
+      opponentLockedIn: pc.lockedIn.includes(opponent),
+      iHaveLockedIn: pc.lockedIn.includes(viewer),
+    };
+  }
+
+  if (pc.player !== viewer) return null;
+  return pc;
+}
+
+export function redact(state: GameState, viewer: PlayerId): PlayerView {
+  const visible = visibleIids(state, viewer);
+  const cards: Record<IID, CardView> = {};
+  for (const iid of visible) {
+    const c = state.cards[iid];
+    if (c) cards[iid] = viewCard(state, c);
+  }
+
+  const publicOf = (p: PlayerId): PlayerPublicView => {
+    const ps = state.players[p];
+    return {
+      id: p,
+      life: ps.life,
+      handCount: state.zones[p].hand.length,
+      // Counts only. The order of a library is never sent to anyone, not even to
+      // its owner — the client learns the top from reveal events instead.
+      libraryCount: state.zones[p].library.length,
+      graveyardCount: state.zones[p].graveyard.length,
+      exileCount: state.zones[p].exile.length,
+      manaPool: { ...ps.manaPool },
+      landDropsUsed: ps.landDropsUsed,
+      landDropsAllowed: ps.landDropsAllowed,
+      spellsCastThisTurnCount: ps.spellsCastThisTurnCount,
+      hasLost: ps.hasLost,
+      mulligansTaken: ps.mulligansTaken,
+    };
+  };
+
+  const choice = redactChoice(state, viewer);
+
+  return {
+    gameId: state.gameId,
+    viewer,
+    mode: state.mode,
+    turn: state.turn,
+    activePlayer: state.activePlayer,
+    phase: state.phase,
+    step: state.step,
+    priorityPlayer: state.priorityPlayer,
+    passed: [...state.passed],
+    winner: state.winner,
+    endReason: state.endReason,
+
+    players: { p1: publicOf('p1'), p2: publicOf('p2') },
+    hand: [...state.zones[viewer].hand],
+    cards,
+    battlefield: {
+      p1: [...state.zones.p1.battlefield],
+      p2: [...state.zones.p2.battlefield],
+    },
+    graveyard: {
+      p1: [...state.zones.p1.graveyard],
+      p2: [...state.zones.p2.graveyard],
+    },
+    exile: { p1: [...state.zones.p1.exile], p2: [...state.zones.p2.exile] },
+    stack: [...state.stack],
+
+    combat: state.combat ? JSON.parse(JSON.stringify(state.combat)) : null,
+    effects: JSON.parse(JSON.stringify(state.effects)),
+    delayedMana: state.delayed.map((d) => ({ controller: d.controller, amount: d.amount })),
+
+    choice,
+    waitingOnOpponentChoice: state.pendingChoice !== null && choice === null,
+
+    log: state.log.slice(-200),
+    legalActions: enumerateLegalActions(state, viewer),
+    omniscienceActive: state.zones[viewer].battlefield.some(
+      (iid) => state.cards[iid]?.oracleId === 'omniscience',
+    ),
+  };
+}
