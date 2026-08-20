@@ -1,0 +1,49 @@
+{
+  "name": "Show and Tell Mirror",
+  "format": "timeless",
+  "note": "Both players play this exact list. Sideboard is built only for the mirror.",
+  "source": "https://moxfield.com/decks/v_pV9CkWUUuU1UXYVjvcRA",
+  "maindeck": [
+    { "count": 4, "name": "Assemble the Team" },
+    { "count": 4, "name": "Atraxa, Grand Unifier" },
+    { "count": 1, "name": "Borne Upon a Wind" },
+    { "count": 4, "name": "Brainstorm" },
+    { "count": 2, "name": "Breeding Pool" },
+    { "count": 1, "name": "Demonic Tutor" },
+    { "count": 4, "name": "Dig Through Time" },
+    { "count": 4, "name": "Flooded Strand" },
+    { "count": 1, "name": "Hallowed Fountain" },
+    { "count": 1, "name": "Hedge Maze" },
+    { "count": 1, "name": "Hullbreaker Horror" },
+    { "count": 1, "name": "Island" },
+    { "count": 4, "name": "Mana Drain" },
+    { "count": 1, "name": "Mistrise Village" },
+    { "count": 1, "name": "Mystic Sanctuary" },
+    { "count": 4, "name": "Omniscience" },
+    { "count": 2, "name": "Orcish Bowmasters" },
+    { "count": 2, "name": "Planar Genesis" },
+    { "count": 4, "name": "Polluted Delta" },
+    { "count": 3, "name": "Rakshasa's Bargain" },
+    { "count": 4, "name": "Show and Tell" },
+    { "count": 1, "name": "Undercity Sewers" },
+    { "count": 2, "name": "Veil of Summer" },
+    { "count": 2, "name": "Waterlogged Teachings" },
+    { "count": 2, "name": "Watery Grave" }
+  ],
+  "sideboard": [
+    { "count": 4, "name": "Carpet of Flowers" },
+    { "count": 3, "name": "Chrome Mox" },
+    { "count": 2, "name": "Krosan Grip" },
+    { "count": 2, "name": "Mystical Dispute" },
+    { "count": 2, "name": "Thoughtseize" },
+    { "count": 2, "name": "Veil of Summer" }
+  ],
+  "consideringBoard": [],
+  "composition": {
+    "maindeckTotal": 60,
+    "lands": 18,
+    "spells": 42,
+    "effectiveLandSources": 20,
+    "effectiveLandSourcesNote": "18 lands + 2 Waterlogged Teachings played as Inundated Archive"
+  }
+}
