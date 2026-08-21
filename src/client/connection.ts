@@ -299,6 +299,8 @@ export class HttpConnection extends BaseConnection {
   private timer: number | null = null;
   private stopped = false;
   private inFlight = false;
+  /** Consecutive polls that found nothing new. Drives the backoff. */
+  private quiet = 0;
   lobby: { players: { seat: PlayerId; name: string }[]; ready: boolean } = {
     players: [],
     ready: false,
@@ -363,11 +365,41 @@ export class HttpConnection extends BaseConnection {
     this.notify();
   }
 
+  private onVisibility = (): void => {
+    if (typeof document !== 'undefined' && !document.hidden) this.wake();
+  };
+
   private async joinRoom(): Promise<void> {
     this.token = this.loadToken() ?? null;
     const snap = await this.post({ name: this.opts.playerName });
     this.absorb(snap);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.onVisibility);
+    }
     this.schedulePoll();
+  }
+
+  /**
+   * How long to wait before looking again.
+   *
+   * Polling is the cost model here: every poll is a couple of Redis commands, and
+   * a forgotten tab left open overnight would spend a free-tier month's budget
+   * without a single card being played. So an idle room backs off, and a hidden
+   * tab stops entirely — nobody is reading it.
+   *
+   * The backoff resets to fast on the first thing that actually happens, which is
+   * what keeps the opponent's move feeling immediate: the fast rate is what you
+   * are on whenever the game is moving.
+   */
+  private nextDelay(): number {
+    const fast = this.opts.pollMs ?? 800;
+    // A hidden tab has no reader. Keep the seat alive, spend almost nothing.
+    if (typeof document !== 'undefined' && document.hidden) return 15000;
+    // An opponent thinking is not idleness — staying fast for the first three
+    // minutes of silence means the backoff never costs a move its responsiveness.
+    if (this.quiet < 225) return fast;
+    if (this.quiet < 500) return 3000;
+    return 6000;
   }
 
   private schedulePoll(): void {
@@ -375,7 +407,17 @@ export class HttpConnection extends BaseConnection {
     this.timer = window.setTimeout(() => {
       this.timer = null;
       void this.poll();
-    }, this.opts.pollMs ?? 800);
+    }, this.nextDelay());
+  }
+
+  /** Come back to full speed at once — the player is here and something happened. */
+  private wake(): void {
+    this.quiet = 0;
+    if (this.timer !== null) {
+      window.clearTimeout(this.timer);
+      this.timer = null;
+      this.schedulePoll();
+    }
   }
 
   private async poll(): Promise<void> {
@@ -391,6 +433,8 @@ export class HttpConnection extends BaseConnection {
       const res = await fetch(url, { cache: 'no-store' });
       if (res.ok) {
         const json = (await res.json()) as Snapshot;
+        if (json.unchanged) this.quiet++;
+        else this.quiet = 0;
         this.absorb(json);
       } else {
         this.status = 'closed';
@@ -405,6 +449,7 @@ export class HttpConnection extends BaseConnection {
   }
 
   private async act(action: unknown): Promise<void> {
+    this.wake();
     this.absorb(await this.post({ action }));
   }
 
@@ -456,6 +501,9 @@ export class HttpConnection extends BaseConnection {
   dispose(): void {
     this.stopped = true;
     if (this.timer !== null) window.clearTimeout(this.timer);
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.onVisibility);
+    }
     super.dispose();
   }
 }

@@ -99,6 +99,13 @@ nobody discovers this by staring at "waiting for the other player".
 `GET /api/health` reports the store in use, whether the host is serverless, and
 whether online play is `usable` here at all.
 
+Polling is the running cost, so the client spends it where it matters: the fast
+rate holds through three minutes of silence — an opponent thinking is not
+idleness — and only then backs off, while a hidden tab parks at one poll every
+15 seconds and wakes the moment you look at it again. A forgotten open tab was
+the only thing that could quietly drain a free Redis tier; it now costs about a
+tenth of what it did.
+
 Appends use `RPUSH`, which is atomic. That matters at exactly one moment in this
 format — the Show and Tell secret choice, where both players legitimately act at
 the same instant. Redis decides the order and the engine is happy with either.
