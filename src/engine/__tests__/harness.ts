@@ -360,7 +360,10 @@ export class TestGame {
           this.answer({ kind: 'yesNo', value: false }, c.player);
           break;
         case 'mulligan':
-          this.answer({ kind: 'yesNo', value: true }, c.player);
+          // Both players are asked at once now; answer for whoever is still open.
+          for (const p of [...c.awaiting]) {
+            this.game.submitChoice(p, c.id, { kind: 'yesNo', value: true });
+          }
           break;
         case 'orderTriggers':
           this.answer({ kind: 'order', ids: c.triggers.map((t) => t.id) }, c.player);

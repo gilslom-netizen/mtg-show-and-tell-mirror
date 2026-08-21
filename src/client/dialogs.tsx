@@ -10,6 +10,28 @@ import { useStore } from './store';
  * click away and the reason a card is not selectable is always visible.
  */
 
+/**
+ * Shown while the other player is answering something.
+ *
+ * The mulligan is where this mattered most: both players are asked at once now,
+ * but the London bottoming step still runs one at a time, and before this there
+ * was nothing on screen at all during it.
+ */
+function WaitingOnOpponent({ view }: { view: PlayerView }) {
+  const what =
+    view.mode === 'mulligan'
+      ? 'Your opponent is putting cards on the bottom…'
+      : 'Waiting for your opponent…';
+  return (
+    <div className="overlay is-soft">
+      <div className="dialog waiting-dialog">
+        <span className="spinner" aria-hidden />
+        <div className="prompt">{what}</div>
+      </div>
+    </div>
+  );
+}
+
 export function ChoiceLayer({ view, viewer }: { view: PlayerView; viewer: PlayerId }) {
   const choice = view.choice;
   const respond = useStore((s) => s.respond);
@@ -25,6 +47,11 @@ export function ChoiceLayer({ view, viewer }: { view: PlayerView; viewer: Player
 
   if (revealing) {
     return <RevealOverlay view={view} viewer={viewer} reveal={revealing} />;
+  }
+  // A prompt that belongs to the other player is still something happening to
+  // you. Silence here is what made a slow opponent look like a crashed client.
+  if (!choice && view.waitingOnOpponentChoice) {
+    return <WaitingOnOpponent view={view} />;
   }
   if (!choice) return null;
 
@@ -385,25 +412,54 @@ function MulliganDialog({
   choice: Extract<ChoiceView, { kind: 'mulligan' }>;
   onAnswer: Answer;
 }) {
+  const bottoming = choice.mulligansTaken;
   return (
     <div className="overlay">
       <div className="dialog">
-        <h2>Opening hand</h2>
+        <h2>
+          Opening hand
+          {choice.mulligansTaken > 0 && ` · mulligan ${choice.mulligansTaken}`}
+        </h2>
         <div className="prompt">
-          {choice.prompt}
-          {choice.mulligansTaken > 0 && ` (mulligan ${choice.mulligansTaken})`}
+          {choice.iHaveDecided
+            ? 'Decision locked in. Waiting for your opponent…'
+            : bottoming > 0
+              ? `Keep? You will put ${bottoming} card${bottoming > 1 ? 's' : ''} on the bottom.`
+              : choice.prompt}
         </div>
+
         <div className="card-grid">
           {view.hand.map((iid) => (
-            <CardFace key={iid} card={view.cards[iid] ?? null} viewer={viewer} />
+            <CardFace key={iid} card={view.cards[iid] ?? null} viewer={viewer} size="large" />
           ))}
         </div>
-        <div className="actions">
-          <button onClick={() => onAnswer({ kind: 'yesNo', value: false })}>Mulligan</button>
-          <button className="primary" onClick={() => onAnswer({ kind: 'yesNo', value: true })}>
-            Keep
-          </button>
+
+        {/* Both players decide at the same time, so both states are worth showing. */}
+        <div className="mulligan-status">
+          <span className={choice.iHaveDecided ? 'is-done' : ''}>
+            You {choice.iHaveDecided ? 'have decided' : 'are deciding'}
+          </span>
+          <span className={choice.opponentDecided ? 'is-done' : ''}>
+            Opponent {choice.opponentDecided ? 'has decided' : 'is deciding'}
+            {choice.opponentMulligansTaken > 0 &&
+              ` · down to ${7 - choice.opponentMulligansTaken}`}
+          </span>
         </div>
+
+        {choice.iHaveDecided ? (
+          <div className="actions">
+            <span className="spinner" aria-label="waiting" />
+          </div>
+        ) : (
+          <div className="actions">
+            <button onClick={() => onAnswer({ kind: 'yesNo', value: false })}>
+              Mulligan to {6 - choice.mulligansTaken}
+            </button>
+            <button className="primary" onClick={() => onAnswer({ kind: 'yesNo', value: true })}>
+              Keep {view.hand.length - bottoming}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

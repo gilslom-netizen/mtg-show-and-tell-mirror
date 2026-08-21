@@ -50,6 +50,14 @@ export class RandomBot {
       return;
     }
 
+    if (c.kind === 'mulligan') {
+      for (const p of [...c.awaiting]) {
+        // Keep most hands, so games actually get played.
+        game.submitChoice(p, c.id, { kind: 'yesNo', value: this.randomInt(5) > 0 });
+      }
+      return;
+    }
+
     const player = c.player;
     let response: ChoiceResponse;
     switch (c.kind) {
@@ -76,10 +84,6 @@ export class RandomBot {
       }
       case 'yesNo':
         response = { kind: 'yesNo', value: this.randomInt(2) === 0 };
-        break;
-      case 'mulligan':
-        // Keep most hands, so games actually get played.
-        response = { kind: 'yesNo', value: this.randomInt(5) > 0 };
         break;
       case 'orderTriggers':
         response = { kind: 'order', ids: shuffleWith(this.rng, c.triggers.map((t) => t.id)) };

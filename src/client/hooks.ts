@@ -75,6 +75,7 @@ export function useAutoPass(viewer: PlayerId) {
   const settings = useStore((s) => s.settings);
   const autoPass = useStore((s) => s.autoPass);
   const forceStop = useStore((s) => s.forceStop);
+  const holdPriority = useStore((s) => s.holdPriority);
   const send = useStore((s) => s.send);
   const controls = useStore((s) => s.controls);
   const setAutoPass = useStore((s) => s.setAutoPass);
@@ -98,13 +99,22 @@ export function useAutoPass(viewer: PlayerId) {
     if (!canAct(view, viewer)) return;
     if (!controls(viewer)) return;
     if (forceStop) return;
+    // Holding priority is a deliberate "do not pass for me" — chaining spells
+    // under an Omniscience is the whole reason it exists.
+    if (holdPriority) return;
     if (shouldStop(view, settings, autoPass)) return;
 
     const [lo, hi] = settings.autoPassDelayMs;
     const delay = lo + Math.random() * Math.max(0, hi - lo);
     const t = window.setTimeout(() => send({ t: 'passPriority' }, viewer), delay);
     return () => window.clearTimeout(t);
-  });
+    // The dependency list is the point, not a formality. With none, every render
+    // — a hover, a highlight, an unrelated poll — cancelled the pending timer and
+    // started it again, so moving the mouse could hold the pass off indefinitely
+    // and passing felt like it randomly stopped working. `view` is a fresh object
+    // only when the game state actually changed, which is exactly when the
+    // decision is worth taking again.
+  }, [view, viewer, settings, autoPass, forceStop, holdPriority, send, controls]);
 }
 
 /**
@@ -140,7 +150,10 @@ export function useTriggerPolicy(viewer: PlayerId) {
     const choice = view?.choice;
     if (!view || !choice || !controls(viewer)) return;
     if (overrideRef.current) return;
-    const source = choice.kind === 'simultaneousSecret' ? undefined : choice.source;
+    const source =
+      choice.kind === 'simultaneousSecret' || choice.kind === 'mulligan'
+        ? undefined
+        : choice.source;
     if (!source) return;
 
     if (source.oracleId === 'hullbreaker_horror' && choice.kind === 'chooseMode') {

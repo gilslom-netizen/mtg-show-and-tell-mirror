@@ -275,6 +275,23 @@ export class Game {
     if (!pc) throw new Error('No choice pending');
     if (pc.id !== choiceId) throw new Error('Stale choice id');
 
+    if (pc.kind === 'mulligan') {
+      if (!pc.awaiting.includes(player)) throw new Error('You have already decided');
+      if (response.kind !== 'yesNo') throw new Error('Expected keep or mulligan');
+      s.mulliganResponses[player] = response.value;
+      pc.lockedIn = [...pc.lockedIn, player];
+      pc.awaiting = pc.awaiting.filter((x) => x !== player);
+      // The round resolves when everyone still deciding has decided.
+      if (pc.awaiting.length > 0) {
+        this.notifyChoiceProgress();
+        return;
+      }
+      s.pendingChoice = null;
+      this.pump({ kind: 'mulliganRound', keep: { ...s.mulliganResponses } });
+      this.advance();
+      return;
+    }
+
     if (pc.kind === 'simultaneousSecret') {
       if (!pc.awaiting.includes(player)) throw new Error('You have already locked in');
       if (response.kind !== 'secret') throw new Error('Expected a secret response');
@@ -346,6 +363,14 @@ export class Game {
     }
     this.state.pendingChoice = r.value;
     return 'yielded';
+  }
+
+  /**
+   * A player locking in changes the other player's view even though the choice is
+   * still open — "waiting for your opponent" has to become "they have decided".
+   */
+  private notifyChoiceProgress(): void {
+    this.events.push({ t: 'choiceProgress' });
   }
 
   private nextChoiceId(): string {
@@ -764,12 +789,11 @@ export class Game {
     );
     this.emit([{ t: 'spellCast', iid, controller: player, free: opts.free }]);
 
-    if (opts.holdPriority) {
-      s.priorityPlayer = player;
-      s.passed = [];
-    } else {
-      this.resetPriority();
-    }
+    // CR 117.3c — the player who cast it receives priority again. Passing that
+    // priority straight to the opponent is a client convenience (auto-pass), not
+    // something the rules do, and burying it here made the engine behave
+    // differently depending on whose turn it was.
+    this.retainPriority(player);
   }
 
   private *activateAbility(player: PlayerId, iid: IID, index: number): Eff {
@@ -812,7 +836,9 @@ export class Game {
 
     s.stack.push(objIid);
     logLine(s, `activates ${cardName(source)}: ${ability.text}`, { player, iids: [iid] });
-    this.resetPriority();
+    // CR 117.3c again: activating in the opponent's end step must not hand the
+    // turn back to them mid-sentence.
+    this.retainPriority(player);
   }
 
   private payActivationCost(
@@ -1365,24 +1391,40 @@ export class Game {
       if (s.zones[p].hand.length === 0) this.draw(p, 7);
     }
 
-    let anyUndecided = true;
-    while (anyUndecided) {
-      anyUndecided = false;
-      for (const p of order) {
-        if (s.players[p].keptHand) continue;
-        const res = (yield this.request({
-          kind: 'mulligan',
-          player: p,
-          prompt:
-            s.players[p].mulligansTaken === 0
-              ? 'Keep this hand?'
-              : `Keep? You will put ${s.players[p].mulligansTaken} card(s) on the bottom.`,
-          handSize: s.zones[p].hand.length,
-          mulligansTaken: s.players[p].mulligansTaken,
-        })) as ChoiceResponse;
-        const keep = res.kind === 'yesNo' ? res.value : true;
-        if (keep) {
+    // Both players decide at once. Asking in turn meant the second player's new
+    // hand arrived only after the first had finished thinking, which reads as a
+    // frozen client rather than as waiting.
+    for (;;) {
+      const undecided = order.filter((p) => !s.players[p].keptHand);
+      if (undecided.length === 0) break;
+
+      s.mulliganResponses = {};
+      const res = (yield this.request({
+        kind: 'mulligan',
+        player: null,
+        awaiting: [...undecided],
+        lockedIn: [],
+        hands: Object.fromEntries(
+          order.map((p) => [
+            p,
+            {
+              handSize: s.zones[p].hand.length,
+              mulligansTaken: s.players[p].mulligansTaken,
+            },
+          ]),
+        ) as Record<PlayerId, { handSize: number; mulligansTaken: number }>,
+        prompt: 'Keep this hand?',
+      })) as ChoiceResponse;
+      const answers = res.kind === 'mulliganRound' ? res.keep : {};
+
+      // Resolved in turn order so the log and the shuffles stay deterministic.
+      for (const p of undecided) {
+        if (answers[p] ?? true) {
           s.players[p].keptHand = true;
+          // The London bottoming has not happened yet, so the kept size is the
+          // hand minus what they are about to put back.
+          const kept = s.zones[p].hand.length - s.players[p].mulligansTaken;
+          logLine(s, `keeps ${kept}`, { player: p });
         } else {
           for (const iid of [...s.zones[p].hand]) moveCardRaw(s, iid, 'library');
           shuffleLibrary(s, p);
@@ -1390,7 +1432,6 @@ export class Game {
           s.players[p].mulligansTaken++;
           this.draw(p, 7);
           logLine(s, `mulligans to ${7 - s.players[p].mulligansTaken}`, { player: p });
-          anyUndecided = true;
         }
       }
     }
@@ -1454,9 +1495,17 @@ export class Game {
     s.priorityPlayer = otherPlayer(player);
   }
 
+  /** CR 117.3b — after something resolves or triggers go on the stack. */
   private resetPriority(): void {
     const s = this.state;
     s.priorityPlayer = s.activePlayer;
+    s.passed = [];
+  }
+
+  /** CR 117.3c — after a player puts a spell or ability on the stack. */
+  private retainPriority(player: PlayerId): void {
+    const s = this.state;
+    s.priorityPlayer = player;
     s.passed = [];
   }
 

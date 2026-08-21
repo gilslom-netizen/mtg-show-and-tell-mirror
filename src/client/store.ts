@@ -75,6 +75,17 @@ interface StoreState {
   /** Hold priority on the next cast. */
   holdPriority: boolean;
 
+  /**
+   * The view each seat last acted from.
+   *
+   * Online there is a round trip between sending an action and seeing its result,
+   * and during it the local view still says you have priority — so a second click
+   * (or an impatient double-click on Pass) sent a second action that the server
+   * rightly refused, surfacing as an error and a board that disagreed with what
+   * you just did. One action per state, per seat: the next snapshot re-arms it.
+   */
+  actedFrom: Record<PlayerId, PlayerView | null>;
+
   hoveredIid: IID | null;
   /** Cards highlighted because the pointer is over a log line. */
   highlightIids: IID[];
@@ -128,6 +139,7 @@ export const useStore = create<StoreState>((set, get) => ({
   autoPass: 'off',
   forceStop: false,
   holdPriority: false,
+  actedFrom: { p1: null, p2: null },
   hoveredIid: null,
   highlightIids: [],
   revealing: null,
@@ -145,6 +157,7 @@ export const useStore = create<StoreState>((set, get) => ({
       viewSeat,
       knownTop: emptyKnownTop(),
       autoPass: 'off',
+      actedFrom: { p1: null, p2: null },
       error: null,
     });
     (conn as Connection & { _unsub?: () => void })._unsub = unsubscribe;
@@ -218,6 +231,12 @@ export const useStore = create<StoreState>((set, get) => ({
         const legal = view.legalActions.some((a) => sameIntentShape(a.intent, intent));
         if (!legal) return;
       }
+      // Conceding is the one thing that must go through even if it is the second
+      // click; everything else waits for the state its predecessor produced.
+      if (intent.t !== 'concede' && intent.t !== 'tapForMana') {
+        if (get().actedFrom[s] === view) return;
+        set((st) => ({ actedFrom: { ...st.actedFrom, [s]: view } }));
+      }
     }
 
     // Any deliberate action cancels a running auto-pass run.
@@ -235,6 +254,7 @@ export const useStore = create<StoreState>((set, get) => ({
     // other seat in lab mode, or by a double click.
     if (!choice) return;
     if (choice.kind === 'simultaneousSecret' && choice.iHaveLockedIn) return;
+    if (choice.kind === 'mulligan' && choice.iHaveDecided) return;
 
     // Learn the top of the library from choices the player just made.
     const learned = knownTopFromChoice(choice, response);

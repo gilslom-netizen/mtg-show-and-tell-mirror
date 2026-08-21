@@ -69,7 +69,19 @@ export interface PlayerPublicView {
 
 /** A pending choice with every trace of the other player's hidden information gone. */
 export type ChoiceView =
-  | Exclude<ChoiceRequest, { kind: 'simultaneousSecret' }>
+  | Exclude<ChoiceRequest, { kind: 'simultaneousSecret' } | { kind: 'mulligan' }>
+  | {
+      kind: 'mulligan';
+      id: string;
+      prompt: string;
+      /** This viewer's own count — the opponent's is public and shown separately. */
+      mulligansTaken: number;
+      opponentMulligansTaken: number;
+      opponentHandSize: number;
+      /** Both players answer at once, so each side needs to see where the other is. */
+      iHaveDecided: boolean;
+      opponentDecided: boolean;
+    }
   | {
       kind: 'simultaneousSecret';
       id: string;
@@ -205,6 +217,22 @@ function redactChoice(state: GameState, viewer: PlayerId): ChoiceView | null {
       myPrompt: pc.requests[viewer].prompt,
       opponentLockedIn: pc.lockedIn.includes(opponent),
       iHaveLockedIn: pc.lockedIn.includes(viewer),
+    };
+  }
+
+  if (pc.kind === 'mulligan') {
+    const opponent: PlayerId = viewer === 'p1' ? 'p2' : 'p1';
+    // What each player decided stays hidden until the round resolves — otherwise
+    // the second to answer would know whether they are facing a fresh seven.
+    return {
+      kind: 'mulligan',
+      id: pc.id,
+      prompt: pc.prompt,
+      mulligansTaken: pc.hands[viewer].mulligansTaken,
+      opponentMulligansTaken: pc.hands[opponent].mulligansTaken,
+      opponentHandSize: pc.hands[opponent].handSize,
+      iHaveDecided: pc.lockedIn.includes(viewer),
+      opponentDecided: pc.lockedIn.includes(opponent),
     };
   }
 

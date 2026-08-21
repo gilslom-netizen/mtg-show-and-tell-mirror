@@ -423,13 +423,22 @@ export type ChoiceRequest =
       prompt: string;
     }
   | {
+      /**
+       * Keep or mulligan — asked of both players at once.
+       *
+       * Asking them in turn was correct and felt broken: after you mulliganed,
+       * your next hand only arrived once the opponent had also decided, with
+       * nothing on screen to say so. Each player answers independently and the
+       * round resolves when both have.
+       */
       kind: 'mulligan';
       id: string;
       source?: ChoiceSource;
-      player: PlayerId;
+      player: null;
+      awaiting: PlayerId[];
+      lockedIn: PlayerId[];
+      hands: Record<PlayerId, { handSize: number; mulligansTaken: number }>;
       prompt: string;
-      handSize: number;
-      mulligansTaken: number;
     }
   | {
       /**
@@ -452,6 +461,8 @@ export type ChoiceResponse =
   | { kind: 'targets'; targets: TargetRef[] }
   | { kind: 'modes'; modes: number[] }
   | { kind: 'yesNo'; value: boolean }
+  /** One mulligan round: what each player decided. */
+  | { kind: 'mulliganRound'; keep: Partial<Record<PlayerId, boolean>> }
   | { kind: 'order'; ids: number[] }
   | { kind: 'damage'; assignment: Record<IID, number> }
   | { kind: 'attackers'; iids: IID[] }
@@ -491,6 +502,8 @@ export type GameEvent =
   | { t: 'damage'; sourceIid: IID | null; target: TargetRef; amount: number; deathtouch: boolean }
   | { t: 'lifeChange'; player: PlayerId; delta: number; total: number }
   | { t: 'shuffle'; player: PlayerId }
+  /** Someone locked in half of a shared choice; the other player's view changed. */
+  | { t: 'choiceProgress' }
   | { t: 'tapped'; iid: IID }
   | { t: 'untapped'; iid: IID }
   | { t: 'counterAdded'; iid: IID; kind: string; n: number }
@@ -559,6 +572,8 @@ export interface GameState {
   pendingChoice: ChoiceRequest | null;
   /** Responses collected for a simultaneousSecret choice, hidden until everyone locks in. */
   secretResponses: Partial<Record<PlayerId, IID | null>>;
+  /** Keep/mulligan answers for the round in progress. */
+  mulliganResponses: Partial<Record<PlayerId, boolean>>;
 
   combat: CombatState | null;
   /** Set while a spell is being cast, so triggers know. */

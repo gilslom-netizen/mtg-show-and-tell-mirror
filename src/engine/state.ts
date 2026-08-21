@@ -101,6 +101,7 @@ export function createGameState(opts: {
     nextEffectId: 1,
     pendingChoice: null,
     secretResponses: {},
+    mulliganResponses: {},
     combat: null,
     castingIid: null,
     winner: null,

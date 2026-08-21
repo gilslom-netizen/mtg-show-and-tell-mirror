@@ -65,7 +65,8 @@ describe('Mana Drain', () => {
     t.p2.cast('Show and Tell');
     t.p2.pass();
     t.p1.cast('Mana Drain');
-    // Casting a spell hands priority back to the active player, which is p2.
+    // CR 117.3c: p1 keeps priority after casting, and passes it on deliberately.
+    t.p1.pass();
     t.p2.cast('Veil of Summer');
     t.resolveAll();
 
