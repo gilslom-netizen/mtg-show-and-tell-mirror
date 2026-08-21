@@ -118,6 +118,11 @@ export const useStore = create<StoreState>((set, get) => ({
   refresh() {
     const conn = get().connection;
     if (!conn) return;
+    // Online, the server decides which seat we get; follow it.
+    const seats = conn.seats();
+    if (seats.length === 1 && seats[0] !== get().viewSeat) {
+      set({ viewSeat: seats[0] });
+    }
     const views: Record<PlayerId, PlayerView | null> = {
       p1: conn.view('p1'),
       p2: conn.view('p2'),

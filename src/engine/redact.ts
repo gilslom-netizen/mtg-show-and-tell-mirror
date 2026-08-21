@@ -4,6 +4,7 @@ import type {
   ActiveEffect,
   CardInstance,
   ChoiceRequest,
+  GameEvent,
   CombatState,
   GameState,
   IID,
@@ -209,6 +210,36 @@ function redactChoice(state: GameState, viewer: PlayerId): ChoiceView | null {
 
   if (pc.player !== viewer) return null;
   return pc;
+}
+
+/**
+ * Events are as leaky as state: a `draw` event carries the id of the card that was
+ * drawn, and a zoneChange in or out of a hand or library identifies a hidden card.
+ * They go through the same filter before they are sent anywhere.
+ */
+export function redactEvents(
+  state: GameState,
+  viewer: PlayerId,
+  events: GameEvent[],
+): GameEvent[] {
+  const visible = visibleIids(state, viewer);
+  const out: GameEvent[] = [];
+  for (const ev of events) {
+    if (ev.t === 'draw') {
+      out.push(ev.player === viewer ? ev : { ...ev, iid: null });
+      continue;
+    }
+    if (ev.t === 'zoneChange') {
+      const privateZone = (z: ZoneName) => z === 'library' || z === 'hand';
+      const hidden = privateZone(ev.from) || privateZone(ev.to);
+      // Keep it only when the viewer may know which card moved.
+      if (hidden && ev.owner !== viewer && !visible.has(ev.iid)) continue;
+      out.push(ev);
+      continue;
+    }
+    out.push(ev);
+  }
+  return out;
 }
 
 export function redact(state: GameState, viewer: PlayerId): PlayerView {

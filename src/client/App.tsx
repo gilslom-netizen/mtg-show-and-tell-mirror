@@ -157,7 +157,11 @@ function Game({ viewer, mode }: { viewer: PlayerId; mode: Mode }) {
       <div className="lobby">
         <div className="lobby-card">
           <h1>Waiting for the other player…</h1>
-          <p>Share your room code. The game starts when both seats are filled.</p>
+          <p>
+            Share the room code. The game starts as soon as both seats are filled, and
+            closing the tab does not lose your seat — reopening the same room puts you
+            back where you were.
+          </p>
         </div>
       </div>
     );

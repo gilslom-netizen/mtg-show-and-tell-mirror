@@ -171,7 +171,7 @@ export interface RemoteOptions {
 }
 
 type ServerMsg =
-  | { t: 'seat'; seat: PlayerId; room: string }
+  | { t: 'seat'; seat: PlayerId; room: string; token: string }
   | { t: 'view'; view: PlayerView; events: GameEvent[] }
   | { t: 'error'; message: string }
   | { t: 'lobby'; players: { seat: PlayerId; name: string }[]; ready: boolean };
@@ -201,7 +201,16 @@ export class RemoteConnection extends BaseConnection {
     this.ws = ws;
     ws.onopen = () => {
       this.status = 'open';
-      ws.send(JSON.stringify({ t: 'join', room: this.opts.room, name: this.opts.playerName }));
+      // The token is what makes a reconnect land back in the same seat rather than
+      // being treated as a third player.
+      ws.send(
+        JSON.stringify({
+          t: 'join',
+          room: this.opts.room,
+          name: this.opts.playerName,
+          token: this.savedToken(),
+        }),
+      );
       this.notify();
     };
     ws.onmessage = (ev) => {
@@ -209,6 +218,7 @@ export class RemoteConnection extends BaseConnection {
       switch (msg.t) {
         case 'seat':
           this.seat = msg.seat;
+          this.saveToken(msg.token);
           break;
         case 'view':
           this.currentView = msg.view;
@@ -240,6 +250,31 @@ export class RemoteConnection extends BaseConnection {
     };
   }
 
+  private tokenKey(): string {
+    return `satm.seat.${this.opts.room}`;
+  }
+
+  private savedToken(): string | undefined {
+    try {
+      return localStorage.getItem(this.tokenKey()) ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private saveToken(token: string): void {
+    try {
+      localStorage.setItem(this.tokenKey(), token);
+    } catch {
+      // Storage being unavailable only costs us seat recovery, not the game.
+    }
+  }
+
+  /** Which seat the server gave us, or null while still joining. */
+  mySeat(): PlayerId | null {
+    return this.seat;
+  }
+
   seats(): PlayerId[] {
     return this.seat ? [this.seat] : [];
   }
@@ -260,6 +295,10 @@ export class RemoteConnection extends BaseConnection {
 
   submitIntent(_seat: PlayerId, intent: Intent): void {
     this.send({ t: 'intent', intent });
+  }
+
+  rematch(): void {
+    this.send({ t: 'rematch' });
   }
 
   submitChoice(_seat: PlayerId, choiceId: string, response: ChoiceResponse): void {
