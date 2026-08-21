@@ -311,6 +311,11 @@ export class Game {
     this.current = null;
     this.events = [];
     this.sbaDirty = true;
+    // Consume the snapshot: advance() takes a fresh one as soon as this player is
+    // waiting again, and a stale snapshot could otherwise rewind past an action
+    // the opponent has already seen.
+    this.rollback = null;
+    this.rollbackOwner = null;
     this.advance();
     return true;
   }
@@ -1444,11 +1449,9 @@ export class Game {
   private doPass(player: PlayerId): void {
     const s = this.state;
     if (!s.passed.includes(player)) s.passed = [...s.passed, player];
+    // Priority moves across. advance() notices when both have passed and either
+    // resolves the top of the stack or moves the step on.
     s.priorityPlayer = otherPlayer(player);
-    if (s.passed.length < 2) {
-      // The other player now gets priority.
-      return;
-    }
   }
 
   private resetPriority(): void {
