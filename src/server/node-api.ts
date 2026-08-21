@@ -53,7 +53,7 @@ export async function handleApiRequest(
 
   if (url.pathname === '/api/health') {
     const { shim } = adapt(res, url);
-    apiHealth({}, shim);
+    await apiHealth({}, shim);
     return true;
   }
   if (url.pathname === '/api/game') {

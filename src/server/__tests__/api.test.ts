@@ -54,9 +54,9 @@ describe('serverless online api', () => {
     setStore(null);
   });
 
-  it('reports that online play is available', () => {
+  it('reports that online play is available', async () => {
     const { res, out } = fakeRes();
-    health({}, res);
+    await health({}, res);
     expect(out.body.ok).toBe(true);
     expect(out.body.store).toBe('memory');
     // Memory is not shared across serverless instances, and the client is told so.
@@ -65,12 +65,12 @@ describe('serverless online api', () => {
     expect(out.body.usable).toBe(true);
   });
 
-  it('refuses to promise online play a serverless host cannot deliver', () => {
+  it('refuses to promise online play a serverless host cannot deliver', async () => {
     const before = process.env.VERCEL;
     process.env.VERCEL = '1';
     try {
       const { res, out } = fakeRes();
-      health({}, res);
+      await health({}, res);
       // Two instances, two memories, two rooms — the lobby has to block this
       // rather than let both players wait for an opponent who is elsewhere.
       expect(out.body.serverless).toBe(true);
