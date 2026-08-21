@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Intent } from '@engine/game';
 import type { PlayerView } from '@engine/redact';
 import type { ChoiceResponse, GameEvent, IID, PlayerId } from '@engine/types';
-import type { Connection } from './connection';
+import type { Connection, ConnectionInfo } from './connection';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from './settings';
 
 /**
@@ -57,6 +57,8 @@ export interface KnownTopEntry {
 
 interface StoreState {
   connection: Connection | null;
+  /** Room code, transport status and who is seated — null when not connected. */
+  connInfo: ConnectionInfo | null;
   /** Whose side of the table we are looking at. */
   viewSeat: PlayerId;
   views: Record<PlayerId, PlayerView | null>;
@@ -114,6 +116,7 @@ function emptyKnownTop(): Record<PlayerId, KnownTopEntry[]> {
 
 export const useStore = create<StoreState>((set, get) => ({
   connection: null,
+  connInfo: null,
   viewSeat: 'p1',
   views: { p1: null, p2: null },
   settings: typeof localStorage === 'undefined' ? DEFAULT_SETTINGS : loadSettings(),
@@ -134,6 +137,7 @@ export const useStore = create<StoreState>((set, get) => ({
     const unsubscribe = conn.subscribe(() => get().refresh());
     set({
       connection: conn,
+      connInfo: conn.info(),
       viewSeat,
       knownTop: emptyKnownTop(),
       autoPass: 'off',
@@ -147,7 +151,13 @@ export const useStore = create<StoreState>((set, get) => ({
     const conn = get().connection as (Connection & { _unsub?: () => void }) | null;
     conn?._unsub?.();
     conn?.dispose();
-    set({ connection: null, views: { p1: null, p2: null }, knownTop: emptyKnownTop() });
+    set({
+      connection: null,
+      connInfo: null,
+      views: { p1: null, p2: null },
+      knownTop: emptyKnownTop(),
+      error: null,
+    });
   },
 
   refresh() {
@@ -165,10 +175,14 @@ export const useStore = create<StoreState>((set, get) => ({
     const events = conn.drainEvents();
     const knownTop = applyEventsToKnownTop(get().knownTop, events);
     const reveal = detectShowAndTellReveal(events, views);
+    const nextInfo = conn.info();
+    const infoChanged =
+      JSON.stringify(nextInfo) !== JSON.stringify(get().connInfo);
     set({
       views,
       knownTop,
       error: conn.lastError(),
+      ...(infoChanged ? { connInfo: nextInfo } : {}),
       ...(reveal ? { revealing: reveal } : {}),
     });
   },

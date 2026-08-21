@@ -5,6 +5,18 @@ import { MatchTracker, type MatchState } from '@engine/match';
 import { stageScenario, type ScenarioSpec } from '@engine/scenario';
 import type { ChoiceResponse, GameEvent, PlayerId } from '@engine/types';
 
+/** What the lobby and the waiting screen need to show while nothing is playable yet. */
+export interface ConnectionInfo {
+  kind: 'local' | 'remote';
+  /** Room code, for online connections. */
+  room?: string;
+  status: 'connecting' | 'open' | 'closed';
+  /** Who is currently sitting in the room. */
+  players: { seat: PlayerId; name: string }[];
+  /** Both seats are filled. */
+  ready: boolean;
+}
+
 /**
  * The client talks to the game through this interface and nothing else.
  *
@@ -28,6 +40,8 @@ export interface Connection {
   /** The loser of the previous game picks who is on the play. */
   chooseFirst(seat: PlayerId, onPlay: PlayerId): void;
   subscribe(cb: () => void): () => void;
+  /** Connection state for the lobby and the waiting screen. */
+  info(): ConnectionInfo;
   /** Human readable problem with the last action, if any. */
   lastError(): string | null;
   clearError(): void;
@@ -50,6 +64,10 @@ abstract class BaseConnection implements Connection {
 
   lastError(): string | null {
     return this.error;
+  }
+
+  info(): ConnectionInfo {
+    return { kind: this.kind, status: 'open', players: [], ready: true };
   }
 
   clearError(): void {
@@ -202,23 +220,49 @@ export interface OnlineCapability {
   http: boolean;
   /** State survives between requests. False means a single process only. */
   durable: boolean;
+  /** The API is running on a host whose instances share no memory. */
+  serverless: boolean;
+  /** Two people can actually meet in a room here. */
+  usable: boolean;
 }
+
+const NO_ONLINE: OnlineCapability = {
+  http: false,
+  durable: false,
+  serverless: false,
+  usable: false,
+};
 
 /**
  * Decides how online play should work here.
  *
  * A serverless host cannot hold a WebSocket open, so the HTTP API is preferred
- * wherever it exists. The plain Vite dev server has no /api, so there we fall back
- * to the standalone socket server.
+ * wherever it exists — and dev, self-host and Vercel all serve it now. The socket
+ * transport is left as the fallback for a host that serves only static files.
  */
 export async function probeOnline(): Promise<OnlineCapability> {
   try {
     const res = await fetch('/api/health', { cache: 'no-store' });
-    if (!res.ok) return { http: false, durable: false };
-    const json = (await res.json()) as { ok?: boolean; durable?: boolean };
-    return { http: Boolean(json.ok), durable: Boolean(json.durable) };
+    if (!res.ok) return NO_ONLINE;
+    // A static host answers every path with index.html, so a 200 proves nothing;
+    // only a JSON body carrying our own flag does.
+    const json = (await res.json().catch(() => null)) as {
+      ok?: boolean;
+      durable?: boolean;
+      serverless?: boolean;
+      usable?: boolean;
+    } | null;
+    if (!json?.ok) return NO_ONLINE;
+    const durable = Boolean(json.durable);
+    const serverless = Boolean(json.serverless);
+    return {
+      http: true,
+      durable,
+      serverless,
+      usable: json.usable ?? (durable || !serverless),
+    };
   } catch {
-    return { http: false, durable: false };
+    return NO_ONLINE;
   }
 }
 
@@ -364,6 +408,16 @@ export class HttpConnection extends BaseConnection {
     this.absorb(await this.post({ action }));
   }
 
+  info(): ConnectionInfo {
+    return {
+      kind: 'remote',
+      room: this.opts.room,
+      status: this.status,
+      players: this.lobby.players,
+      ready: this.lobby.ready,
+    };
+  }
+
   seats(): PlayerId[] {
     return this.seat ? [this.seat] : [];
   }
@@ -431,6 +485,7 @@ export class RemoteConnection extends BaseConnection {
   private events: GameEvent[] = [];
   private reconnectTimer: number | null = null;
   private closed = false;
+  private everOpened = false;
   private matchState: MatchState | null = null;
   lobby: { players: { seat: PlayerId; name: string }[]; ready: boolean } = {
     players: [],
@@ -449,6 +504,7 @@ export class RemoteConnection extends BaseConnection {
     this.ws = ws;
     ws.onopen = () => {
       this.status = 'open';
+      this.everOpened = true;
       // The token is what makes a reconnect land back in the same seat rather than
       // being treated as a third player.
       ws.send(
@@ -486,6 +542,11 @@ export class RemoteConnection extends BaseConnection {
     };
     ws.onclose = () => {
       this.status = 'closed';
+      // Never having connected at all is a different problem from a dropped
+      // connection, and it has a different fix — say which one this is.
+      if (!this.everOpened) {
+        this.error = `No game server answered at ${this.opts.url}. Run npm run selfhost and open the address it prints, or deploy where /api is served.`;
+      }
       this.notify();
       // The server replays the action log on reconnect, so this is safe to retry.
       if (!this.closed && this.reconnectTimer === null) {
@@ -496,7 +557,7 @@ export class RemoteConnection extends BaseConnection {
       }
     };
     ws.onerror = () => {
-      this.error = 'Connection problem';
+      if (this.everOpened) this.error = 'Connection problem';
       this.notify();
     };
   }
@@ -524,6 +585,16 @@ export class RemoteConnection extends BaseConnection {
   /** Which seat the server gave us, or null while still joining. */
   mySeat(): PlayerId | null {
     return this.seat;
+  }
+
+  info(): ConnectionInfo {
+    return {
+      kind: 'remote',
+      room: this.opts.room,
+      status: this.status,
+      players: this.lobby.players,
+      ready: this.lobby.ready,
+    };
   }
 
   seats(): PlayerId[] {

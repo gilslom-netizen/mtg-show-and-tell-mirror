@@ -15,6 +15,7 @@ import {
 } from './connection';
 import { useAutoPass, useHotkeys, useOmniscienceHold, useTriggerPolicy } from './hooks';
 import { SettingsPanel, HelpPanel } from './panels';
+import { inviteLink, normaliseRoomCode, randomRoomCode, roomFromUrl } from './room-code';
 import { canAct, useStore } from './store';
 import { PhaseTrack } from './ui';
 
@@ -50,10 +51,39 @@ export function App() {
 // Lobby
 // ---------------------------------------------------------------------------
 
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        const ok = await copyToClipboard(value);
+        setDone(ok);
+        if (ok) setTimeout(() => setDone(false), 1600);
+      }}
+      title={value}
+    >
+      {done ? 'Copied' : label}
+    </button>
+  );
+}
+
 function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
   const attach = useStore((s) => s.attach);
-  const [room, setRoom] = useState('');
+  // Pre-filled from the invite link if there is one, otherwise a fresh code.
+  const [room, setRoom] = useState(() => roomFromUrl() ?? randomRoomCode());
   const [online, setOnline] = useState<OnlineCapability | null>(null);
+  // Whether this tab was opened from an invite link, kept from the first render so
+  // it does not flip when the code goes into the address bar.
+  const [invited] = useState(() => roomFromUrl() !== null);
 
   // Which online transport is available depends on where this is running: a
   // serverless host has the HTTP API, a laptop with `npm run server` has a socket.
@@ -80,7 +110,7 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
   };
 
   const startOnline = () => {
-    const code = (room.trim() || Math.random().toString(36).slice(2, 7)).toUpperCase();
+    const code = normaliseRoomCode(room) || randomRoomCode();
     const conn = online?.http
       ? new HttpConnection({ room: code, playerName: 'player' })
       : new RemoteConnection({
@@ -89,9 +119,24 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
           playerName: 'player',
         });
     setRoom(code);
+    // Puts the code in the address bar, so the tab is now a shareable invite and a
+    // reload rejoins the same room instead of inventing a new one.
+    try {
+      history.replaceState(null, '', inviteLink(code));
+    } catch {
+      // A sandboxed iframe may refuse; the code is on screen either way.
+    }
     onStart('online');
     attach(conn as Connection, 'p1');
   };
+
+  // Some hosts answer /api and still cannot hold a match: on serverless without a
+  // shared store the two players land on different instances, each makes its own
+  // room, and both wait forever. Better to refuse than to let that happen quietly.
+  const onlineBlocked =
+    online !== null && online.http && !online.usable
+      ? 'Online needs a shared store on this host. Add a Vercel KV / Upstash Redis integration to the project and redeploy — without it each request can land on a different instance, so the two players never meet in the same room.'
+      : null;
 
   return (
     <div className="lobby">
@@ -136,26 +181,44 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
           </div>
         </details>
 
+        <p style={{ margin: '14px 0 4px', fontSize: 12, color: 'var(--text-dim)' }}>
+          Room code
+        </p>
         <div className="row">
           <input
             type="text"
-            placeholder="room code (blank makes one)"
+            aria-label="Room code"
+            data-testid="room-input"
+            placeholder="room code"
             value={room}
-            onChange={(e) => setRoom(e.target.value)}
-            style={{ flex: 1 }}
+            onChange={(e) => setRoom(e.target.value.toUpperCase())}
+            style={{ flex: 1, fontFamily: 'var(--mono, monospace)', letterSpacing: 1 }}
           />
-          <button className="primary" onClick={startOnline}>
+          <button onClick={() => setRoom(randomRoomCode())} title="Make a different code">
+            New code
+          </button>
+          <button
+            className="primary"
+            data-testid="play-online"
+            onClick={startOnline}
+            disabled={online === null || onlineBlocked !== null}
+          >
             Play online
           </button>
         </div>
+        <p style={{ fontSize: 12 }} data-testid="online-status">
+          {invited
+            ? 'You opened an invite link — press Play online to take the second seat.'
+            : 'Both players must use the same room code. Start here, then send the invite link from the next screen.'}
+        </p>
         <p style={{ fontSize: 11 }}>
           {online === null
             ? 'Checking whether online play is available…'
-            : online.http
-              ? online.durable
-                ? 'Online is ready. Share the room code with the other player.'
-                : 'Online is running without a shared store, so a match can be lost between requests. Add a Vercel KV / Upstash Redis integration to make it reliable.'
-              : 'Online needs the socket server running locally: npm run server'}
+            : onlineBlocked
+              ? onlineBlocked
+              : online.http
+                ? 'Online is ready.'
+                : 'No match API here — falling back to the socket server on /ws. If nobody joins, run npm run selfhost and open the port it prints.'}
           {' '}Card images come from Scryfall; this is an unofficial fan project.
         </p>
       </div>
@@ -169,6 +232,7 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
 
 function Game({ viewer, mode }: { viewer: PlayerId; mode: Mode }) {
   const view = useStore((s) => s.views[viewer]);
+  const info = useStore((s) => s.connInfo);
   const error = useStore((s) => s.error);
   const dismissError = useStore((s) => s.dismissError);
   const settingsOpen = useStore((s) => s.settingsOpen);
@@ -181,19 +245,10 @@ function Game({ viewer, mode }: { viewer: PlayerId; mode: Mode }) {
   useOmniscienceHold(viewer);
   useGoldfishOpponent(mode === 'goldfish' ? (viewer === 'p1' ? 'p2' : 'p1') : null);
 
-  if (!view) {
-    return (
-      <div className="lobby">
-        <div className="lobby-card">
-          <h1>Waiting for the other player…</h1>
-          <p>
-            Share the room code. The game starts as soon as both seats are filled, and
-            closing the tab does not lose your seat — reopening the same room puts you
-            back where you were.
-          </p>
-        </div>
-      </div>
-    );
+  // Online, the server hands out a view as soon as this client has a seat — but a
+  // game of one is not a game, so the wait is over readiness, not over the view.
+  if (!view || (info?.kind === 'remote' && !info.ready)) {
+    return <WaitingRoom />;
   }
 
   return (
@@ -210,6 +265,101 @@ function Game({ viewer, mode }: { viewer: PlayerId; mode: Mode }) {
           <button onClick={dismissError}>Dismiss</button>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The screen between joining and playing.
+ *
+ * It used to say "waiting for the other player" and nothing else — no room code,
+ * no connection state, and crucially no errors, because the error toast lives in
+ * the branch below this one. A refused join ("that room already has two players"),
+ * a dead socket or a host with no shared store all looked identical to a friend
+ * who had not clicked yet. Everything it knows now goes on the screen.
+ */
+function WaitingRoom() {
+  const info = useStore((s) => s.connInfo);
+  const error = useStore((s) => s.error);
+  const detach = useStore((s) => s.detach);
+  const code = info?.room ?? '';
+  const seated = info?.players.length ?? 0;
+
+  const status =
+    info?.status === 'connecting'
+      ? { text: 'Connecting…', tone: 'var(--text-dim)' }
+      : info?.status === 'closed'
+        ? { text: 'Connection lost — retrying', tone: 'var(--bad, #e06c6c)' }
+        : { text: `Connected · ${seated} of 2 seats filled`, tone: 'var(--good, #6cc17a)' };
+
+  const leave = () => {
+    detach();
+    try {
+      history.replaceState(null, '', location.pathname);
+    } catch {
+      // Not being able to tidy the URL is not worth blocking the exit.
+    }
+  };
+
+  return (
+    <div className="lobby">
+      <div className="lobby-card">
+        <h1>Waiting for the other player…</h1>
+
+        {code && (
+          <>
+            <p style={{ margin: '14px 0 6px', fontSize: 12, color: 'var(--text-dim)' }}>
+              Room code
+            </p>
+            <div className="row" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+              <code
+                data-testid="room-code"
+                style={{
+                  fontSize: 30,
+                  letterSpacing: 6,
+                  padding: '6px 10px 6px 16px',
+                  border: '1px solid var(--line, #2c3444)',
+                  borderRadius: 8,
+                }}
+              >
+                {code}
+              </code>
+              <CopyButton value={code} label="Copy code" />
+              <CopyButton value={inviteLink(code)} label="Copy invite link" />
+            </div>
+          </>
+        )}
+
+        <p data-testid="waiting-status" style={{ color: status.tone, fontSize: 13 }}>
+          {status.text}
+        </p>
+
+        {error && (
+          <p
+            data-testid="waiting-error"
+            style={{
+              color: 'var(--bad, #e06c6c)',
+              border: '1px solid currentColor',
+              borderRadius: 6,
+              padding: '8px 10px',
+              fontSize: 13,
+            }}
+          >
+            {error}
+          </p>
+        )}
+
+        <p style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+          The other player has to enter this exact code — or just open the invite
+          link. The game starts as soon as both seats are filled, and closing the tab
+          does not lose your seat: reopening the same room puts you back where you
+          were.
+        </p>
+
+        <div className="row">
+          <button onClick={leave}>Back to lobby</button>
+        </div>
+      </div>
     </div>
   );
 }

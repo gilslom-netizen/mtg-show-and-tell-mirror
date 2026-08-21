@@ -16,22 +16,28 @@ the interaction matrix and the reasoning behind each decision.
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173 — plays entirely in the browser
+npm run dev          # http://localhost:5173 — everything, online play included
 ```
 
-Lab, Goldfish and the practice drills need nothing else: the engine runs in the
-browser.
+Lab, Goldfish and the practice drills run entirely in the browser. Online play
+works here too: the dev server mounts the same `/api` handlers the deployment
+runs, in-process, so there is no second command to remember and no code path that
+only exists in production.
 
-For online play against another person, run the full stack on one port:
+To play against someone on another machine, serve the build:
 
 ```bash
 npm run selfhost     # builds, then serves the app, /api and /ws on :8787
 ```
 
-Both players open `http://<host>:8787` and join the same room code.
+Either way: press **Play online**, then send the other player the invite link from
+the waiting screen (or read them the five-character room code). The code is
+generated before you click anything and lives in the address bar, so two players
+cannot end up in two different rooms — which is exactly what used to happen when
+both of them left the box empty.
 
 ```bash
-npm test             # 146 tests, including 150 fuzzed games
+npm test             # 152 tests, including 150 fuzzed games
 npm run typecheck
 npm run build
 ```
@@ -71,9 +77,12 @@ provides, so either naming works:
 | `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Vercel KV |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash directly |
 
-Without them the API still answers, but state is per-instance, so the lobby says
-so rather than letting you start a match that will be lost. `GET /api/health`
-reports which store is in use.
+Without them the API still answers, but each request can land on a different
+instance — so two players would each create their own room and wait forever for
+an opponent who is somewhere else. The lobby refuses to start an online match in
+that state and says what to add, instead of letting you find out by waiting.
+`GET /api/health` reports the store in use, whether the host is serverless, and
+whether online play is `usable` here at all.
 
 Appends use `RPUSH`, which is atomic. That matters at exactly one moment in this
 format — the Show and Tell secret choice, where both players legitimately act at
@@ -186,6 +195,12 @@ with.
 | `redaction.test.ts` | Information leaks, as its own category |
 | `invariants.test.ts` | 150 fuzzed games checking card conservation and determinism after **every** action |
 | `match.test.ts` | Best-of-three bookkeeping |
+| `room-code.test.ts` | Room codes normalise identically on both sides, so a code read aloud joins the right room |
+
+Two browser profiles joining one room over both transports is checked by hand
+against `npm run dev`, the built self-hosted server, and a static host with no
+backend at all — the last of which must *say* that it cannot host a game rather
+than sit on a waiting screen.
 
 The fuzzer found three real bugs during development: a spell that left every zone
 while waiting on a choice, an exponential blow-up in the mana solver, and a crash

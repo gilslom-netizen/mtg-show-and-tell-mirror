@@ -61,6 +61,33 @@ describe('serverless online api', () => {
     expect(out.body.store).toBe('memory');
     // Memory is not shared across serverless instances, and the client is told so.
     expect(out.body.durable).toBe(false);
+    // One process, one memory: usable here even without Redis.
+    expect(out.body.usable).toBe(true);
+  });
+
+  it('refuses to promise online play a serverless host cannot deliver', () => {
+    const before = process.env.VERCEL;
+    process.env.VERCEL = '1';
+    try {
+      const { res, out } = fakeRes();
+      health({}, res);
+      // Two instances, two memories, two rooms — the lobby has to block this
+      // rather than let both players wait for an opponent who is elsewhere.
+      expect(out.body.serverless).toBe(true);
+      expect(out.body.durable).toBe(false);
+      expect(out.body.usable).toBe(false);
+    } finally {
+      if (before === undefined) delete process.env.VERCEL;
+      else process.env.VERCEL = before;
+    }
+  });
+
+  it('seats two players who typed the code differently', async () => {
+    const a = await joinAs(' room9 ', 'alice');
+    const b = await joinAs('rOoM9', 'bob');
+    expect(a.seat).toBe('p1');
+    expect(b.seat).toBe('p2');
+    expect((b.snap as { ready: boolean }).ready).toBe(true);
   });
 
   it('seats two players and refuses a third', async () => {

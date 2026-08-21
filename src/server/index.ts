@@ -1,4 +1,4 @@
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer, type ServerResponse } from 'node:http';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -8,8 +8,7 @@ import { MAINDECK } from '../engine/deck';
 import { MatchTracker } from '../engine/match';
 import { redact, redactEvents } from '../engine/redact';
 import type { ChoiceResponse, PlayerId } from '../engine/types';
-import apiGame from '../../api/game';
-import apiHealth from '../../api/health';
+import { handleApiRequest } from './node-api';
 
 /**
  * The authoritative server.
@@ -229,34 +228,6 @@ const MIME: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
-/** Adapts a Node request/response pair to the shape the /api handlers expect. */
-function apiAdapter(res: ServerResponse, url: URL) {
-  const shim = {
-    status(code: number) {
-      res.statusCode = code;
-      return shim;
-    },
-    json(body: unknown) {
-      res.setHeader('content-type', 'application/json; charset=utf-8');
-      res.end(JSON.stringify(body));
-    },
-    setHeader(name: string, value: string) {
-      res.setHeader(name, value);
-    },
-  };
-  const query: Record<string, string> = {};
-  url.searchParams.forEach((v, k) => (query[k] = v));
-  return { shim, query };
-}
-
-function readRequestBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve) => {
-    let data = '';
-    req.on('data', (c) => (data += c));
-    req.on('end', () => resolve(data));
-  });
-}
-
 function serveStatic(url: URL, res: ServerResponse): boolean {
   if (!existsSync(DIST)) return false;
   // normalize + prefix check keeps a crafted path from escaping the build folder.
@@ -286,17 +257,7 @@ const httpServer = createServer(async (req, res) => {
   }
 
   // Same handlers the serverless deployment runs, so both paths behave alike.
-  if (url.pathname === '/api/health') {
-    const { shim } = apiAdapter(res, url);
-    apiHealth({}, shim);
-    return;
-  }
-  if (url.pathname === '/api/game') {
-    const { shim, query } = apiAdapter(res, url);
-    const body = req.method === 'POST' ? await readRequestBody(req) : undefined;
-    await apiGame({ method: req.method, query, body }, shim);
-    return;
-  }
+  if (await handleApiRequest(req, res)) return;
 
   if (serveStatic(url, res)) return;
   res.writeHead(404);

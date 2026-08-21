@@ -19,12 +19,18 @@ interface Res {
 
 export default function handler(_req: unknown, res: Res): void {
   const store = getStore();
+  // On a serverless host, requests land on instances that share no memory, so
+  // "durable" is not a nicety there: without it the two players would each create
+  // their own room and wait for each other forever.
+  const serverless = Boolean(process.env.VERCEL ?? process.env.AWS_LAMBDA_FUNCTION_NAME);
   res.setHeader('Cache-Control', 'no-store');
   res.status(200).json({
     ok: true,
     online: true,
     store: store.kind,
     durable: store.kind === 'redis',
+    serverless,
+    usable: store.kind === 'redis' || !serverless,
     deckSize: MAINDECK_SIZE,
   });
 }
