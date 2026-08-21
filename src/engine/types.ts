@@ -334,10 +334,17 @@ export interface ChoiceOptionCard {
   disabledReason?: string;
 }
 
+/** Which card produced a prompt, so the client can apply a per-card auto-policy. */
+export interface ChoiceSource {
+  iid: IID;
+  oracleId: OracleId;
+}
+
 export type ChoiceRequest =
   | {
       kind: 'chooseCards';
       id: string;
+      source?: ChoiceSource;
       player: PlayerId;
       /** Candidate cards, in the order they should be displayed. */
       options: ChoiceOptionCard[];
@@ -354,6 +361,7 @@ export type ChoiceRequest =
   | {
       kind: 'chooseTargets';
       id: string;
+      source?: ChoiceSource;
       player: PlayerId;
       candidates: TargetRef[];
       count: number;
@@ -363,6 +371,7 @@ export type ChoiceRequest =
   | {
       kind: 'chooseMode';
       id: string;
+      source?: ChoiceSource;
       player: PlayerId;
       modes: { index: number; text: string; enabled: boolean; disabledReason?: string }[];
       min: number;
@@ -372,6 +381,7 @@ export type ChoiceRequest =
   | {
       kind: 'yesNo';
       id: string;
+      source?: ChoiceSource;
       player: PlayerId;
       prompt: string;
       yesLabel?: string;
@@ -380,6 +390,7 @@ export type ChoiceRequest =
   | {
       kind: 'orderTriggers';
       id: string;
+      source?: ChoiceSource;
       player: PlayerId;
       triggers: { id: number; label: string; sourceIid: IID }[];
       prompt: string;
@@ -387,6 +398,7 @@ export type ChoiceRequest =
   | {
       kind: 'distributeDamage';
       id: string;
+      source?: ChoiceSource;
       player: PlayerId;
       attacker: IID;
       blockers: IID[];
@@ -396,6 +408,7 @@ export type ChoiceRequest =
   | {
       kind: 'declareAttackers';
       id: string;
+      source?: ChoiceSource;
       player: PlayerId;
       candidates: IID[];
       prompt: string;
@@ -403,6 +416,7 @@ export type ChoiceRequest =
   | {
       kind: 'declareBlockers';
       id: string;
+      source?: ChoiceSource;
       player: PlayerId;
       attackers: IID[];
       blockers: IID[];
@@ -411,6 +425,7 @@ export type ChoiceRequest =
   | {
       kind: 'mulligan';
       id: string;
+      source?: ChoiceSource;
       player: PlayerId;
       prompt: string;
       handSize: number;
@@ -424,6 +439,7 @@ export type ChoiceRequest =
        */
       kind: 'simultaneousSecret';
       id: string;
+      source?: ChoiceSource;
       player: null;
       awaiting: PlayerId[];
       requests: Record<PlayerId, { options: ChoiceOptionCard[]; prompt: string }>;
@@ -453,7 +469,18 @@ export type GameEvent =
    * draw steps") has to be evaluated at the moment of the draw.
    */
   | { t: 'draw'; player: PlayerId; iid: IID | null; firstOfDrawStep: boolean }
-  | { t: 'zoneChange'; iid: IID; from: ZoneName; to: ZoneName; owner: PlayerId }
+  /**
+   * `position` is carried so the client can maintain an honest "known top of
+   * library" tracker from information the player legitimately saw.
+   */
+  | {
+      t: 'zoneChange';
+      iid: IID;
+      from: ZoneName;
+      to: ZoneName;
+      owner: PlayerId;
+      position?: 'top' | 'bottom';
+    }
   | { t: 'spellCast'; iid: IID; controller: PlayerId; free: boolean }
   | { t: 'spellResolved'; iid: IID }
   | { t: 'spellCountered'; iid: IID; by: IID | null }

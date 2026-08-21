@@ -221,7 +221,14 @@ export function moveCardRaw(
   if (from === 'battlefield') {
     events.push({ t: 'leavesBattlefield', iid, controller: card.controller });
   }
-  events.push({ t: 'zoneChange', iid, from, to, owner: card.owner });
+  events.push({
+    t: 'zoneChange',
+    iid,
+    from,
+    to,
+    owner: card.owner,
+    position: to === 'library' ? (opts.position ?? 'bottom') : undefined,
+  });
   if (to === 'battlefield') {
     events.push({ t: 'entersBattlefield', iid, controller: card.controller });
   }

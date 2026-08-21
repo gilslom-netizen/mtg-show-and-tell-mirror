@@ -1484,6 +1484,7 @@ export class Game {
       prompt: opts.prompt,
       from: opts.from,
       publicReveal: opts.publicReveal,
+      source: opts.source,
     })) as ChoiceResponse;
     return res.kind === 'cards' ? res.iids : [];
   }
@@ -1521,6 +1522,7 @@ export class Game {
         count: 1,
         optional: Boolean(def.optional),
         prompt: def.prompt,
+        source: { iid: sourceIid, oracleId: s.cards[sourceIid]?.oracleId ?? self.oracleId },
       })) as ChoiceResponse;
       if (res.kind === 'targets') out.push(...res.targets);
     }
@@ -1657,6 +1659,11 @@ export class Game {
   ): Ctx {
     const game = this;
     const s = this.state;
+    // Every prompt raised by a card carries that card's identity, which is what
+    // lets the client auto-answer repetitive triggers (DESIGN.md 12.7).
+    const source = { iid: self.abilitySource ?? self.iid, oracleId: self.oracleId };
+    const req = (r: ChoiceRequestDraft): ChoiceRequest =>
+      game.request({ ...r, source } as ChoiceRequestDraft);
     return {
       state: s,
       self,
@@ -1747,9 +1754,9 @@ export class Game {
         }
       },
 
-      chooseCards: (opts) => game.chooseCardsInternal(opts),
+      chooseCards: (opts) => game.chooseCardsInternal({ ...opts, source }),
       chooseTargets: function* (opts: ChooseTargetsOpts) {
-        const res = (yield game.request({
+        const res = (yield req({
           kind: 'chooseTargets',
           player: opts.player,
           candidates: opts.candidates,
@@ -1762,7 +1769,7 @@ export class Game {
       chooseMode: function* (opts) {
         const enabled = opts.modes.filter((m) => m.enabled);
         if (enabled.length === 0) return [];
-        const res = (yield game.request({
+        const res = (yield req({
           kind: 'chooseMode',
           player: opts.player,
           modes: opts.modes,
@@ -1773,7 +1780,7 @@ export class Game {
         return res.kind === 'modes' ? res.modes : [];
       },
       yesNo: function* (player, prompt, labels) {
-        const res = (yield game.request({
+        const res = (yield req({
           kind: 'yesNo',
           player,
           prompt,
@@ -1859,7 +1866,7 @@ export class Game {
           p2: { options: opts.optionsFor('p2'), prompt: opts.promptFor('p2') },
         };
         s.secretResponses = {};
-        yield game.request({
+        yield req({
           kind: 'simultaneousSecret',
           player: null,
           awaiting: ['p1', 'p2'],

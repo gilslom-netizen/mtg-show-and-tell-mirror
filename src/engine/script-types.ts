@@ -1,5 +1,6 @@
 import type {
   ActiveEffectDraft,
+  ChoiceSource,
   CardInstance,
   ChoiceRequest,
   ChoiceResponse,
@@ -35,6 +36,8 @@ export interface ChooseCardsOpts {
   publicReveal?: boolean;
   /** Cards to display greyed out with a reason, for teaching and clarity. */
   disabled?: { iid: IID; reason: string }[];
+  /** Filled in automatically by the engine. */
+  source?: ChoiceSource;
 }
 
 export interface ChooseTargetsOpts {
