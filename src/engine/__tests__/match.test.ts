@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { MatchTracker, summarise } from '../match';
-import { testGame } from './harness';
+import { MatchTracker, summarise } from '../match.js';
+import { testGame } from './harness.js';
 
 /** Best-of-three bookkeeping. */
 

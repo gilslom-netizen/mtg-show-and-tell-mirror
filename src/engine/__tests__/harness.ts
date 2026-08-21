@@ -1,8 +1,8 @@
-import { MAINDECK } from '../deck';
-import { Game, type Intent } from '../game';
-import { oracleByName } from '../oracle';
-import { cardName, currentFace, moveCardRaw, stepAt } from '../state';
-import { TURN_SEQUENCE, type ChoiceResponse, type GameEvent, type IID, type PlayerId, type Phase, type Step } from '../types';
+import { MAINDECK } from '../deck.js';
+import { Game, type Intent } from '../game.js';
+import { oracleByName } from '../oracle.js';
+import { cardName, currentFace, moveCardRaw, stepAt } from '../state.js';
+import { TURN_SEQUENCE, type ChoiceResponse, type GameEvent, type IID, type PlayerId, type Phase, type Step } from '../types.js';
 
 /**
  * Test harness.

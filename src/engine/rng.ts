@@ -1,5 +1,5 @@
-export type { RngState } from './types';
-import type { RngState } from './types';
+export type { RngState } from './types.js';
+import type { RngState } from './types.js';
 
 /**
  * xoshiro128** — small, fast, and good enough for shuffling a 60 card deck.

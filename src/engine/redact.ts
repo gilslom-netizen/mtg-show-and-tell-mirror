@@ -1,5 +1,5 @@
-import { enumerateLegalActions, type LegalAction } from './game';
-import { currentFace } from './state';
+import { enumerateLegalActions, type LegalAction } from './game.js';
+import { currentFace } from './state.js';
 import type {
   ActiveEffect,
   CardInstance,
@@ -16,7 +16,7 @@ import type {
   Step,
   TargetRef,
   ZoneName,
-} from './types';
+} from './types.js';
 
 /**
  * Turning the authoritative state into what one player is allowed to see.

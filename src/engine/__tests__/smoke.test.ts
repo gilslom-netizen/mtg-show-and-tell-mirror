@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { testGame } from './harness';
-import { MAINDECK, MAINDECK_SIZE } from '../deck';
-import { ORACLE, allOracleIds, oracleByName } from '../oracle';
-import { scriptedOracleIds } from '../cards';
+import { testGame } from './harness.js';
+import { MAINDECK, MAINDECK_SIZE } from '../deck.js';
+import { ORACLE, allOracleIds, oracleByName } from '../oracle.js';
+import { scriptedOracleIds } from '../cards/index.js';
 
 describe('setup', () => {
   it('loads all 25 cards from the frozen Scryfall data', () => {

@@ -1,6 +1,6 @@
-import { frontFace, oracle } from '../oracle';
-import type { CardScript } from '../script-types';
-import type { CardInstance, IID, PlayerId } from '../types';
+import { frontFace, oracle } from '../oracle.js';
+import type { CardScript } from '../script-types.js';
+import type { CardInstance, IID, PlayerId } from '../types.js';
 
 /**
  * The two cards the format is built around.

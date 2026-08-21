@@ -1,6 +1,6 @@
-import { battlefield, manaValueOfCard } from '../state';
-import type { CardScript } from '../script-types';
-import type { TargetRef } from '../types';
+import { battlefield, manaValueOfCard } from '../state.js';
+import type { CardScript } from '../script-types.js';
+import type { TargetRef } from '../types.js';
 
 /** The two ways this deck fights over the stack. */
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { testGame } from './harness';
+import { testGame } from './harness.js';
 
 /** DESIGN.md 15.7 (Atraxa) and 15.8 (selection, tutors and the manabase). */
 

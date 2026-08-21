@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { testGame } from './harness';
-import { redact } from '../redact';
+import { testGame } from './harness.js';
+import { redact } from '../redact.js';
 
 /**
  * DESIGN.md 15.1 — Show and Tell.

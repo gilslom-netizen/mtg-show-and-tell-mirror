@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { RandomBot, newGame, stateHash } from './bot';
-import type { GameState, IID, PlayerId } from '../types';
+import { RandomBot, newGame, stateHash } from './bot.js';
+import type { GameState, IID, PlayerId } from '../types.js';
 
 /**
  * DESIGN.md 14.4 — property tests.

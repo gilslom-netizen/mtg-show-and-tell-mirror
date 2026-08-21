@@ -4,9 +4,9 @@ import {
   normaliseCode,
   snapshot,
   type RoomAction,
-} from '../src/server/room';
-import { getStore } from '../src/server/store';
-import type { PlayerId } from '../src/engine/types';
+} from '../src/server/room.js';
+import { getStore } from '../src/server/store.js';
+import type { PlayerId } from '../src/engine/types.js';
 
 /**
  * The online match, as a serverless function.

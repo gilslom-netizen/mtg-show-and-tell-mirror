@@ -1,7 +1,7 @@
-import { frontFace } from '../oracle';
-import { battlefield, cardsIn, countLandSubtype, hasCardSubtype, isType } from '../state';
-import type { CardScript } from '../script-types';
-import type { GameState, PlayerId, TargetRef } from '../types';
+import { frontFace } from '../oracle.js';
+import { battlefield, cardsIn, countLandSubtype, hasCardSubtype, isType } from '../state.js';
+import type { CardScript } from '../script-types.js';
+import type { GameState, PlayerId, TargetRef } from '../types.js';
 
 /**
  * The manabase. Mana production itself comes straight from Scryfall's produced_mana,

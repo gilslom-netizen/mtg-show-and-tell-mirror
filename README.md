@@ -37,10 +37,24 @@ cannot end up in two different rooms — which is exactly what used to happen wh
 both of them left the box empty.
 
 ```bash
-npm test             # 152 tests, including 150 fuzzed games
+npm test             # 154 tests, including 150 fuzzed games
 npm run typecheck
-npm run build
+npm run check:serverless   # runs the API the way Vercel runs it
+npm run build              # typecheck + that check + the app build
 ```
+
+**One convention worth knowing before editing `src/engine`, `src/server` or
+`api`:** those files run on Vercel, which transpiles each file on its own and
+runs the result as plain Node ESM. So relative imports there carry explicit
+`.js` extensions (`./oracle.js`, `./cards/index.js`) and the card data is
+imported from generated TypeScript in `src/engine/generated/` rather than from
+JSON — Node ESM resolves neither an extensionless path nor an attribute-less
+JSON import, and the transpiler strips the attribute anyway. `data/*.json`
+remains the source of truth; `npm run gen:data` regenerates, and a test fails if
+the two ever drift. `src/client` is bundled by Vite and has no such constraint.
+`npm run check:serverless` is what catches a regression here — it transpiles
+per-file and calls both handlers under plain Node, which is exactly how the
+deployed functions once crashed while everything local stayed green.
 
 ---
 
@@ -196,6 +210,7 @@ with.
 | `invariants.test.ts` | 150 fuzzed games checking card conservation and determinism after **every** action |
 | `match.test.ts` | Best-of-three bookkeeping |
 | `room-code.test.ts` | Room codes normalise identically on both sides, so a code read aloud joins the right room |
+| `data-sync.test.ts` | The generated card data still matches `data/*.json` |
 
 Two browser profiles joining one room over both transports is checked by hand
 against `npm run dev`, the built self-hosted server, and a static host with no

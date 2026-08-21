@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -125,6 +126,10 @@ async function main(): Promise<void> {
       2,
     ) + '\n',
   );
+  // The engine imports the generated TypeScript, not the JSON — see
+  // scripts/gen-data.mjs for why — so a data change is only half applied until
+  // that is regenerated.
+  execFileSync('node', [join(ROOT, 'scripts', 'gen-data.mjs')], { stdio: 'inherit' });
   console.log(`\nWrote ${fresh.length} cards to ${DATA}. Run the test suite now.`);
 }
 

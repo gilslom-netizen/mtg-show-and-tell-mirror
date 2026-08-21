@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { testGame } from './harness';
+import { testGame } from './harness.js';
 
 /** DESIGN.md 15.3 (Mana Drain), 15.4 (Orcish Bowmasters), 15.5 (Veil of Summer). */
 

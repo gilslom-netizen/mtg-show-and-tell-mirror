@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { testGame } from './harness';
+import { testGame } from './harness.js';
 
 /** Priority, passing, auto-pass and backing out of a half-finished action. */
 

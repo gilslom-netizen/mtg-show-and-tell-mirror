@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { MAINDECK } from '../engine/deck';
-import { Game, type Intent } from '../engine/game';
-import { MatchTracker, newMatchState, type MatchState } from '../engine/match';
-import { redact, redactEvents, type PlayerView } from '../engine/redact';
-import type { ChoiceResponse, GameEvent, PlayerId } from '../engine/types';
-import type { LoggedAction, MatchStore, RoomMeta } from './store';
+import { MAINDECK } from '../engine/deck.js';
+import { Game, type Intent } from '../engine/game.js';
+import { MatchTracker, newMatchState, type MatchState } from '../engine/match.js';
+import { redact, redactEvents, type PlayerView } from '../engine/redact.js';
+import type { ChoiceResponse, GameEvent, PlayerId } from '../engine/types.js';
+import type { LoggedAction, MatchStore, RoomMeta } from './store.js';
 
 /**
  * Room logic shared by every online transport.

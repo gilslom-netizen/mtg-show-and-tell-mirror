@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { testGame } from './harness';
-import { redact } from '../redact';
-import type { PlayerId } from '../types';
+import { testGame } from './harness.js';
+import { redact } from '../redact.js';
+import type { PlayerId } from '../types.js';
 
 /**
  * DESIGN.md 14.3 — information leaks.

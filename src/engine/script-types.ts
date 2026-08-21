@@ -13,7 +13,7 @@ import type {
   TargetRef,
   TokenSpec,
   ZoneName,
-} from './types';
+} from './types.js';
 
 /**
  * A resolution step. Card scripts are generators so that a multi-choice resolution

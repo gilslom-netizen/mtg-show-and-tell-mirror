@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import apiGame from '../../api/game';
-import apiHealth from '../../api/health';
+import apiGame from '../../api/game.js';
+import apiHealth from '../../api/health.js';
 
 /**
  * The /api routes, as plain Node middleware.

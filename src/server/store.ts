@@ -1,6 +1,6 @@
-import type { Intent } from '../engine/game';
-import type { MatchState } from '../engine/match';
-import type { ChoiceResponse, PlayerId } from '../engine/types';
+import type { Intent } from '../engine/game.js';
+import type { MatchState } from '../engine/match.js';
+import type { ChoiceResponse, PlayerId } from '../engine/types.js';
 
 /**
  * Where an online match lives between requests.

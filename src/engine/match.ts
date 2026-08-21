@@ -1,5 +1,5 @@
-import type { Game } from './game';
-import type { PlayerId } from './types';
+import type { Game } from './game.js';
+import type { PlayerId } from './types.js';
 
 /**
  * Best-of-three bookkeeping, shared by the local and the online path so both

@@ -24,8 +24,8 @@ export default async function handler(_req: unknown, res: Res): Promise<void> {
   const serverless = Boolean(process.env.VERCEL ?? process.env.AWS_LAMBDA_FUNCTION_NAME);
   try {
     const [{ MAINDECK_SIZE }, { getStore }] = await Promise.all([
-      import('../src/engine/deck'),
-      import('../src/server/store'),
+      import('../src/engine/deck.js'),
+      import('../src/server/store.js'),
     ]);
     const store = getStore();
     res.status(200).json({

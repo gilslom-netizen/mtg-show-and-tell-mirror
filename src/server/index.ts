@@ -3,12 +3,12 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'no
 import { extname, join, normalize } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { Game, type Intent } from '../engine/game';
-import { MAINDECK } from '../engine/deck';
-import { MatchTracker } from '../engine/match';
-import { redact, redactEvents } from '../engine/redact';
-import type { ChoiceResponse, PlayerId } from '../engine/types';
-import { handleApiRequest } from './node-api';
+import { Game, type Intent } from '../engine/game.js';
+import { MAINDECK } from '../engine/deck.js';
+import { MatchTracker } from '../engine/match.js';
+import { redact, redactEvents } from '../engine/redact.js';
+import type { ChoiceResponse, PlayerId } from '../engine/types.js';
+import { handleApiRequest } from './node-api.js';
 
 /**
  * The authoritative server.

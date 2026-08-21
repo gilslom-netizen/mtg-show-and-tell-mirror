@@ -1,5 +1,5 @@
-import raw from '../../data/oracle-cards.json';
-import type { CardType, Color, OracleCard, OracleFace, OracleId } from './types';
+import { ORACLE_DATA as raw } from './generated/oracle-cards.gen.js';
+import type { CardType, Color, OracleCard, OracleFace, OracleId } from './types.js';
 
 /**
  * Static card database, built from the frozen Scryfall snapshot in data/oracle-cards.json.

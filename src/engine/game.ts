@@ -1,4 +1,4 @@
-import { getScript } from './cards';
+import { getScript } from './cards/index.js';
 import {
   addEffect as addEffectToState,
   attachNextSpellShield,
@@ -6,7 +6,7 @@ import {
   clearEndOfTurnEffects,
   isProtectedFrom,
   spellCantBeCountered,
-} from './effects';
+} from './effects.js';
 import {
   MANA_KINDS,
   canPay,
@@ -18,9 +18,9 @@ import {
   reduceGeneric,
   solvePayment,
   type ManaSource,
-} from './mana';
-import { frontFace, oracle } from './oracle';
-import { shuffleArray } from './rng';
+} from './mana.js';
+import { frontFace, oracle } from './oracle.js';
+import { shuffleArray } from './rng.js';
 import {
   battlefield,
   cardName,
@@ -43,7 +43,7 @@ import {
   targetExists,
   targetLabel,
   type DeckEntry,
-} from './state';
+} from './state.js';
 import type {
   ActivationCost,
   Ctx,
@@ -53,7 +53,7 @@ import type {
   DamageOpts,
   SearchOpts,
   TargetDef,
-} from './script-types';
+} from './script-types.js';
 import {
   TURN_SEQUENCE,
   type CardInstance,
@@ -69,7 +69,7 @@ import {
   type PlayerId,
   type TargetRef,
   type ZoneName,
-} from './types';
+} from './types.js';
 
 // ---------------------------------------------------------------------------
 // Intents — what a player can do when they hold priority
@@ -1630,7 +1630,7 @@ export class Game {
 
   private executePayment(
     player: PlayerId,
-    plan: { fromPool: import('./types').ManaPool; taps: { iid: IID; produce: ManaKind }[] },
+    plan: { fromPool: import('./types.js').ManaPool; taps: { iid: IID; produce: ManaKind }[] },
     _symbols: CostSymbol[],
   ): void {
     const s = this.state;

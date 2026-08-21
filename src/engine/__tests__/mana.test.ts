@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { canPay, emptyPool, parseCost, reduceGeneric, solvePayment, type ManaSource } from '../mana';
-import { manaValueOf } from '../oracle';
+import { canPay, emptyPool, parseCost, reduceGeneric, solvePayment, type ManaSource } from '../mana.js';
+import { manaValueOf } from '../oracle.js';
 
 /** DESIGN.md 9 — cost parsing and the payment solver. */
 

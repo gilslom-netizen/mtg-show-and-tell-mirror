@@ -1,8 +1,8 @@
-import { isProtectedFrom } from '../effects';
-import { frontFace } from '../oracle';
-import { battlefield, cardName, isType } from '../state';
-import type { CardScript } from '../script-types';
-import { ATRAXA_TYPES, type IID, type PlayerId, type TargetRef } from '../types';
+import { isProtectedFrom } from '../effects.js';
+import { frontFace } from '../oracle.js';
+import { battlefield, cardName, isType } from '../state.js';
+import type { CardScript } from '../script-types.js';
+import { ATRAXA_TYPES, type IID, type PlayerId, type TargetRef } from '../types.js';
 
 /**
  * The three creatures. Two of them have flash, which is why Waterlogged Teachings

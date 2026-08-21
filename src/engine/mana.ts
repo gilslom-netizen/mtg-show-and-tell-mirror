@@ -1,4 +1,4 @@
-import type { CostSymbol, IID, ManaKind, ManaPool, PaymentPlan } from './types';
+import type { CostSymbol, IID, ManaKind, ManaPool, PaymentPlan } from './types.js';
 
 /**
  * Cost parsing and the payment solver.

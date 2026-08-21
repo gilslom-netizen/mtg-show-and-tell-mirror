@@ -1,6 +1,6 @@
-import decklist from '../../data/decklist.json';
-import { oracleByName } from './oracle';
-import type { DeckEntry } from './state';
+import { DECKLIST as decklist } from './generated/decklist.gen.js';
+import { oracleByName } from './oracle.js';
+import type { DeckEntry } from './state.js';
 
 /**
  * The one decklist both players use. Loaded from data/decklist.json so the list

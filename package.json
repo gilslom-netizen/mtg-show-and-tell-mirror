@@ -6,7 +6,7 @@
   "description": "Online implementation of the Show and Tell mirror format (Timeless), where both players run the same 60-card deck.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && node scripts/check-serverless.mjs && vite build",
     "preview": "vite preview",
     "server": "tsx watch src/server/index.ts",
     "start": "tsx src/server/index.ts",
@@ -14,7 +14,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "sync:cards": "tsx scripts/sync-cards.ts"
+    "sync:cards": "tsx scripts/sync-cards.ts",
+    "gen:data": "node scripts/gen-data.mjs",
+    "check:serverless": "node scripts/check-serverless.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

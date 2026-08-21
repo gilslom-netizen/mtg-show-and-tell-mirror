@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import handler from '../../../api/game';
-import health from '../../../api/health';
-import { setStore } from '../store';
-import type { PlayerId } from '../../engine/types';
+import handler from '../../../api/game.js';
+import health from '../../../api/health.js';
+import { setStore } from '../store.js';
+import type { PlayerId } from '../../engine/types.js';
 
 /**
  * The serverless online path, exercised the same way Vercel calls it.

@@ -1,5 +1,5 @@
-import type { CardScript } from '../script-types';
-import type { OracleId } from '../types';
+import type { CardScript } from '../script-types.js';
+import type { OracleId } from '../types.js';
 
 import {
   breedingPool,
@@ -11,18 +11,18 @@ import {
   pollutedDelta,
   undercitySewers,
   wateryGrave,
-} from './lands';
+} from './lands.js';
 import {
   borneUponAWind,
   brainstorm,
   digThroughTime,
   planarGenesis,
   rakshasasBargain,
-} from './cantrips';
-import { assembleTheTeam, demonicTutor, waterloggedTeachings } from './tutors';
-import { omniscience, showAndTell } from './combo';
-import { atraxaGrandUnifier, hullbreakerHorror, orcishBowmasters } from './creatures';
-import { manaDrain, veilOfSummer } from './interaction';
+} from './cantrips.js';
+import { assembleTheTeam, demonicTutor, waterloggedTeachings } from './tutors.js';
+import { omniscience, showAndTell } from './combo.js';
+import { atraxaGrandUnifier, hullbreakerHorror, orcishBowmasters } from './creatures.js';
+import { manaDrain, veilOfSummer } from './interaction.js';
 
 /**
  * The script registry.

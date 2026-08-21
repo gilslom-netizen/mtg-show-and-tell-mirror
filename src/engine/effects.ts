@@ -1,4 +1,4 @@
-import { currentFace } from './state';
+import { currentFace } from './state.js';
 import type {
   ActiveEffect,
   ActiveEffectDraft,
@@ -7,7 +7,7 @@ import type {
   IID,
   PlayerId,
   TargetRef,
-} from './types';
+} from './types.js';
 
 /**
  * The small continuous-effect layer this card pool needs.

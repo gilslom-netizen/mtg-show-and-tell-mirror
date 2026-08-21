@@ -1,6 +1,6 @@
-import { frontFace } from '../oracle';
-import type { CardScript } from '../script-types';
-import type { IID } from '../types';
+import { frontFace } from '../oracle.js';
+import type { CardScript } from '../script-types.js';
+import type { IID } from '../types.js';
 
 /**
  * Card selection. The important detail in this file is that Brainstorm performs

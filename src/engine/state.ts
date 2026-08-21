@@ -1,6 +1,6 @@
-import { faceOf, frontFace, oracle } from './oracle';
-import { emptyPool } from './mana';
-import { seedRng, shuffleArray } from './rng';
+import { faceOf, frontFace, oracle } from './oracle.js';
+import { emptyPool } from './mana.js';
+import { seedRng, shuffleArray } from './rng.js';
 import {
   type CardInstance,
   type CardType,
@@ -14,7 +14,7 @@ import {
   type TargetRef,
   type ZoneName,
   TURN_SEQUENCE,
-} from './types';
+} from './types.js';
 
 /** Pure helpers over GameState. Nothing here yields choices or runs the turn loop. */
 

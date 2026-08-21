@@ -1,7 +1,7 @@
-import { Game } from '../game';
-import { MAINDECK } from '../deck';
-import { nextInt, seedRng, type RngState } from '../rng';
-import type { ChoiceResponse, GameState, IID, PlayerId } from '../types';
+import { Game } from '../game.js';
+import { MAINDECK } from '../deck.js';
+import { nextInt, seedRng, type RngState } from '../rng.js';
+import type { ChoiceResponse, GameState, IID, PlayerId } from '../types.js';
 
 /**
  * A bot that plays only legal moves, chosen at random from its own seeded PRNG.

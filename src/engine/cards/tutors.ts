@@ -1,5 +1,5 @@
-import { frontFace } from '../oracle';
-import type { CardScript } from '../script-types';
+import { frontFace } from '../oracle.js';
+import type { CardScript } from '../script-types.js';
 
 /** Search effects. All of them shuffle afterwards, which resets any known top of library. */
 

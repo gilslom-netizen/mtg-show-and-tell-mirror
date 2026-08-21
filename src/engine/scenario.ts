@@ -1,7 +1,7 @@
-import type { Game } from './game';
-import { oracleByName } from './oracle';
-import { moveCardRaw, stepAt } from './state';
-import { TURN_SEQUENCE, type IID, type Phase, type PlayerId, type Step } from './types';
+import type { Game } from './game.js';
+import { oracleByName } from './oracle.js';
+import { moveCardRaw, stepAt } from './state.js';
+import { TURN_SEQUENCE, type IID, type Phase, type PlayerId, type Step } from './types.js';
 
 /**
  * Staging a specific board.
