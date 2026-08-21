@@ -178,7 +178,13 @@ export const CardFace = memo(function CardFace({
       {showArt && face.imageUri && !card.isToken && !artBroken && !failedArt.has(face.imageUri) ? (
         <img
           className="card-art"
-          src={artUrl(face.imageUri, 'large')}
+          // 'png' is the highest resolution Scryfall serves (745px, real
+          // transparency) — the same one the hover preview already used. It is
+          // a much bigger download than 'large' (roughly 8x), which is fine
+          // once cached but costs something the instant many permanents enter
+          // at once (Show and Tell, a big Omniscience turn); loading="lazy"
+          // below is what keeps that cost off cards not actually on screen.
+          src={artUrl(face.imageUri, 'png')}
           alt={face.name}
           loading="lazy"
           decoding="async"
