@@ -23,5 +23,5 @@
       "@client/*": ["src/client/*"]
     }
   },
-  "include": ["src", "scripts", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src", "api", "scripts", "vite.config.ts", "vitest.config.ts"]
 }

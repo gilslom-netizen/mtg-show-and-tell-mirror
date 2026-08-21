@@ -1,6 +1,6 @@
-import { createServer } from 'node:http';
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
+import { extname, join, normalize } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { Game, type Intent } from '../engine/game';
@@ -8,6 +8,8 @@ import { MAINDECK } from '../engine/deck';
 import { MatchTracker } from '../engine/match';
 import { redact, redactEvents } from '../engine/redact';
 import type { ChoiceResponse, PlayerId } from '../engine/types';
+import apiGame from '../../api/game';
+import apiHealth from '../../api/health';
 
 /**
  * The authoritative server.
@@ -209,12 +211,94 @@ function sendStateTo(room: Room, seat: PlayerId): void {
 // Connection handling
 // ---------------------------------------------------------------------------
 
-const httpServer = createServer((req, res) => {
-  if (req.url === '/health') {
+// ---------------------------------------------------------------------------
+// Static hosting + the same /api the serverless deployment uses
+// ---------------------------------------------------------------------------
+
+const DIST = join(process.cwd(), 'dist');
+
+const MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+};
+
+/** Adapts a Node request/response pair to the shape the /api handlers expect. */
+function apiAdapter(res: ServerResponse, url: URL) {
+  const shim = {
+    status(code: number) {
+      res.statusCode = code;
+      return shim;
+    },
+    json(body: unknown) {
+      res.setHeader('content-type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify(body));
+    },
+    setHeader(name: string, value: string) {
+      res.setHeader(name, value);
+    },
+  };
+  const query: Record<string, string> = {};
+  url.searchParams.forEach((v, k) => (query[k] = v));
+  return { shim, query };
+}
+
+function readRequestBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve) => {
+    let data = '';
+    req.on('data', (c) => (data += c));
+    req.on('end', () => resolve(data));
+  });
+}
+
+function serveStatic(url: URL, res: ServerResponse): boolean {
+  if (!existsSync(DIST)) return false;
+  // normalize + prefix check keeps a crafted path from escaping the build folder.
+  const rel = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, '');
+  let file = join(DIST, rel);
+  if (!file.startsWith(DIST)) return false;
+  if (!existsSync(file) || statSync(file).isDirectory()) {
+    file = join(DIST, 'index.html');
+    if (!existsSync(file)) return false;
+  }
+  res.statusCode = 200;
+  res.setHeader('content-type', MIME[extname(file)] ?? 'application/octet-stream');
+  if (file.includes(`${join('dist', 'assets')}`)) {
+    res.setHeader('cache-control', 'public, max-age=31536000, immutable');
+  }
+  res.end(readFileSync(file));
+  return true;
+}
+
+const httpServer = createServer(async (req, res) => {
+  const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+
+  if (url.pathname === '/health') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ ok: true, rooms: rooms.size }));
     return;
   }
+
+  // Same handlers the serverless deployment runs, so both paths behave alike.
+  if (url.pathname === '/api/health') {
+    const { shim } = apiAdapter(res, url);
+    apiHealth({}, shim);
+    return;
+  }
+  if (url.pathname === '/api/game') {
+    const { shim, query } = apiAdapter(res, url);
+    const body = req.method === 'POST' ? await readRequestBody(req) : undefined;
+    await apiGame({ method: req.method, query, body }, shim);
+    return;
+  }
+
+  if (serveStatic(url, res)) return;
   res.writeHead(404);
   res.end('Not found');
 });

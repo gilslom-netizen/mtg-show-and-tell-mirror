@@ -19,19 +19,65 @@ npm install
 npm run dev          # http://localhost:5173 — plays entirely in the browser
 ```
 
-For online play against another person, also run the server:
+Lab, Goldfish and the practice drills need nothing else: the engine runs in the
+browser.
+
+For online play against another person, run the full stack on one port:
 
 ```bash
-npm run server       # ws://localhost:8787/ws, proxied by the dev server at /ws
+npm run selfhost     # builds, then serves the app, /api and /ws on :8787
 ```
 
-Then both players open the app and join the same room code.
+Both players open `http://<host>:8787` and join the same room code.
 
 ```bash
-npm test             # 129 tests, including 150 fuzzed games
+npm test             # 146 tests, including 150 fuzzed games
 npm run typecheck
 npm run build
 ```
+
+---
+
+## Deploying to Vercel
+
+The repository is ready to deploy as-is — `vercel.json` is committed and the
+project needs no configuration:
+
+```bash
+npx vercel            # preview
+npx vercel --prod
+```
+
+Or import the repository at vercel.com; it is detected as a Vite app, builds with
+`npm run build` and serves `dist`.
+
+**Solo play works immediately** on the deployed URL. Lab, Goldfish and the drills
+are entirely client-side.
+
+**Online play needs a shared store.** A serverless function cannot hold a game in
+memory between requests — but it does not need to, because a game here is fully
+determined by `(seed, action log)`. Every request rebuilds the game by replaying
+the log, applies one action and appends it; clients poll for changes. All that has
+to persist is the log:
+
+1. In the Vercel dashboard, add a **KV / Upstash Redis** integration to the project.
+2. Redeploy.
+
+That is the whole setup. The function reads whichever of these the integration
+provides, so either naming works:
+
+| Variable | |
+|---|---|
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Vercel KV |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash directly |
+
+Without them the API still answers, but state is per-instance, so the lobby says
+so rather than letting you start a match that will be lost. `GET /api/health`
+reports which store is in use.
+
+Appends use `RPUSH`, which is atomic. That matters at exactly one moment in this
+format — the Show and Tell secret choice, where both players legitimately act at
+the same instant. Redis decides the order and the engine is happy with either.
 
 ---
 
@@ -96,11 +142,21 @@ control as well as a shortcut:
 Card art is probed once at startup. If Scryfall is unreachable the whole app renders
 readable text cards rather than blank rectangles, so it works offline.
 
-### Online — `src/server`
+### Online — `src/server` and `api/`
 
-Rooms by code, two seats, an authoritative game per room. Only the action log is
-persisted, which is enough to rebuild any match. Reconnecting with your seat token
-puts you back in the same seat rather than being treated as a third player.
+Two transports over the same room logic:
+
+- **HTTP** (`api/game.ts`) — one serverless function. Used wherever `/api` answers,
+  which includes any Vercel deployment. Clients poll; the log length doubles as an
+  etag, so an unchanged poll is a few bytes.
+- **WebSocket** (`src/server/index.ts`) — for self-hosting. `npm run selfhost`
+  serves the built app, `/api` and `/ws` from one process.
+
+Either way there are rooms by code, two seats, and an authoritative game. Only the
+action log is stored. Reconnecting with your seat token puts you back in the same
+seat rather than being treated as a third player, and a rejected action returns the
+current state so a client can never be left showing a board the server disagrees
+with.
 
 ---
 

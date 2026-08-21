@@ -5,7 +5,14 @@ import { SCENARIOS, type ScenarioSpec } from '@engine/scenario';
 import type { PlayerId } from '@engine/types';
 import { Board } from './Board';
 import { probeCardArt } from './CardView';
-import { LocalConnection, RemoteConnection, type Connection } from './connection';
+import {
+  HttpConnection,
+  LocalConnection,
+  RemoteConnection,
+  probeOnline,
+  type Connection,
+  type OnlineCapability,
+} from './connection';
 import { useAutoPass, useHotkeys, useOmniscienceHold, useTriggerPolicy } from './hooks';
 import { SettingsPanel, HelpPanel } from './panels';
 import { canAct, useStore } from './store';
@@ -46,6 +53,19 @@ export function App() {
 function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
   const attach = useStore((s) => s.attach);
   const [room, setRoom] = useState('');
+  const [online, setOnline] = useState<OnlineCapability | null>(null);
+
+  // Which online transport is available depends on where this is running: a
+  // serverless host has the HTTP API, a laptop with `npm run server` has a socket.
+  useEffect(() => {
+    let cancelled = false;
+    probeOnline().then((c) => {
+      if (!cancelled) setOnline(c);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const startLocal = (mode: Mode, scenario?: ScenarioSpec) => {
     const seed = Math.floor(Math.random() * 2 ** 31);
@@ -60,13 +80,15 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
   };
 
   const startOnline = () => {
-    const code = room.trim() || Math.random().toString(36).slice(2, 7).toUpperCase();
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const conn = new RemoteConnection({
-      url: `${proto}://${location.host}/ws`,
-      room: code,
-      playerName: 'player',
-    });
+    const code = (room.trim() || Math.random().toString(36).slice(2, 7)).toUpperCase();
+    const conn = online?.http
+      ? new HttpConnection({ room: code, playerName: 'player' })
+      : new RemoteConnection({
+          url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
+          room: code,
+          playerName: 'player',
+        });
+    setRoom(code);
     onStart('online');
     attach(conn as Connection, 'p1');
   };
@@ -127,8 +149,14 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
           </button>
         </div>
         <p style={{ fontSize: 11 }}>
-          Online needs the server running: <code>npm run server</code>. Card images
-          come from Scryfall; this is an unofficial fan project.
+          {online === null
+            ? 'Checking whether online play is available…'
+            : online.http
+              ? online.durable
+                ? 'Online is ready. Share the room code with the other player.'
+                : 'Online is running without a shared store, so a match can be lost between requests. Add a Vercel KV / Upstash Redis integration to make it reliable.'
+              : 'Online needs the socket server running locally: npm run server'}
+          {' '}Card images come from Scryfall; this is an unofficial fan project.
         </p>
       </div>
     </div>

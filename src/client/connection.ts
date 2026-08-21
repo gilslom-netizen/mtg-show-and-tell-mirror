@@ -194,7 +194,220 @@ export class LocalConnection extends BaseConnection {
 }
 
 // ---------------------------------------------------------------------------
-// Remote
+// Online over HTTP (Vercel and anything else without a socket server)
+// ---------------------------------------------------------------------------
+
+export interface OnlineCapability {
+  /** An HTTP match API is reachable. */
+  http: boolean;
+  /** State survives between requests. False means a single process only. */
+  durable: boolean;
+}
+
+/**
+ * Decides how online play should work here.
+ *
+ * A serverless host cannot hold a WebSocket open, so the HTTP API is preferred
+ * wherever it exists. The plain Vite dev server has no /api, so there we fall back
+ * to the standalone socket server.
+ */
+export async function probeOnline(): Promise<OnlineCapability> {
+  try {
+    const res = await fetch('/api/health', { cache: 'no-store' });
+    if (!res.ok) return { http: false, durable: false };
+    const json = (await res.json()) as { ok?: boolean; durable?: boolean };
+    return { http: Boolean(json.ok), durable: Boolean(json.durable) };
+  } catch {
+    return { http: false, durable: false };
+  }
+}
+
+interface Snapshot {
+  seat: PlayerId;
+  version: number;
+  rev: number;
+  view: PlayerView;
+  match: MatchState;
+  events: GameEvent[];
+  players: { seat: PlayerId; name: string }[];
+  ready: boolean;
+  token?: string;
+  error?: string;
+  unchanged?: boolean;
+}
+
+export interface HttpOptions {
+  room: string;
+  playerName: string;
+  /** How often to look for the opponent's move. */
+  pollMs?: number;
+}
+
+export class HttpConnection extends BaseConnection {
+  readonly kind = 'remote';
+  private seat: PlayerId | null = null;
+  private token: string | null = null;
+  private currentView: PlayerView | null = null;
+  private matchState: MatchState | null = null;
+  private events: GameEvent[] = [];
+  private version = -1;
+  private rev = -1;
+  private timer: number | null = null;
+  private stopped = false;
+  private inFlight = false;
+  lobby: { players: { seat: PlayerId; name: string }[]; ready: boolean } = {
+    players: [],
+    ready: false,
+  };
+  status: 'connecting' | 'open' | 'closed' = 'connecting';
+
+  constructor(private opts: HttpOptions) {
+    super();
+    void this.joinRoom();
+  }
+
+  private tokenKey(): string {
+    return `satm.seat.${this.opts.room}`;
+  }
+
+  private loadToken(): string | undefined {
+    try {
+      return localStorage.getItem(this.tokenKey()) ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private saveToken(token: string): void {
+    try {
+      localStorage.setItem(this.tokenKey(), token);
+    } catch {
+      // Losing the token only costs seat recovery.
+    }
+  }
+
+  private async post(body: Record<string, unknown>): Promise<Snapshot | null> {
+    const res = await fetch('/api/game', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room: this.opts.room, token: this.token ?? undefined, ...body }),
+    });
+    const json = (await res.json().catch(() => ({}))) as Snapshot & { error?: string };
+    if (!res.ok) {
+      this.error = json.error ?? `Request failed (${res.status})`;
+      this.notify();
+      return null;
+    }
+    return json;
+  }
+
+  private absorb(snap: Snapshot | null): void {
+    if (!snap || snap.unchanged) return;
+    if (snap.token) {
+      this.token = snap.token;
+      this.saveToken(snap.token);
+    }
+    if (snap.seat) this.seat = snap.seat;
+    this.currentView = snap.view;
+    this.matchState = snap.match;
+    this.version = snap.version;
+    this.rev = snap.rev;
+    this.lobby = { players: snap.players ?? [], ready: Boolean(snap.ready) };
+    if (snap.events?.length) this.events.push(...snap.events);
+    this.error = snap.error ?? null;
+    this.status = 'open';
+    this.notify();
+  }
+
+  private async joinRoom(): Promise<void> {
+    this.token = this.loadToken() ?? null;
+    const snap = await this.post({ name: this.opts.playerName });
+    this.absorb(snap);
+    this.schedulePoll();
+  }
+
+  private schedulePoll(): void {
+    if (this.stopped || this.timer !== null) return;
+    this.timer = window.setTimeout(() => {
+      this.timer = null;
+      void this.poll();
+    }, this.opts.pollMs ?? 800);
+  }
+
+  private async poll(): Promise<void> {
+    if (this.stopped || this.inFlight || !this.seat || !this.token) {
+      this.schedulePoll();
+      return;
+    }
+    this.inFlight = true;
+    try {
+      const url = `/api/game?room=${encodeURIComponent(this.opts.room)}&token=${encodeURIComponent(
+        this.token,
+      )}&since=${this.version}&rev=${this.rev}`;
+      const res = await fetch(url, { cache: 'no-store' });
+      if (res.ok) {
+        const json = (await res.json()) as Snapshot;
+        this.absorb(json);
+      } else {
+        this.status = 'closed';
+      }
+    } catch {
+      // A dropped poll is not fatal; the next one picks the state back up.
+      this.status = 'closed';
+    } finally {
+      this.inFlight = false;
+      this.schedulePoll();
+    }
+  }
+
+  private async act(action: unknown): Promise<void> {
+    this.absorb(await this.post({ action }));
+  }
+
+  seats(): PlayerId[] {
+    return this.seat ? [this.seat] : [];
+  }
+
+  view(seat: PlayerId): PlayerView | null {
+    return this.seat === seat ? this.currentView : null;
+  }
+
+  drainEvents(): GameEvent[] {
+    const e = this.events;
+    this.events = [];
+    return e;
+  }
+
+  submitIntent(_seat: PlayerId, intent: Intent): void {
+    void this.act({ t: 'intent', intent });
+  }
+
+  submitChoice(_seat: PlayerId, choiceId: string, response: ChoiceResponse): void {
+    void this.act({ t: 'choice', choiceId, response });
+  }
+
+  cancel(): boolean {
+    void this.act({ t: 'cancel' });
+    return true;
+  }
+
+  match(): MatchState | null {
+    return this.matchState;
+  }
+
+  chooseFirst(_seat: PlayerId, onPlay: PlayerId): void {
+    void this.act({ t: 'chooseFirst', onPlay });
+  }
+
+  dispose(): void {
+    this.stopped = true;
+    if (this.timer !== null) window.clearTimeout(this.timer);
+    super.dispose();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Online over WebSocket (self-hosted server)
 // ---------------------------------------------------------------------------
 
 export interface RemoteOptions {
