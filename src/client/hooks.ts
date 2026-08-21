@@ -70,6 +70,17 @@ export function shouldStop(view: PlayerView, settings: Settings, autoPass: AutoP
  * instantly when it had no answer and slowly when it did, the opponent would read
  * your hand off the clock — a real information leak in other online clients.
  */
+/** Card size steps, shared by the keyboard and the settings panel. */
+const CARD_SCALES = [0.85, 1, 1.2, 1.45];
+
+function adjustCardScale(direction: 1 | -1): void {
+  const { settings, updateSettings } = useStore.getState();
+  const i = CARD_SCALES.indexOf(settings.cardScale);
+  const from = i === -1 ? 1 : i;
+  const next = CARD_SCALES[Math.min(CARD_SCALES.length - 1, Math.max(0, from + direction))];
+  if (next !== settings.cardScale) updateSettings({ cardScale: next });
+}
+
 export function useAutoPass(viewer: PlayerId) {
   const view = useStore((s) => s.views[viewer]);
   const settings = useStore((s) => s.settings);
@@ -269,6 +280,14 @@ export function useHotkeys(viewer: PlayerId) {
         case 'h':
         case 'H':
           setHold(!useStore.getState().holdPriority);
+          break;
+        case '+':
+        case '=':
+          adjustCardScale(1);
+          break;
+        case '-':
+        case '_':
+          adjustCardScale(-1);
           break;
         case 'l':
         case 'L':

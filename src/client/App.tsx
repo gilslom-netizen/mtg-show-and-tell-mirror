@@ -263,6 +263,7 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
 function Game({ viewer, mode }: { viewer: PlayerId; mode: Mode }) {
   const view = useStore((s) => s.views[viewer]);
   const info = useStore((s) => s.connInfo);
+  const cardScale = useStore((s) => s.settings.cardScale);
   const error = useStore((s) => s.error);
   const dismissError = useStore((s) => s.dismissError);
   const settingsOpen = useStore((s) => s.settingsOpen);
@@ -282,7 +283,11 @@ function Game({ viewer, mode }: { viewer: PlayerId; mode: Mode }) {
   }
 
   return (
-    <div className="app">
+    <div
+      className="app"
+      // One variable drives every card, badge and pip on the table.
+      style={{ '--card-scale': String(cardScale) } as React.CSSProperties}
+    >
       <TopBar viewer={viewer} mode={mode} />
       <Board viewer={viewer} />
       <BottomBar viewer={viewer} />

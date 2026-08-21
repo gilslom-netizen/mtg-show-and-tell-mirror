@@ -52,8 +52,13 @@
   --shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6);
 
-  --card-w: 84px;
-  --card-h: 117px;
+  /* Cards were a fixed 84px, which is smaller than a postage stamp on a modern
+     display: the art was unreadable and the type line was decoration. They now
+     scale with the window and never drop below something you can actually read.
+     Height follows the real card ratio (63mm x 88mm) rather than a guess. */
+  --card-scale: 1;
+  --card-w: calc(clamp(96px, 6.6vw, 132px) * var(--card-scale));
+  --card-h: calc(var(--card-w) * 1.396);
   --anim: 180ms;
 
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -198,7 +203,16 @@ input[type='number'] {
 
 .field {
   display: grid;
-  grid-template-rows: 1fr auto 1fr;
+  /* Each half takes at least the height of what is on it and shares whatever is
+     left over. With a plain 1fr the halves were fixed and a board with two full
+     rows of the larger cards was cut off at the midline — the table scrolls as
+     one piece instead, and a permanent is never sliced in half. */
+  /* Each half takes the room its own board needs and no more, so an empty
+     opponent side is not holding back space your own permanents could use.
+     minmax(0, auto) is what lets a half shrink and scroll instead of pushing
+     the other one off the table. */
+  grid-template-rows: minmax(0, auto) auto minmax(0, auto);
+  align-content: stretch;
   min-height: 0;
   overflow: hidden;
   position: relative;
@@ -206,22 +220,48 @@ input[type='number'] {
 
 /* The half-table tint is the primary "whose is this" signal. */
 .half {
-  padding: 10px 14px;
-  overflow-y: auto;
+  /* The extra padding facing the midline is the gap between the two boards:
+     with the halves nearly touching, a permanent at the bottom of theirs and one
+     at the top of mine read as a single row. */
+  padding: 12px 18px;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
+  /* A board bigger than its half scrolls, and says so: a thin visible track is
+     the difference between "there is more below" and "the client cut my card
+     in half". */
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }
 .half.theirs {
+  padding-bottom: 22px;
   background: linear-gradient(180deg, var(--theirs-glow) -60%, transparent 55%);
 }
 .half.mine {
+  padding-top: 22px;
   background: linear-gradient(0deg, var(--mine-glow) -60%, transparent 55%);
 }
 
+/* The gutter between the two boards, not a hairline: it carries the turn
+   marker and it is the thing that makes the halves read as two territories. */
 .midline {
-  height: 2px;
+  height: 26px;
+  position: relative;
+  z-index: 5;
+  background: var(--bg-sunken);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  box-shadow:
+    inset 0 6px 12px -8px rgba(0, 0, 0, 0.7),
+    inset 0 -6px 12px -8px rgba(0, 0, 0, 0.7);
+}
+.midline::before {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto 0;
+  height: 1px;
   background: linear-gradient(
     90deg,
     transparent,
@@ -229,7 +269,6 @@ input[type='number'] {
     var(--border-strong) 88%,
     transparent
   );
-  position: relative;
 }
 .midline::after {
   content: attr(data-label);
@@ -237,13 +276,14 @@ input[type='number'] {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  background: var(--bg);
-  padding: 1px 12px;
+  background: var(--bg-sunken);
+  padding: 2px 14px;
+  border: 1px solid var(--border);
   border-radius: 999px;
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-dim);
   white-space: nowrap;
 }
 
@@ -257,8 +297,11 @@ input[type='number'] {
   min-height: var(--card-h);
 }
 .zone-row.lands {
-  --card-w: 74px;
-  --card-h: 103px;
+  /* Lands are scanned for colour and for tapped-or-not, never read. Keeping them
+     small is what leaves room for the row above to be big enough to read — a
+     half has to hold both rows without either being cut off. */
+  --card-w: calc(clamp(96px, 6.6vw, 132px) * var(--card-scale) * 0.66);
+  --card-h: calc(var(--card-w) * 1.396);
 }
 
 /* The opponent's hand is a count, not cards — it should not reserve card height. */
@@ -269,8 +312,8 @@ input[type='number'] {
   min-height: 0;
 }
 .hand-strip .card {
-  width: 34px;
-  height: 48px;
+  width: calc(var(--card-w) * 0.38);
+  height: calc(var(--card-w) * 0.53);
   border-width: 1px;
 }
 
@@ -367,8 +410,12 @@ input[type='number'] {
 .card-art {
   width: 100%;
   height: 100%;
+  /* contain, not cover: a Magic card is already the right shape, and cropping it
+     is what cut the type line and the cost off the top of every permanent. */
   object-fit: cover;
+  object-position: center top;
   display: block;
+  background: #0b0d12;
 }
 
 /* Text fallback — also what small cards use, because it stays readable. */
@@ -381,7 +428,7 @@ input[type='number'] {
   background: linear-gradient(160deg, var(--panel-2), var(--panel));
 }
 .card-text .name {
-  font-size: 10px;
+  font-size: calc(var(--card-w) * 0.105);
   font-weight: 650;
   line-height: 1.15;
   overflow: hidden;
@@ -390,7 +437,7 @@ input[type='number'] {
   -webkit-box-orient: vertical;
 }
 .card-text .type {
-  font-size: 8.5px;
+  font-size: calc(var(--card-w) * 0.082);
   color: var(--text-dim);
   overflow: hidden;
   white-space: nowrap;
@@ -398,7 +445,7 @@ input[type='number'] {
 }
 .card-text .body {
   flex: 1;
-  font-size: 8px;
+  font-size: calc(var(--card-w) * 0.079);
   line-height: 1.25;
   color: var(--text-dim);
   overflow: hidden;
@@ -414,10 +461,17 @@ input[type='number'] {
   border: 1px solid var(--border-strong);
   line-height: 1.4;
 }
-.card-badge.cost {
+.mana-cost.card-cost {
+  position: absolute;
   top: 3px;
   right: 3px;
+  padding: 2px 3px;
+  border-radius: 999px;
+  /* A dark backing so pale pips survive whatever art is behind them. */
+  background: rgba(8, 10, 15, 0.72);
+  --pip-size: calc(var(--card-w) * 0.135);
 }
+
 .card-badge.cost.is-free {
   background: var(--free);
   border-color: var(--free);
@@ -470,7 +524,10 @@ input[type='number'] {
    Hand
    ========================================================================== */
 
+/* The hand is the one zone you read rather than scan, so it runs a size up. */
 .hand {
+  --card-w: calc(clamp(96px, 6.6vw, 132px) * var(--card-scale) * 1.15);
+  --card-h: calc(var(--card-w) * 1.396);
   display: flex;
   justify-content: center;
   gap: 6px;
@@ -583,6 +640,19 @@ input[type='number'] {
    Player bars
    ========================================================================== */
 
+/* Life totals stay put while a crowded board scrolls under them: the number you
+   check most often should never be the thing that scrolled away. */
+.half.theirs .playerbar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+.half.mine .playerbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+}
+
 .playerbar {
   display: flex;
   align-items: center;
@@ -663,22 +733,119 @@ input[type='number'] {
     box-shadow: 0 0 0 4px rgba(232, 177, 61, 0.18);
   }
 }
+/* ==========================================================================
+   Mana symbols
+
+   Round, tinted, and readable at 11px — a cost is recognised by its shape long
+   before anyone reads the letters.
+   ========================================================================== */
+
+.mana-cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  vertical-align: -2px;
+}
+.mana-cost.is-small {
+  --pip-size: 13px;
+  gap: 1px;
+}
+.mana-cost.is-normal {
+  --pip-size: 17px;
+}
+.mana-cost.is-large {
+  --pip-size: 22px;
+}
+
 .pip {
+  position: relative;
   display: inline-grid;
   place-items: center;
-  width: 17px;
-  height: 17px;
+  /* Never write --pip-size here: a custom property that refers to itself is
+     cyclic, the whole declaration is dropped, and the pips collapse into
+     ellipses. The fallback belongs on the use, not on the definition. */
+  width: var(--pip-size, 17px);
+  height: var(--pip-size, 17px);
+  aspect-ratio: 1;
   border-radius: 50%;
-  font-size: 10px;
-  font-weight: 800;
+  background: var(--pip-bg, var(--mana-C));
   color: #10141c;
+  font-weight: 800;
+  font-size: calc(var(--pip-size, 17px) * 0.58);
+  line-height: 1;
+  flex: 0 0 auto;
+  overflow: hidden;
+  /* The inner shading is what makes a flat circle read as a printed symbol. */
+  box-shadow:
+    inset 0 -1px 2px rgba(0, 0, 0, 0.32),
+    inset 0 1px 1px rgba(255, 255, 255, 0.42),
+    0 1px 1px rgba(0, 0, 0, 0.35);
 }
-.pip.W { background: var(--mana-W); }
-.pip.U { background: var(--mana-U); }
-.pip.B { background: var(--mana-B); }
-.pip.R { background: var(--mana-R); }
-.pip.G { background: var(--mana-G); }
-.pip.C { background: var(--mana-C); }
+.pip-label {
+  display: block;
+  transform: translateY(-0.5px);
+}
+
+.pip.c-W { --pip-bg: var(--mana-W); }
+.pip.c-U { --pip-bg: var(--mana-U); }
+.pip.c-B { --pip-bg: var(--mana-B); }
+.pip.c-R { --pip-bg: var(--mana-R); }
+.pip.c-G { --pip-bg: var(--mana-G); }
+.pip.c-C { --pip-bg: var(--mana-C); }
+.pip.c-N { --pip-bg: var(--mana-C); }
+
+/* Generic costs are the quiet ones; they should not shout over coloured pips. */
+.pip.pip-generic {
+  --pip-bg: #cdd3dd;
+}
+
+/* Hybrid: split down the diagonal, with a symbol in each half. */
+.pip.pip-hybrid {
+  font-size: calc(var(--pip-size, 17px) * 0.42);
+}
+.pip-half {
+  position: absolute;
+  line-height: 1;
+}
+.pip-half.is-first {
+  top: 11%;
+  left: 14%;
+}
+.pip-half.is-second {
+  bottom: 11%;
+  right: 14%;
+}
+.pip.pip-hybrid.c-W.c2-U { background: linear-gradient(135deg, var(--mana-W) 50%, var(--mana-U) 50%); }
+.pip.pip-hybrid.c-W.c2-B { background: linear-gradient(135deg, var(--mana-W) 50%, var(--mana-B) 50%); }
+.pip.pip-hybrid.c-U.c2-B { background: linear-gradient(135deg, var(--mana-U) 50%, var(--mana-B) 50%); }
+.pip.pip-hybrid.c-U.c2-R { background: linear-gradient(135deg, var(--mana-U) 50%, var(--mana-R) 50%); }
+.pip.pip-hybrid.c-B.c2-R { background: linear-gradient(135deg, var(--mana-B) 50%, var(--mana-R) 50%); }
+.pip.pip-hybrid.c-B.c2-G { background: linear-gradient(135deg, var(--mana-B) 50%, var(--mana-G) 50%); }
+.pip.pip-hybrid.c-R.c2-G { background: linear-gradient(135deg, var(--mana-R) 50%, var(--mana-G) 50%); }
+.pip.pip-hybrid.c-R.c2-W { background: linear-gradient(135deg, var(--mana-R) 50%, var(--mana-W) 50%); }
+.pip.pip-hybrid.c-G.c2-W { background: linear-gradient(135deg, var(--mana-G) 50%, var(--mana-W) 50%); }
+.pip.pip-hybrid.c-G.c2-U { background: linear-gradient(135deg, var(--mana-G) 50%, var(--mana-U) 50%); }
+/* Generic/colour hybrids ({2/U}) keep the colour on the lower half. */
+.pip.pip-hybrid.c-W:not([class*='c2-']) { background: linear-gradient(135deg, #cdd3dd 50%, var(--mana-W) 50%); }
+.pip.pip-hybrid.c-U:not([class*='c2-']) { background: linear-gradient(135deg, #cdd3dd 50%, var(--mana-U) 50%); }
+.pip.pip-hybrid.c-B:not([class*='c2-']) { background: linear-gradient(135deg, #cdd3dd 50%, var(--mana-B) 50%); }
+.pip.pip-hybrid.c-R:not([class*='c2-']) { background: linear-gradient(135deg, #cdd3dd 50%, var(--mana-R) 50%); }
+.pip.pip-hybrid.c-G:not([class*='c2-']) { background: linear-gradient(135deg, #cdd3dd 50%, var(--mana-G) 50%); }
+
+/* Phyrexian: the colour, with the slash that means "or two life". */
+.pip.pip-phyrexian {
+  position: relative;
+}
+.pip.pip-phyrexian::after {
+  content: '';
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  border: 1px solid rgba(16, 20, 28, 0.55);
+  border-left-color: transparent;
+  border-right-color: transparent;
+  transform: rotate(35deg);
+}
 
 /* ==========================================================================
    Dialogs
@@ -866,7 +1033,7 @@ kbd {
      you are not reading the stack, and the board never gets covered. */
   right: 8px;
   top: 54px;
-  width: 244px;
+  width: clamp(260px, 22vw, 340px);
   max-height: calc(100vh - 150px);
   overflow: auto;
   z-index: 40;
@@ -883,12 +1050,16 @@ kbd {
 }
 .preview .preview-text {
   padding: 10px 12px;
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: 12.5px;
+  line-height: 1.5;
 }
 .preview .preview-text h4 {
   margin: 0 0 4px;
-  font-size: 13px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 .preview .preview-text .type {
   color: var(--text-dim);

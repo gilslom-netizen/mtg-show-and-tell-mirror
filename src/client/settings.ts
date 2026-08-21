@@ -52,6 +52,11 @@ export interface Settings {
   animationMs: number;
   /** Show card art from Scryfall, or fall back to rendered text cards. */
   showCardArt: boolean;
+  /**
+   * How large cards are drawn, as a multiplier on the responsive base size.
+   * Screens and eyesight differ far too much for one number to be right.
+   */
+  cardScale: number;
   /** Delay range used before an auto-pass, so timing does not leak information. */
   autoPassDelayMs: [number, number];
 }
@@ -77,6 +82,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoTapMana: true,
   animationMs: 180,
   showCardArt: true,
+  cardScale: 1,
   autoPassDelayMs: [150, 400],
 };
 

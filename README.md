@@ -37,7 +37,7 @@ cannot end up in two different rooms — which is exactly what used to happen wh
 both of them left the box empty.
 
 ```bash
-npm test             # 157 tests, including 150 fuzzed games
+npm test             # 183 tests, including 150 fuzzed games
 npm run typecheck
 npm run check:serverless   # runs the API the way Vercel runs it
 npm run build              # typecheck + that check + the app build
@@ -165,6 +165,11 @@ control as well as a shortcut:
   priority switched on automatically so a combo turn chains.
 - **Known top of library** — built only from reveals the player actually saw, wiped
   by any shuffle. This is what makes fetch-after-Brainstorm a real decision again.
+- **Cards you can actually read** — art comes from Scryfall at `large`, the hover
+  preview at `png`, and everything on the table scales from one setting (`+` and
+  `−`, or Settings → Card size) because screens and eyesight differ too much for
+  one number. Mana costs are drawn as real pips, hybrids split across the diagonal
+  included.
 - **Show and Tell dialog** — illegal picks are shown greyed out *with the reason*,
   the opponent's lock-in shows as a state and never as a card, and both picks flip
   over together.
@@ -221,6 +226,9 @@ with.
 | `match.test.ts` | Best-of-three bookkeeping |
 | `room-code.test.ts` | Room codes normalise identically on both sides, so a code read aloud joins the right room |
 | `data-sync.test.ts` | The generated card data still matches `data/*.json` |
+| `priority-windows.test.ts` | Acting in the opponent's turn — the fetch in every step — and each form of passing |
+| `opening.test.ts` | The simultaneous mulligan, including that neither player can read the other's decision early |
+| `art.test.ts` | Art resolution and every mana symbol in the deck |
 
 Two browser profiles joining one room over both transports is checked by hand
 against `npm run dev`, the built self-hosted server, and a static host with no

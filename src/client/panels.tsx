@@ -103,6 +103,24 @@ export function SettingsPanel() {
         </div>
         <div className="setting-row">
           <div>
+            Card size
+            <div className="desc">
+              Everything on the table scales with this. Also on the keyboard:
+              <kbd>+</kbd> and <kbd>−</kbd>.
+            </div>
+          </div>
+          <select
+            value={String(settings.cardScale)}
+            onChange={(e) => update({ cardScale: Number(e.target.value) })}
+          >
+            <option value="0.85">Compact</option>
+            <option value="1">Normal</option>
+            <option value="1.2">Large</option>
+            <option value="1.45">Extra large</option>
+          </select>
+        </div>
+        <div className="setting-row">
+          <div>
             Animation speed
             <div className="desc">0 turns animation off entirely.</div>
           </div>

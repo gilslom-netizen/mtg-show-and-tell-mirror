@@ -2,6 +2,7 @@ import { memo, useState } from 'react';
 import { faceOf, oracle } from '@engine/oracle';
 import type { CardView as CardData } from '@engine/redact';
 import type { OracleFace, PlayerId } from '@engine/types';
+import { ManaCost } from './mana';
 import { useStore } from './store';
 
 /**
@@ -32,6 +33,30 @@ export interface CardProps {
  * rectangles on the table and firing sixty doomed requests.
  */
 const failedArt = new Set<string>();
+
+/**
+ * Scryfall serves the same card at several resolutions under a predictable path,
+ * so the frozen snapshot only has to store one of them.
+ *
+ *   https://cards.scryfall.io/normal/front/8/a/<id>.jpg
+ *   https://cards.scryfall.io/large/front/8/a/<id>.jpg
+ *   https://cards.scryfall.io/png/front/8/a/<id>.png
+ *
+ * "normal" is 488px wide, which is a blurry mess on a modern display once a card
+ * is drawn at any useful size — the reason nothing on the table was readable.
+ * "large" is 672px and "png" is 745px with real transparency, which is what the
+ * hover preview deserves. Anything unrecognised is passed through untouched.
+ */
+export type ArtSize = 'normal' | 'large' | 'png';
+
+export function artUrl(uri: string, size: ArtSize): string {
+  const m = /^(https:\/\/cards\.scryfall\.io\/)(normal|large|png|small|art_crop|border_crop)(\/.+?)(\.jpg|\.png)(\?.*)?$/.exec(
+    uri,
+  );
+  if (!m) return uri;
+  const ext = size === 'png' ? '.png' : '.jpg';
+  return `${m[1]}${size}${m[3]}${ext}${m[5] ?? ''}`;
+}
 
 function noteArtFailure(uri: string): void {
   failedArt.add(uri);
@@ -81,30 +106,6 @@ export function faceOfCard(card: CardData): OracleFace {
     };
   }
   return faceOf(card.oracleId, card.face);
-}
-
-/** Renders a mana cost string as coloured pips. */
-export function ManaCost({ cost }: { cost: string | null }) {
-  if (!cost) return null;
-  const symbols = [...cost.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]);
-  return (
-    <>
-      {symbols.map((s, i) => {
-        const isNumber = /^\d+$/.test(s);
-        const colorClass = isNumber ? 'C' : (s.split('/').pop() ?? 'C');
-        return (
-          <span key={i} className={`pip ${colorClass}`} title={`{${s}}`}>
-            {isNumber ? s : s.replace('/', '')}
-          </span>
-        );
-      })}
-    </>
-  );
-}
-
-function costLabel(face: OracleFace): string {
-  if (!face.manaCost) return '';
-  return face.manaCost.replace(/[{}]/g, '');
 }
 
 export const CardFace = memo(function CardFace({
@@ -177,8 +178,11 @@ export const CardFace = memo(function CardFace({
       {showArt && face.imageUri && !card.isToken && !artBroken && !failedArt.has(face.imageUri) ? (
         <img
           className="card-art"
-          src={face.imageUri}
+          src={artUrl(face.imageUri, 'large')}
           alt={face.name}
+          loading="lazy"
+          decoding="async"
+          draggable={false}
           onError={() => {
             noteArtFailure(face.imageUri!);
             setArtBroken(true);
@@ -197,7 +201,13 @@ export const CardFace = memo(function CardFace({
       {free ? (
         <span className="card-badge cost is-free">FREE</span>
       ) : (
-        face.manaCost && <span className="card-badge cost">{costLabel(face)}</span>
+        face.manaCost && (
+          <ManaCost
+            cost={face.manaCost}
+            size={size === 'small' ? 'small' : 'normal'}
+            className="card-cost"
+          />
+        )
       )}
 
       {face.power !== null && (
@@ -227,14 +237,19 @@ export function CardPreview({ viewer }: { viewer: PlayerId }) {
   return (
     <div className="preview">
       {showArt && face.imageUri && !failedArt.has(face.imageUri) && (
-        <img src={face.imageUri} alt={face.name} onError={() => noteArtFailure(face.imageUri!)} />
+        <img
+          src={artUrl(face.imageUri, 'png')}
+          alt={face.name}
+          decoding="async"
+          onError={() => noteArtFailure(face.imageUri!)}
+        />
       )}
       <div className="preview-text">
-        <h4>{face.name}</h4>
-        <div className="type">
-          {face.typeLine}
-          {face.manaCost ? ` · ${face.manaCost}` : ''}
-        </div>
+        <h4>
+          <span>{face.name}</span>
+          <ManaCost cost={face.manaCost} />
+        </h4>
+        <div className="type">{face.typeLine}</div>
         <div className="oracle">{face.oracleText}</div>
         {full?.layout === 'modal_dfc' && (
           <div className="oracle" style={{ marginTop: 8, opacity: 0.75 }}>
