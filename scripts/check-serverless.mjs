@@ -75,7 +75,23 @@ try {
     const { shim, out } = res();
     try {
       await handler(
-        route === 'health' ? {} : { method: 'POST', body: { room: 'CHECK', name: 'probe' } },
+        route === 'health'
+          ? {}
+          : // A fresh code every run: this script's own build-time env vars point
+            // at the real Redis when one is configured, so a fixed room code
+            // persisted between builds and the second run ever after failed with
+            // "That room already has two players" — a false alarm about the API
+            // that was actually a stale room left over from the first check.
+            // Room codes are truncated to 12 chars server-side, so base36 keeps
+            // the whole thing inside that budget instead of losing entropy to
+            // a slice cut mid-timestamp.
+            {
+              method: 'POST',
+              body: {
+                room: `C${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
+                name: 'probe',
+              },
+            },
         shim,
       );
     } catch (e) {
