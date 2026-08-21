@@ -176,20 +176,25 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
           count, and what you are about to put onto the battlefield.
         </p>
 
-        <div className="mode-grid">
-          <button className="mode-option" onClick={() => startLocal('lab')}>
-            <b>Lab</b>
-            <span>
-              Play both seats yourself. Best for learning lines and testing interactions.
-            </span>
-          </button>
-          <button className="mode-option" onClick={() => startLocal('goldfish')}>
-            <b>Goldfish</b>
-            <span>
-              You play, the other seat does nothing. For drilling the combo turn.
-            </span>
-          </button>
-        </div>
+        <details>
+          <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text-dim)' }}>
+            Experiments — solo modes for learning and testing
+          </summary>
+          <div className="mode-grid" style={{ marginTop: 10 }}>
+            <button className="mode-option" onClick={() => startLocal('lab')}>
+              <b>Lab</b>
+              <span>
+                Play both seats yourself. Best for learning lines and testing interactions.
+              </span>
+            </button>
+            <button className="mode-option" onClick={() => startLocal('goldfish')}>
+              <b>Goldfish</b>
+              <span>
+                You play, the other seat does nothing. For drilling the combo turn.
+              </span>
+            </button>
+          </div>
+        </details>
 
         <details>
           <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text-dim)' }}>
