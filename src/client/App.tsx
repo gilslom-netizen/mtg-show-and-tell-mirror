@@ -8,7 +8,7 @@ import { probeCardArt } from './CardView';
 import { LocalConnection, RemoteConnection, type Connection } from './connection';
 import { useAutoPass, useHotkeys, useOmniscienceHold, useTriggerPolicy } from './hooks';
 import { SettingsPanel, HelpPanel } from './panels';
-import { useStore } from './store';
+import { canAct, useStore } from './store';
 import { PhaseTrack } from './ui';
 
 /**
@@ -272,7 +272,7 @@ function BottomBar({ viewer }: { viewer: PlayerId }) {
 
   const pool = view.players[viewer].manaPool;
   const floating = MANA_KINDS.reduce((n, k) => n + pool[k], 0);
-  const myPriority = view.priorityPlayer === viewer && !view.choice;
+  const myPriority = canAct(view, viewer);
 
   const doPass = () => {
     if (floating > 0 && warnFloating) {
@@ -281,6 +281,13 @@ function BottomBar({ viewer }: { viewer: PlayerId }) {
     }
     send({ t: 'passPriority' }, viewer);
   };
+
+  // The warning is only meaningful while the mana is still there and the decision
+  // is still yours; otherwise it would sit on screen saying "you have 0 unspent
+  // mana" and block the board.
+  useEffect(() => {
+    if (confirmFloat && (floating === 0 || !myPriority)) setConfirmFloat(false);
+  }, [confirmFloat, floating, myPriority]);
 
   return (
     <div className="bottombar">
@@ -310,6 +317,13 @@ function BottomBar({ viewer }: { viewer: PlayerId }) {
         Hold priority <kbd>H</kbd>
       </label>
 
+      {/* Principle: it must always be obvious who is being waited on. */}
+      {view.winner === null &&
+        (myPriority ? (
+          <span className="chip on">➤ your move</span>
+        ) : (
+          <span className="chip">⏳ waiting for opponent</span>
+        ))}
       {forceStop && <span className="chip warn">Ctrl held — will stop</span>}
       {floating > 0 && (
         <span className="chip warn">
@@ -497,14 +511,19 @@ function useFollowActingSeat(enabled: boolean) {
     if (mine.winner !== null) return;
 
     // A secret choice you have already committed to no longer needs you.
+    //
+    // `canAct` is what makes this correct: while the OTHER seat answers a prompt,
+    // this seat is still named as the priority player but cannot do anything.
+    // Testing priority alone deadlocks the table — the view never moves to the seat
+    // that actually has the open prompt.
     const stillMine =
       mine.choice?.kind === 'simultaneousSecret'
         ? !mine.choice.iHaveLockedIn
-        : Boolean(mine.choice) || mine.priorityPlayer === viewSeat;
+        : Boolean(mine.choice) || canAct(mine, viewSeat);
     const needsThem =
       theirs.choice?.kind === 'simultaneousSecret'
         ? !theirs.choice.iHaveLockedIn
-        : Boolean(theirs.choice) || theirs.priorityPlayer === other;
+        : Boolean(theirs.choice) || canAct(theirs, other);
 
     if (!stillMine && needsThem) setViewSeat(other);
   }, [views, viewSeat, enabled, controls, setViewSeat, connection]);

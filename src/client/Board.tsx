@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { LegalAction } from '@engine/game';
 import type { PlayerView } from '@engine/redact';
 import { isType } from '@engine/state';
@@ -7,7 +7,7 @@ import type { IID, PlayerId } from '@engine/types';
 import { CardFace, CardPreview } from './CardView';
 import { ChoiceLayer } from './dialogs';
 import { KnownTopPanel, LogPanel, PhaseTrack, PlayerBar, StackPanel, cardTitle } from './ui';
-import { useStore } from './store';
+import { canAct, useStore } from './store';
 
 /**
  * The table.
@@ -229,6 +229,21 @@ function Hand({ view, viewer }: { view: PlayerView; viewer: PlayerId }) {
   const send = useStore((s) => s.send);
   const hold = useStore((s) => s.holdPriority);
   const [menu, setMenu] = useState<IID | null>(null);
+  const [modifier, setModifier] = useState(false);
+
+  // Shift is the "give me the other options" modifier. Under Omniscience almost
+  // every card has both a free cast and a paid cast, and raising a menu on every
+  // click would put a modal in front of every spell of the combo turn.
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => e.key === 'Shift' && setModifier(true);
+    const up = (e: KeyboardEvent) => e.key === 'Shift' && setModifier(false);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+    };
+  }, []);
 
   return (
     <div className={`hand${view.omniscienceActive ? ' omniscience' : ''}`}>
@@ -242,7 +257,9 @@ function Hand({ view, viewer }: { view: PlayerView; viewer: PlayerId }) {
 
         const act = () => {
           if (actions.length === 0) return;
-          if (actions.length === 1) {
+          // One obvious action, or a preferred one (free beats paying mana) — do it.
+          // Hold Shift to be offered the alternatives instead.
+          if (actions.length === 1 || (!modifier && free)) {
             const intent = actions[0].intent;
             send(intent.t === 'castSpell' ? { ...intent, holdPriority: hold } : intent, viewer);
             return;
@@ -270,6 +287,14 @@ function Hand({ view, viewer }: { view: PlayerView; viewer: PlayerId }) {
             >
               {i < 9 ? i + 1 : ''}
             </span>
+            {free && actions.length > 1 && modifier && (
+              <span
+                className="chip"
+                style={{ position: 'absolute', top: -18, left: 0, fontSize: 9 }}
+              >
+                shift: pay mana
+              </span>
+            )}
             {why && (
               <div
                 style={{
@@ -314,19 +339,27 @@ function Hand({ view, viewer }: { view: PlayerView; viewer: PlayerId }) {
 // Action lookup
 // ---------------------------------------------------------------------------
 
+/**
+ * Actions are only offered while this seat can actually act. Leaving cards looking
+ * clickable while the opponent answers a prompt just earns the player an error.
+ */
+function usable(view: PlayerView): LegalAction[] {
+  return canAct(view, view.viewer) ? view.legalActions : [];
+}
+
 function useCardActions(view: PlayerView, iid: IID): LegalAction[] {
   return useMemo(
     () =>
-      view.legalActions.filter((a) => {
+      usable(view).filter((a) => {
         if (a.intent.t === 'passPriority' || a.intent.t === 'concede') return false;
         return a.intent.iid === iid;
       }),
-    [view.legalActions, iid],
+    [view, iid],
   );
 }
 
 function handActions(view: PlayerView, iid: IID): LegalAction[] {
-  const all = view.legalActions.filter(
+  const all = usable(view).filter(
     (a) =>
       (a.intent.t === 'castSpell' || a.intent.t === 'playLand') && a.intent.iid === iid,
   );
@@ -341,7 +374,7 @@ function handActions(view: PlayerView, iid: IID): LegalAction[] {
 function whyNotPlayable(view: PlayerView, iid: IID): string | undefined {
   const c = view.cards[iid];
   if (!c) return undefined;
-  if (view.priorityPlayer !== view.viewer) return undefined;
+  if (!canAct(view, view.viewer)) return undefined;
   const face = frontFace(c.oracleId);
   const full = oracle(c.oracleId);
   const isLand = face.types.includes('Land') || (full.faces?.[1]?.types.includes('Land') ?? false);

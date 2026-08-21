@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { LegalAction } from '@engine/game';
 import type { PlayerView } from '@engine/redact';
 import type { IID, PlayerId } from '@engine/types';
-import { useStore, type AutoPassMode } from './store';
+import { canAct, useStore, type AutoPassMode } from './store';
 import type { Settings } from './settings';
 
 /**
@@ -94,8 +94,8 @@ export function useAutoPass(viewer: PlayerId) {
 
   useEffect(() => {
     if (!view || view.winner !== null) return;
-    if (view.choice) return;
-    if (view.priorityPlayer !== viewer) return;
+    // Also covers the window where the opponent is answering a prompt of their own.
+    if (!canAct(view, viewer)) return;
     if (!controls(viewer)) return;
     if (forceStop) return;
     if (shouldStop(view, settings, autoPass)) return;
@@ -239,7 +239,7 @@ export function useHotkeys(viewer: PlayerId) {
         case ' ':
         case 'F2':
           e.preventDefault();
-          if (view?.priorityPlayer === viewer && !view.choice) send({ t: 'passPriority' }, viewer);
+          if (view && canAct(view, viewer)) send({ t: 'passPriority' }, viewer);
           break;
         case 'F6':
           e.preventDefault();
@@ -271,7 +271,7 @@ export function useHotkeys(viewer: PlayerId) {
         default: {
           // 1-9 cast or play the nth card in hand.
           const n = Number(e.key);
-          if (!Number.isNaN(n) && n >= 1 && n <= 9 && view && !view.choice) {
+          if (!Number.isNaN(n) && n >= 1 && n <= 9 && view && canAct(view, viewer)) {
             const iid = view.hand[n - 1];
             if (iid === undefined) break;
             const action =

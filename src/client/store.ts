@@ -6,6 +6,41 @@ import type { Connection } from './connection';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from './settings';
 
 /**
+ * Whether this seat may act right now.
+ *
+ * `waitingOnOpponentChoice` is the one that is easy to miss: while the opponent is
+ * ordering triggers or picking a target, your own view has no choice of its own and
+ * may still name you as the priority player — but the engine will refuse anything
+ * you send.
+ */
+export function canAct(view: PlayerView, seat: PlayerId): boolean {
+  return (
+    view.winner === null &&
+    view.choice === null &&
+    !view.waitingOnOpponentChoice &&
+    view.priorityPlayer === seat
+  );
+}
+
+/** Loose comparison — the client omits optional flags the engine fills in. */
+function sameIntentShape(a: Intent, b: Intent): boolean {
+  if (a.t !== b.t) return false;
+  if (a.t === 'castSpell' && b.t === 'castSpell') {
+    return a.iid === b.iid && Boolean(a.free) === Boolean(b.free);
+  }
+  if (a.t === 'playLand' && b.t === 'playLand') {
+    return a.iid === b.iid && (a.face ?? 'front') === (b.face ?? 'front');
+  }
+  if (a.t === 'activateAbility' && b.t === 'activateAbility') {
+    return a.iid === b.iid && a.index === b.index;
+  }
+  if (a.t === 'tapForMana' && b.t === 'tapForMana') {
+    return a.iid === b.iid && a.kind === b.kind;
+  }
+  return true;
+}
+
+/**
  * All client state that is not derived from the PlayerView.
  *
  * The important idea: the store never reaches into the engine. It only ever sees a
@@ -153,6 +188,20 @@ export const useStore = create<StoreState>((set, get) => ({
     if (!conn) return;
     const s = seat ?? get().viewSeat;
     if (!conn.seats().includes(s)) return;
+
+    // Guard rails against a stale click. The engine rejects these anyway, but a
+    // rejection surfaces as an error toast, and an action the player could not
+    // have meant should never produce one.
+    const view = get().views[s];
+    if (view) {
+      if (view.winner !== null) return;
+      if (intent.t !== 'concede' && !canAct(view, s)) return;
+      if (intent.t !== 'passPriority' && intent.t !== 'concede') {
+        const legal = view.legalActions.some((a) => sameIntentShape(a.intent, intent));
+        if (!legal) return;
+      }
+    }
+
     // Any deliberate action cancels a running auto-pass run.
     if (intent.t !== 'passPriority') set({ autoPass: 'off' });
     conn.submitIntent(s, intent);
@@ -161,10 +210,13 @@ export const useStore = create<StoreState>((set, get) => ({
   respond(response, seat) {
     const conn = get().connection;
     if (!conn) return;
-    const view = get().views[seat ?? get().viewSeat];
-    const choice = view?.choice;
-    if (!choice) return;
     const s = seat ?? get().viewSeat;
+    const view = get().views[s];
+    const choice = view?.choice;
+    // The prompt may have been answered already — by the trigger policy, by the
+    // other seat in lab mode, or by a double click.
+    if (!choice) return;
+    if (choice.kind === 'simultaneousSecret' && choice.iHaveLockedIn) return;
 
     // Learn the top of the library from choices the player just made.
     const learned = knownTopFromChoice(choice, response);

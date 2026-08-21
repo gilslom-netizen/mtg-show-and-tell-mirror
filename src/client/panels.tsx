@@ -176,6 +176,7 @@ const SHORTCUTS: [string, string][] = [
   ['Hold Ctrl', 'Force a stop at the next priority'],
   ['H', 'Toggle hold priority'],
   ['1 – 9', 'Cast or play the nth card in hand'],
+  ['Shift + click', 'Show the other ways to play a card (e.g. pay mana under Omniscience)'],
   ['Hold Alt', 'Ignore the trigger policy for the next prompt'],
   ['Esc', 'Back out of the current action'],
   ['L', 'Toggle the log panel'],

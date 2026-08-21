@@ -30,27 +30,32 @@ export function ChoiceLayer({ view, viewer }: { view: PlayerView; viewer: Player
 
   const answer = (r: ChoiceResponse) => respond(r, viewer);
 
+  // Every dialog is keyed by the choice id. Without this React reuses the component
+  // across two consecutive prompts of the same kind and the previous selection
+  // survives — which sends a card that is not even an option for the new prompt.
+  const key = choice.id;
+
   switch (choice.kind) {
     case 'simultaneousSecret':
-      return <ShowAndTellDialog view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
+      return <ShowAndTellDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
     case 'chooseCards':
-      return <ChooseCardsDialog view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
+      return <ChooseCardsDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
     case 'chooseTargets':
-      return <ChooseTargetsDialog view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
+      return <ChooseTargetsDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
     case 'chooseMode':
-      return <ChooseModeDialog choice={choice} onAnswer={answer} />;
+      return <ChooseModeDialog key={key} choice={choice} onAnswer={answer} />;
     case 'yesNo':
-      return <YesNoDialog choice={choice} onAnswer={answer} />;
+      return <YesNoDialog key={key} choice={choice} onAnswer={answer} />;
     case 'mulligan':
-      return <MulliganDialog view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
+      return <MulliganDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
     case 'orderTriggers':
-      return <OrderTriggersDialog view={view} choice={choice} onAnswer={answer} />;
+      return <OrderTriggersDialog key={key} view={view} choice={choice} onAnswer={answer} />;
     case 'declareAttackers':
-      return <DeclareAttackersDialog view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
+      return <DeclareAttackersDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
     case 'declareBlockers':
-      return <DeclareBlockersDialog view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
+      return <DeclareBlockersDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
     case 'distributeDamage':
-      return <DistributeDamageDialog view={view} choice={choice} onAnswer={answer} />;
+      return <DistributeDamageDialog key={key} view={view} choice={choice} onAnswer={answer} />;
   }
 }
 
@@ -73,6 +78,10 @@ function ShowAndTellDialog({
 }) {
   const [picked, setPicked] = useState<IID | null>(null);
   const locked = choice.iHaveLockedIn;
+  const selectable = choice.myOptions.filter((o) => !o.disabledReason);
+
+  // Guard against a selection outliving its prompt even if the key above is lost.
+  useEffect(() => setPicked(null), [choice.id]);
 
   return (
     <div className="overlay">
@@ -106,6 +115,11 @@ function ShowAndTellDialog({
               {choice.myOptions.length === 0 && (
                 <div className="prompt">Your hand is empty.</div>
               )}
+              {choice.myOptions.length > 0 && selectable.length === 0 && (
+                <div className="prompt">
+                  Nothing in your hand can be put onto the battlefield this way.
+                </div>
+              )}
             </div>
             <div className="actions">
               <button onClick={() => onAnswer({ kind: 'secret', iid: null })}>
@@ -113,7 +127,7 @@ function ShowAndTellDialog({
               </button>
               <button
                 className="primary"
-                disabled={picked === null}
+                disabled={picked === null || !selectable.some((o) => o.iid === picked)}
                 onClick={() => onAnswer({ kind: 'secret', iid: picked })}
               >
                 Lock in {picked !== null ? cardTitle(view, picked) : ''}
