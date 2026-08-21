@@ -37,7 +37,7 @@ cannot end up in two different rooms — which is exactly what used to happen wh
 both of them left the box empty.
 
 ```bash
-npm test             # 154 tests, including 150 fuzzed games
+npm test             # 157 tests, including 150 fuzzed games
 npm run typecheck
 npm run check:serverless   # runs the API the way Vercel runs it
 npm run build              # typecheck + that check + the app build
@@ -84,7 +84,9 @@ to persist is the log:
 2. Redeploy.
 
 That is the whole setup. The function reads whichever of these the integration
-provides, so either naming works:
+provides, so either naming works — and if you give the integration a custom
+prefix, it finds the pair by shape rather than leaving the deployment silently
+on per-instance memory:
 
 | Variable | |
 |---|---|

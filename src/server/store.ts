@@ -59,6 +59,30 @@ interface RedisConfig {
 export function redisConfigFromEnv(env = process.env): RedisConfig | null {
   const url = env.KV_REST_API_URL ?? env.UPSTASH_REDIS_REST_URL;
   const token = env.KV_REST_API_TOKEN ?? env.UPSTASH_REDIS_REST_TOKEN;
+  if (url && token) return { url: url.replace(/\/$/, ''), token };
+
+  // Vercel's integration dialog offers a custom prefix for the variables it
+  // creates, so the names above are a default rather than a guarantee: pick
+  // "STORAGE" and they arrive as STORAGE_KV_REST_API_URL. Rather than have the
+  // whole thing silently fall back to per-instance memory over a text field
+  // nobody thinks twice about, find the pair by shape.
+  return redisConfigByShape(env);
+}
+
+function redisConfigByShape(env: NodeJS.ProcessEnv): RedisConfig | null {
+  const urlKey = Object.keys(env)
+    .filter((k) => /REST_API_URL$|REDIS_REST_URL$/.test(k))
+    .filter((k) => (env[k] ?? '').startsWith('http'))
+    .sort()[0];
+  if (!urlKey) return null;
+
+  // The token that belongs to this URL shares its prefix.
+  const prefix = urlKey.replace(/REST_API_URL$|REDIS_REST_URL$/, '');
+  const tokenKey = Object.keys(env)
+    .filter((k) => k.startsWith(prefix) && /TOKEN$/.test(k))
+    .sort()[0];
+  const url = env[urlKey];
+  const token = tokenKey ? env[tokenKey] : undefined;
   if (!url || !token) return null;
   return { url: url.replace(/\/$/, ''), token };
 }

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import handler from '../../../api/game.js';
 import health from '../../../api/health.js';
-import { setStore } from '../store.js';
+import { redisConfigFromEnv, setStore } from '../store.js';
 import type { PlayerId } from '../../engine/types.js';
 
 /**
@@ -210,5 +210,45 @@ describe('serverless online api', () => {
   it('rejects a request with no room code', async () => {
     const r = await post({ name: 'nobody' });
     expect(r.code).toBe(400);
+  });
+});
+
+describe('finding the Redis credentials', () => {
+  it('takes the standard Vercel and Upstash variable names', () => {
+    expect(
+      redisConfigFromEnv({
+        KV_REST_API_URL: 'https://example.upstash.io/',
+        KV_REST_API_TOKEN: 'tok',
+      } as NodeJS.ProcessEnv),
+    ).toEqual({ url: 'https://example.upstash.io', token: 'tok' });
+
+    expect(
+      redisConfigFromEnv({
+        UPSTASH_REDIS_REST_URL: 'https://example.upstash.io',
+        UPSTASH_REDIS_REST_TOKEN: 'tok',
+      } as NodeJS.ProcessEnv),
+    ).toEqual({ url: 'https://example.upstash.io', token: 'tok' });
+  });
+
+  it('still finds them behind a custom prefix', () => {
+    // Vercel's integration dialog offers a prefix field; choosing one renames
+    // every variable, and used to leave the deployment silently on memory.
+    expect(
+      redisConfigFromEnv({
+        STORAGE_KV_REST_API_URL: 'https://example.upstash.io',
+        STORAGE_KV_REST_API_TOKEN: 'tok',
+        SOME_OTHER_TOKEN: 'unrelated',
+      } as NodeJS.ProcessEnv),
+    ).toEqual({ url: 'https://example.upstash.io', token: 'tok' });
+  });
+
+  it('does not invent a store out of an unrelated variable', () => {
+    expect(redisConfigFromEnv({} as NodeJS.ProcessEnv)).toBeNull();
+    expect(
+      redisConfigFromEnv({ KV_REST_API_URL: 'https://x.upstash.io' } as NodeJS.ProcessEnv),
+    ).toBeNull();
+    expect(
+      redisConfigFromEnv({ GITHUB_TOKEN: 'x', PATH: '/usr/bin' } as NodeJS.ProcessEnv),
+    ).toBeNull();
   });
 });
