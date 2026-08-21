@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { Game, type Intent } from '../engine/game';
 import { MAINDECK } from '../engine/deck';
+import { MatchTracker } from '../engine/match';
 import { redact, redactEvents } from '../engine/redact';
 import type { ChoiceResponse, PlayerId } from '../engine/types';
 
@@ -27,6 +28,7 @@ type ClientMsg =
   | { t: 'intent'; intent: Intent }
   | { t: 'choice'; choiceId: string; response: ChoiceResponse }
   | { t: 'cancel' }
+  | { t: 'chooseFirst'; onPlay: PlayerId }
   | { t: 'rematch' };
 
 type LoggedAction =
@@ -46,6 +48,8 @@ interface Room {
   game: Game;
   seats: Partial<Record<PlayerId, Seat>>;
   log: LoggedAction[];
+  /** Best-of-three bookkeeping across games in this room. */
+  match: MatchTracker;
 }
 
 const rooms = new Map<string, Room>();
@@ -121,7 +125,17 @@ function restore(code: string): Room | null {
     for (const [s, v] of Object.entries(saved.tokens)) {
       seats[s as PlayerId] = { token: v.token, name: v.name, socket: null };
     }
-    return { code, seed: saved.seed, startingPlayer: saved.startingPlayer, game, seats, log: saved.log };
+    const match = new MatchTracker(saved.startingPlayer);
+    match.noteResult(game);
+    return {
+      code,
+      seed: saved.seed,
+      startingPlayer: saved.startingPlayer,
+      game,
+      seats,
+      log: saved.log,
+      match,
+    };
   } catch {
     return null;
   }
@@ -144,6 +158,7 @@ function getOrCreateRoom(code: string): Room {
     game: newGame(seed, startingPlayer),
     seats: {},
     log: [],
+    match: new MatchTracker(startingPlayer),
   };
   rooms.set(code, room);
   return room;
@@ -169,10 +184,12 @@ function broadcastLobby(room: Room): void {
 
 /** Sends each seat its own view and its own filtered event stream. */
 function broadcastState(room: Room): void {
+  room.match.noteResult(room.game);
   const events = room.game.flushEvents();
   for (const seat of ['p1', 'p2'] as PlayerId[]) {
     const s = room.seats[seat];
     if (!s?.socket) continue;
+    send(s.socket, { t: 'match', match: room.match.state });
     send(s.socket, {
       t: 'view',
       view: redact(room.game.state, seat),
@@ -184,6 +201,7 @@ function broadcastState(room: Room): void {
 function sendStateTo(room: Room, seat: PlayerId): void {
   const s = room.seats[seat];
   if (!s?.socket) return;
+  send(s.socket, { t: 'match', match: room.match.state });
   send(s.socket, { t: 'view', view: redact(room.game.state, seat), events: [] });
 }
 
@@ -272,12 +290,25 @@ wss.on('connection', (socket) => {
             }
           }
           break;
+        case 'chooseFirst': {
+          // Only the loser of the previous game gets to make this call.
+          const chosen = room.match.chooseFirst(seat, msg.onPlay);
+          if (chosen === null) return fail('It is not your choice to make');
+          const seed = Math.floor(Math.random() * 2 ** 31);
+          room.seed = seed;
+          room.startingPlayer = chosen;
+          room.game = newGame(seed, chosen);
+          // A new game means a new log; the previous one is already scored.
+          room.log = [];
+          break;
+        }
         case 'rematch': {
           const seed = Math.floor(Math.random() * 2 ** 31);
           room.seed = seed;
           room.startingPlayer = room.startingPlayer === 'p1' ? 'p2' : 'p1';
           room.game = newGame(seed, room.startingPlayer);
           room.log = [];
+          room.match = new MatchTracker(room.startingPlayer);
           break;
         }
       }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { MANA_KINDS } from '@engine/mana';
+import { summarise, type MatchState } from '@engine/match';
 import { SCENARIOS, type ScenarioSpec } from '@engine/scenario';
 import type { PlayerId } from '@engine/types';
 import { Board } from './Board';
@@ -356,20 +357,110 @@ function BottomBar({ viewer }: { viewer: PlayerId }) {
   );
 }
 
+/**
+ * End of a game inside a best-of-three.
+ *
+ * The loser chooses play or draw for the next game — which in a combo mirror is
+ * not a formality, so it is a real prompt rather than an assumed "on the play".
+ */
 function GameOver({ viewer }: { viewer: PlayerId }) {
   const view = useStore((s) => s.views[viewer])!;
   const detach = useStore((s) => s.detach);
+  const connection = useStore((s) => s.connection);
+  const match: MatchState | null = connection?.match() ?? null;
   const won = view.winner === viewer;
+  const opponent: PlayerId = viewer === 'p1' ? 'p2' : 'p1';
+
+  const chooseFirst = (onPlay: PlayerId) => connection?.chooseFirst(viewer, onPlay);
+
+  if (!match) {
+    return (
+      <div className="overlay">
+        <div className="dialog gameover" style={{ minWidth: 380 }}>
+          <div className={`headline ${won ? 'win' : 'lose'}`}>{won ? 'You win' : 'You lose'}</div>
+          <div className="prompt">{view.endReason}</div>
+          <div className="actions" style={{ justifyContent: 'center' }}>
+            <button className="primary" onClick={() => detach()}>
+              Back to the lobby
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const stats = summarise(match.history);
+  const myChoice = match.awaitingFirstChoiceFrom === viewer;
+  const matchOver = match.matchWinner !== null;
+
   return (
     <div className="overlay">
-      <div className="dialog gameover" style={{ minWidth: 380 }}>
-        <div className={`headline ${won ? 'win' : 'lose'}`}>{won ? 'You win' : 'You lose'}</div>
-        <div className="prompt">{view.endReason}</div>
-        <div className="actions" style={{ justifyContent: 'center' }}>
-          <button className="primary" onClick={() => detach()}>
-            Back to the lobby
-          </button>
+      <div className="dialog gameover" style={{ minWidth: 460 }}>
+        <div className={`headline ${won ? 'win' : 'lose'}`}>
+          {matchOver
+            ? match.matchWinner === viewer
+              ? 'You win the match'
+              : 'You lose the match'
+            : won
+              ? `Game ${match.history.length} to you`
+              : `Game ${match.history.length} to them`}
         </div>
+        <div className="prompt">{view.endReason}</div>
+
+        <div className="row" style={{ justifyContent: 'center', fontSize: 20, fontWeight: 800 }}>
+          <span style={{ color: 'var(--mine)' }}>{match.wins[viewer]}</span>
+          <span style={{ color: 'var(--text-faint)' }}>—</span>
+          <span style={{ color: 'var(--theirs)' }}>{match.wins[opponent]}</span>
+          <span className="chip">best of {match.bestOf}</span>
+        </div>
+
+        {stats.games > 0 && (
+          <div style={{ textAlign: 'left' }}>
+            <div className="setting-row">
+              <span>Games won by the player on the play</span>
+              <span>
+                {stats.onPlayWins} / {stats.games}
+              </span>
+            </div>
+            <div className="setting-row">
+              <span>Average game length</span>
+              <span>{stats.averageTurns} turns</span>
+            </div>
+            {Object.entries(stats.byReason).map(([reason, n]) => (
+              <div className="setting-row" key={reason}>
+                <span style={{ color: 'var(--text-dim)' }}>{reason}</span>
+                <span>{n}</span>
+              </div>
+            ))}
+            {stats.repeatWarning && (
+              <div className="prompt" style={{ color: 'var(--warn)', marginTop: 8 }}>
+                {stats.repeatWarning}
+              </div>
+            )}
+          </div>
+        )}
+
+        {matchOver ? (
+          <div className="actions" style={{ justifyContent: 'center' }}>
+            <button className="primary" onClick={() => detach()}>
+              Back to the lobby
+            </button>
+          </div>
+        ) : myChoice ? (
+          <>
+            <div className="prompt">You lost that one, so you choose for game {match.gameNumber + 1}.</div>
+            <div className="actions" style={{ justifyContent: 'center' }}>
+              <button onClick={() => chooseFirst(opponent)}>Draw first</button>
+              <button className="primary" onClick={() => chooseFirst(viewer)}>
+                Play first
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="prompt">
+            Waiting for them to choose play or draw for game {match.gameNumber + 1}…
+          </div>
+        )}
       </div>
     </div>
   );
@@ -387,6 +478,7 @@ function useFollowActingSeat(enabled: boolean) {
   const viewSeat = useStore((s) => s.viewSeat);
   const setViewSeat = useStore((s) => s.setViewSeat);
   const controls = useStore((s) => s.controls);
+  const connection = useStore((s) => s.connection);
 
   useEffect(() => {
     if (!enabled) return;
@@ -394,7 +486,15 @@ function useFollowActingSeat(enabled: boolean) {
     if (!controls(other)) return;
     const mine = views[viewSeat];
     const theirs = views[other];
-    if (!mine || !theirs || mine.winner !== null) return;
+    if (!mine || !theirs) return;
+
+    // Between games the loser picks play or draw — follow them too.
+    const awaiting = connection?.match()?.awaitingFirstChoiceFrom ?? null;
+    if (awaiting && awaiting !== viewSeat) {
+      setViewSeat(awaiting);
+      return;
+    }
+    if (mine.winner !== null) return;
 
     // A secret choice you have already committed to no longer needs you.
     const stillMine =
@@ -407,7 +507,7 @@ function useFollowActingSeat(enabled: boolean) {
         : Boolean(theirs.choice) || theirs.priorityPlayer === other;
 
     if (!stillMine && needsThem) setViewSeat(other);
-  }, [views, viewSeat, enabled, controls, setViewSeat]);
+  }, [views, viewSeat, enabled, controls, setViewSeat, connection]);
 }
 
 /**

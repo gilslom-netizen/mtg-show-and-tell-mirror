@@ -1,6 +1,7 @@
 import { Game, type Intent } from '@engine/game';
 import { MAINDECK } from '@engine/deck';
 import { redact, type PlayerView } from '@engine/redact';
+import { MatchTracker, type MatchState } from '@engine/match';
 import { stageScenario, type ScenarioSpec } from '@engine/scenario';
 import type { ChoiceResponse, GameEvent, PlayerId } from '@engine/types';
 
@@ -22,6 +23,10 @@ export interface Connection {
   submitIntent(seat: PlayerId, intent: Intent): void;
   submitChoice(seat: PlayerId, choiceId: string, response: ChoiceResponse): void;
   cancel(seat: PlayerId): boolean;
+  /** Best-of-three state, or null when this connection is not running a match. */
+  match(): MatchState | null;
+  /** The loser of the previous game picks who is on the play. */
+  chooseFirst(seat: PlayerId, onPlay: PlayerId): void;
   subscribe(cb: () => void): () => void;
   /** Human readable problem with the last action, if any. */
   lastError(): string | null;
@@ -60,6 +65,8 @@ abstract class BaseConnection implements Connection {
   abstract submitIntent(seat: PlayerId, intent: Intent): void;
   abstract submitChoice(seat: PlayerId, choiceId: string, response: ChoiceResponse): void;
   abstract cancel(seat: PlayerId): boolean;
+  abstract match(): MatchState | null;
+  abstract chooseFirst(seat: PlayerId, onPlay: PlayerId): void;
   dispose(): void {
     this.listeners.clear();
   }
@@ -81,10 +88,13 @@ export class LocalConnection extends BaseConnection {
   game: Game;
   private events: GameEvent[] = [];
   private mySeats: PlayerId[];
+  private tracker: MatchTracker | null;
 
   constructor(private opts: LocalOptions) {
     super();
     this.mySeats = opts.seats;
+    // A drill is a single position, not a series.
+    this.tracker = opts.scenario ? null : new MatchTracker(opts.startingPlayer);
     this.game = Game.create({
       gameId: `local-${opts.seed}`,
       seed: opts.seed,
@@ -106,6 +116,29 @@ export class LocalConnection extends BaseConnection {
 
   private collect(): void {
     this.events.push(...this.game.flushEvents());
+    this.tracker?.noteResult(this.game);
+  }
+
+  match(): MatchState | null {
+    return this.tracker?.state ?? null;
+  }
+
+  chooseFirst(seat: PlayerId, onPlay: PlayerId): void {
+    if (!this.tracker) return;
+    const chosen = this.tracker.chooseFirst(seat, onPlay);
+    if (chosen === null) return;
+    // A new game in the same series: fresh shuffle, same decks.
+    this.opts = { ...this.opts, seed: this.opts.seed + this.tracker.state.gameNumber * 7919 };
+    this.game = Game.create({
+      gameId: `local-${this.opts.seed}-g${this.tracker.state.gameNumber}`,
+      seed: this.opts.seed,
+      deck: MAINDECK,
+      startingPlayer: chosen,
+    });
+    this.game.advance();
+    this.events = [];
+    this.collect();
+    this.notify();
   }
 
   seats(): PlayerId[] {
@@ -173,6 +206,7 @@ export interface RemoteOptions {
 type ServerMsg =
   | { t: 'seat'; seat: PlayerId; room: string; token: string }
   | { t: 'view'; view: PlayerView; events: GameEvent[] }
+  | { t: 'match'; match: MatchState }
   | { t: 'error'; message: string }
   | { t: 'lobby'; players: { seat: PlayerId; name: string }[]; ready: boolean };
 
@@ -184,6 +218,7 @@ export class RemoteConnection extends BaseConnection {
   private events: GameEvent[] = [];
   private reconnectTimer: number | null = null;
   private closed = false;
+  private matchState: MatchState | null = null;
   lobby: { players: { seat: PlayerId; name: string }[]; ready: boolean } = {
     players: [],
     ready: false,
@@ -223,6 +258,9 @@ export class RemoteConnection extends BaseConnection {
         case 'view':
           this.currentView = msg.view;
           this.events.push(...msg.events);
+          break;
+        case 'match':
+          this.matchState = msg.match;
           break;
         case 'lobby':
           this.lobby = { players: msg.players, ready: msg.ready };
@@ -299,6 +337,14 @@ export class RemoteConnection extends BaseConnection {
 
   rematch(): void {
     this.send({ t: 'rematch' });
+  }
+
+  match(): MatchState | null {
+    return this.matchState;
+  }
+
+  chooseFirst(_seat: PlayerId, onPlay: PlayerId): void {
+    this.send({ t: 'chooseFirst', onPlay });
   }
 
   submitChoice(_seat: PlayerId, choiceId: string, response: ChoiceResponse): void {
