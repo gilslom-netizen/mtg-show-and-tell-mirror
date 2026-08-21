@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Intent } from '@engine/game';
 import type { PlayerView } from '@engine/redact';
 import type { ChoiceResponse, GameEvent, IID, PlayerId } from '@engine/types';
-import type { Connection, ConnectionInfo } from './connection';
+import type { Connection, ConnectionInfo, OnlineCapability } from './connection';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from './settings';
 
 /**
@@ -59,6 +59,8 @@ interface StoreState {
   connection: Connection | null;
   /** Room code, transport status and who is seated — null when not connected. */
   connInfo: ConnectionInfo | null;
+  /** What the host can actually host, from the /api/health probe. */
+  online: OnlineCapability | null;
   /** Whose side of the table we are looking at. */
   viewSeat: PlayerId;
   views: Record<PlayerId, PlayerView | null>;
@@ -103,6 +105,7 @@ interface StoreState {
   clearReveal(): void;
   toggle(panel: 'logOpen' | 'settingsOpen' | 'helpOpen'): void;
   setArtAvailable(v: boolean): void;
+  setOnlineCapability(v: OnlineCapability): void;
   dismissError(): void;
   /** The view for the seat currently being displayed. */
   currentView(): PlayerView | null;
@@ -117,6 +120,7 @@ function emptyKnownTop(): Record<PlayerId, KnownTopEntry[]> {
 export const useStore = create<StoreState>((set, get) => ({
   connection: null,
   connInfo: null,
+  online: null,
   viewSeat: 'p1',
   views: { p1: null, p2: null },
   settings: typeof localStorage === 'undefined' ? DEFAULT_SETTINGS : loadSettings(),
@@ -269,6 +273,10 @@ export const useStore = create<StoreState>((set, get) => ({
   toggle(panel) {
     set((s) => ({ [panel]: !s[panel] }) as Partial<StoreState>);
   },
+  setOnlineCapability(v) {
+    set({ online: v });
+  },
+
   setArtAvailable(v) {
     set({ artAvailable: v });
   },

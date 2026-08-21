@@ -76,8 +76,36 @@ function CopyButton({ value, label }: { value: string; label: string }) {
   );
 }
 
+/**
+ * Shown wherever a player might otherwise wait forever for an opponent who is
+ * technically in the same room, on a different instance of it.
+ */
+function NoStoreWarning() {
+  return (
+    <p
+      data-testid="no-store-warning"
+      style={{
+        border: '1px solid var(--warn, #c9a227)',
+        color: 'var(--warn, #c9a227)',
+        borderRadius: 6,
+        padding: '8px 10px',
+        fontSize: 12,
+        margin: '10px 0 0',
+      }}
+    >
+      This host has no shared store, so each request can land on a different
+      instance — the two of you may end up in separate copies of the same room, and
+      a game can be lost between moves. Playing is usually fine for one sitting. To
+      make it reliable, add a <b>KV / Upstash Redis</b> integration to the Vercel
+      project and redeploy; or run <code>npm run selfhost</code> and use that
+      address instead.
+    </p>
+  );
+}
+
 function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
   const attach = useStore((s) => s.attach);
+  const setOnlineCapability = useStore((s) => s.setOnlineCapability);
   // Pre-filled from the invite link if there is one, otherwise a fresh code.
   const [room, setRoom] = useState(() => roomFromUrl() ?? randomRoomCode());
   const [online, setOnline] = useState<OnlineCapability | null>(null);
@@ -90,12 +118,14 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
   useEffect(() => {
     let cancelled = false;
     probeOnline().then((c) => {
-      if (!cancelled) setOnline(c);
+      if (cancelled) return;
+      setOnline(c);
+      setOnlineCapability(c);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setOnlineCapability]);
 
   const startLocal = (mode: Mode, scenario?: ScenarioSpec) => {
     const seed = Math.floor(Math.random() * 2 ** 31);
@@ -130,13 +160,12 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
     attach(conn as Connection, 'p1');
   };
 
-  // Some hosts answer /api and still cannot hold a match: on serverless without a
-  // shared store the two players land on different instances, each makes its own
-  // room, and both wait forever. Better to refuse than to let that happen quietly.
-  const onlineBlocked =
-    online !== null && online.http && !online.usable
-      ? 'Online needs a shared store on this host. Add a Vercel KV / Upstash Redis integration to the project and redeploy — without it each request can land on a different instance, so the two players never meet in the same room.'
-      : null;
+  // Some hosts answer /api and still cannot hold a match reliably: on serverless
+  // without a shared store, two requests can land on different instances, each
+  // with its own rooms. In practice a single sitting often stays on one instance,
+  // so this is a loud warning rather than a locked door — being unable to press
+  // the button at all is its own dead end.
+  const unreliable = online !== null && online.http && !online.usable;
 
   return (
     <div className="lobby">
@@ -201,9 +230,9 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
             className="primary"
             data-testid="play-online"
             onClick={startOnline}
-            disabled={online === null || onlineBlocked !== null}
+            disabled={online === null}
           >
-            Play online
+            {unreliable ? 'Play online anyway' : 'Play online'}
           </button>
         </div>
         <p style={{ fontSize: 12 }} data-testid="online-status">
@@ -211,14 +240,15 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
             ? 'You opened an invite link — press Play online to take the second seat.'
             : 'Both players must use the same room code. Start here, then send the invite link from the next screen.'}
         </p>
+        {unreliable && <NoStoreWarning />}
         <p style={{ fontSize: 11 }}>
           {online === null
             ? 'Checking whether online play is available…'
-            : onlineBlocked
-              ? onlineBlocked
-              : online.http
-                ? 'Online is ready.'
-                : 'No match API here — falling back to the socket server on /ws. If nobody joins, run npm run selfhost and open the port it prints.'}
+            : online.http
+              ? unreliable
+                ? ''
+                : 'Online is ready.'
+              : 'No match API here — falling back to the socket server on /ws. If nobody joins, run npm run selfhost and open the port it prints.'}
           {' '}Card images come from Scryfall; this is an unofficial fan project.
         </p>
       </div>
@@ -280,10 +310,18 @@ function Game({ viewer, mode }: { viewer: PlayerId; mode: Mode }) {
  */
 function WaitingRoom() {
   const info = useStore((s) => s.connInfo);
+  const online = useStore((s) => s.online);
   const error = useStore((s) => s.error);
   const detach = useStore((s) => s.detach);
   const code = info?.room ?? '';
   const seated = info?.players.length ?? 0;
+  const [waitedLong, setWaitedLong] = useState(false);
+
+  // Silence past this point is worth a nudge rather than more of the same screen.
+  useEffect(() => {
+    const t = setTimeout(() => setWaitedLong(true), 25000);
+    return () => clearTimeout(t);
+  }, []);
 
   const status =
     info?.status === 'connecting'
@@ -333,6 +371,15 @@ function WaitingRoom() {
         <p data-testid="waiting-status" style={{ color: status.tone, fontSize: 13 }}>
           {status.text}
         </p>
+
+        {online?.http && !online.usable && <NoStoreWarning />}
+
+        {waitedLong && seated < 2 && info?.status === 'open' && (
+          <p style={{ fontSize: 12, color: 'var(--text-dim)' }} data-testid="waiting-long">
+            Still nobody. Check that the other player typed this exact code — or send
+            them the invite link, which cannot be typed wrong.
+          </p>
+        )}
 
         {error && (
           <p

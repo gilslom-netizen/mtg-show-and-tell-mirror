@@ -91,10 +91,11 @@ provides, so either naming works:
 | `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Vercel KV |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash directly |
 
-Without them the API still answers, but each request can land on a different
-instance — so two players would each create their own room and wait forever for
-an opponent who is somewhere else. The lobby refuses to start an online match in
-that state and says what to add, instead of letting you find out by waiting.
+Without them the API still answers and a single sitting usually works, because
+requests tend to stay on one warm instance — but nothing guarantees it, and a
+game can be lost between moves. The lobby says so in as many words, the button
+reads **Play online anyway**, and the warning stays on the waiting screen, so
+nobody discovers this by staring at "waiting for the other player".
 `GET /api/health` reports the store in use, whether the host is serverless, and
 whether online play is `usable` here at all.
 
