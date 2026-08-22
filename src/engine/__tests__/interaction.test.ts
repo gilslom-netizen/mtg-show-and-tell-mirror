@@ -188,7 +188,6 @@ describe('Orcish Bowmasters', () => {
 
     t.clearEvents();
     // Advance into p2's turn, which includes their draw step.
-    t.advanceToTurn(2);
     t.passUntilCondition(() => t.state.step === 'main' && t.state.activePlayer === 'p2');
 
     expect(t.countDraws('p2')).toBe(1);

@@ -122,10 +122,11 @@ describe('the opening hand', () => {
     expect(game.state.mode).toBe('playing');
     // p1 mulliganed once and put a card on the bottom, so they keep six. This
     // particular six has no land in it, so the engine's own auto-pass — which
-    // only fires when a player has nothing at all to do — runs turn one out and
-    // p2 has drawn for turn two by the time we look.
+    // only fires when a player has nothing at all to do — runs p1's turn out
+    // and p2 has drawn for their turn by the time we look. Both are still
+    // round 1: `turn` counts rounds, not player-turns.
     expect(game.state.zones.p1.hand).toHaveLength(6);
-    expect(game.state.turn).toBe(2);
+    expect(game.state.turn).toBe(1);
     expect(game.state.zones.p2.hand).toHaveLength(8);
   });
 });

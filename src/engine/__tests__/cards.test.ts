@@ -371,7 +371,9 @@ describe('The manabase', () => {
     t.resolveStack();
     expect(t.state.effects.some((e) => e.kind === 'cantBeCountered')).toBe(true);
 
-    t.advanceToTurn(2);
+    // Right past the end of p1's own turn — the effect says "until end of
+    // turn", not "until end of round".
+    t.passUntilCondition(() => t.state.activePlayer === 'p2');
     expect(t.state.effects.some((e) => e.kind === 'cantBeCountered')).toBe(false);
   });
 

@@ -187,3 +187,52 @@ describe('passing priority', () => {
     expect(t.state.pendingChoice ?? t.state.priorityPlayer).not.toBeNull();
   });
 });
+
+/**
+ * `turn` counts rounds, not player-turns.
+ *
+ * A round is one turn for each player. Counting a fresh number for every single
+ * player-turn (the older behaviour) made "Turn 6" mean p1's third turn to one
+ * player and nothing in particular to the other — the round is the unit both
+ * players actually share.
+ */
+describe('turn counts rounds, not player-turns', () => {
+  it('keeps the same number through both players’ turns in a round', () => {
+    for (const startingPlayer of ['p1', 'p2'] as const) {
+      const t = new TestGame(53, startingPlayer);
+      t.begin();
+      const other = startingPlayer === 'p1' ? 'p2' : 'p1';
+      expect(t.state.turn).toBe(1);
+
+      t.passUntilCondition(() => t.state.activePlayer === other);
+      // The second player's first turn is still round 1.
+      expect(t.state.turn).toBe(1);
+
+      t.passUntilCondition(() => t.state.activePlayer === startingPlayer);
+      // Only once play returns to whoever started does the round advance.
+      expect(t.state.turn).toBe(2);
+    }
+  });
+
+  it('still skips the draw for whoever starts, on round 1 only', () => {
+    // Whichever seat is on the play skips exactly one draw step: their own,
+    // in round 1. The round-based counter must not change who that is.
+    for (const startingPlayer of ['p1', 'p2'] as const) {
+      const t = new TestGame(59, startingPlayer);
+      const other = startingPlayer === 'p1' ? 'p2' : 'p1';
+      t.seat(other).manaBase(1); // gives the non-starting seat something to hold priority with, not required
+      t.begin('beginning', 'draw');
+      expect(t.seat(startingPlayer).handSize()).toBe(0);
+      t.passUntilCondition(() => t.state.step === 'main' && t.state.activePlayer === startingPlayer);
+      // No draw happened on the very first draw step of the game.
+      expect(t.seat(startingPlayer).handSize()).toBe(0);
+
+      t.passUntilCondition(() => t.state.activePlayer === other);
+      const beforeOtherDraw = t.seat(other).handSize();
+      t.passUntilCondition((): boolean => t.state.step === 'draw' && t.state.activePlayer === other);
+      t.passUntilCondition(() => t.state.step === 'main' && t.state.activePlayer === other);
+      // The other player's own first draw step is not skipped.
+      expect(t.seat(other).handSize()).toBe(beforeOtherDraw + 1);
+    }
+  });
+});

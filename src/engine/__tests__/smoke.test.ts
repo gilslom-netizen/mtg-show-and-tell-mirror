@@ -95,9 +95,14 @@ describe('engine basics', () => {
     t.p2.hand('Island');
     t.begin();
     const startTurn = t.state.turn;
+    // `turn` counts rounds: p2's turn is still round 1 (same number as p1's),
+    // and only ticks over once play returns to p1, who started the game.
+    t.passUntilCondition(() => t.state.activePlayer === 'p2');
+    expect(t.state.turn).toBe(startTurn);
+    expect(t.state.activePlayer).toBe('p2');
     t.advanceToTurn(startTurn + 1);
     expect(t.state.turn).toBe(startTurn + 1);
-    expect(t.state.activePlayer).toBe('p2');
+    expect(t.state.activePlayer).toBe('p1');
     t.assertCardConservation();
   });
 });

@@ -1155,8 +1155,15 @@ export class Game {
     const nextIndex = s.stepIndex + 1;
     if (nextIndex >= TURN_SEQUENCE.length) {
       s.stepIndex = 0;
-      s.turn++;
-      s.activePlayer = otherPlayer(s.activePlayer);
+      const nextActive = otherPlayer(s.activePlayer);
+      // `turn` counts rounds, not player-turns: it advances only when play
+      // returns to whoever started the game, so both players' turns in the
+      // same round carry the same number. A player's own turn count still
+      // increases by exactly 1 every time it comes back around to them —
+      // nothing that reads `turn` to mean "has a turn passed for me since
+      // I last checked" needs to change.
+      if (nextActive === s.startingPlayer) s.turn++;
+      s.activePlayer = nextActive;
     } else {
       s.stepIndex = nextIndex;
     }
