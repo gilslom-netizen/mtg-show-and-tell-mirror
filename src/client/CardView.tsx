@@ -138,7 +138,10 @@ export const CardFace = memo(function CardFace({
     size === 'small'
       ? ({ '--card-w': '66px', '--card-h': '92px' } as React.CSSProperties)
       : size === 'large'
-        ? ({ '--card-w': '150px', '--card-h': '209px' } as React.CSSProperties)
+        // Used for the opening hand and other single-card decisions — the
+        // size a player leans in to actually read, so it gets the size that
+        // measured as genuinely crisp rather than just less-blurry.
+        ? ({ '--card-w': '190px', '--card-h': '265px' } as React.CSSProperties)
         : undefined;
 
   const classes = [
