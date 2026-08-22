@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "sync:cards": "tsx scripts/sync-cards.ts",
     "gen:data": "node scripts/gen-data.mjs",
-    "check:serverless": "node scripts/check-serverless.mjs"
+    "check:serverless": "node scripts/check-serverless.mjs",
+    "set:art": "tsx scripts/set-art.ts"
   },
   "dependencies": {
     "react": "^18.3.1",

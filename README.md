@@ -6,6 +6,9 @@ and over in best-of-three matches.
 
 Card text is never typed by hand anywhere in this repo. Everything reads from a
 frozen Scryfall snapshot in [`data/oracle-cards.json`](data/oracle-cards.json).
+Art is pinned to specific real printings in [`data/printings.json`](data/printings.json) —
+`npm run set:art -- --write` re-applies them after a `sync:cards` refresh, which
+otherwise resets every card back to Scryfall's own "preferred" printing.
 
 [`DESIGN.md`](DESIGN.md) is the full design document — architecture, rules notes,
 the interaction matrix and the reasoning behind each decision.

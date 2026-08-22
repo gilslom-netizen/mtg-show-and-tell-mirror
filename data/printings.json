@@ -1,0 +1,30 @@
+{
+  "_comment": "One chosen real Magic printing per maindeck card, picked by the user for its art. sync-cards.ts pulls whatever printing Scryfall calls preferred; scripts/set-art.mjs pins these specific ones instead. Card text still comes only from Scryfall — this file names which print's art and frame to use, nothing else.",
+  "printings": {
+    "Assemble the Team": { "set": "ybro", "collector_number": "17" },
+    "Atraxa, Grand Unifier": { "set": "one", "collector_number": "316" },
+    "Borne Upon a Wind": { "set": "ltr", "collector_number": "44" },
+    "Brainstorm": { "set": "dsc", "collector_number": "113" },
+    "Breeding Pool": { "set": "rna", "collector_number": "246" },
+    "Demonic Tutor": { "set": "sta", "collector_number": "27" },
+    "Dig Through Time": { "set": "ktk", "collector_number": "36" },
+    "Flooded Strand": { "set": "mh3", "collector_number": "220" },
+    "Hallowed Fountain": { "set": "rna", "collector_number": "251" },
+    "Hedge Maze": { "set": "mkm", "collector_number": "262" },
+    "Hullbreaker Horror": { "set": "vow", "collector_number": "63" },
+    "Island": { "set": "j25", "collector_number": "86" },
+    "Mana Drain": { "set": "otp", "collector_number": "11" },
+    "Mistrise Village": { "set": "tdm", "collector_number": "261" },
+    "Mystic Sanctuary": { "set": "eld", "collector_number": "247" },
+    "Omniscience": { "set": "wot", "collector_number": "24" },
+    "Orcish Bowmasters": { "set": "ltr", "collector_number": "103" },
+    "Planar Genesis": { "set": "mh3", "collector_number": "198" },
+    "Polluted Delta": { "set": "mh3", "collector_number": "224" },
+    "Rakshasa's Bargain": { "set": "tdm", "collector_number": "214" },
+    "Show and Tell": { "set": "spg", "collector_number": "21" },
+    "Undercity Sewers": { "set": "mkm", "collector_number": "270" },
+    "Veil of Summer": { "set": "m20", "collector_number": "198" },
+    "Waterlogged Teachings // Inundated Archive": { "set": "mh3", "collector_number": "261" },
+    "Watery Grave": { "set": "grn", "collector_number": "259" }
+  }
+}

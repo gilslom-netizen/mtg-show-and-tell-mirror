@@ -104,7 +104,7 @@ export const ORACLE_DATA = {
       },
       "scryfall_uri": "https://scryfall.com/card/one/196/atraxa-grand-unifier?utm_source=api",
       "oracle_id": "abbcb153-0763-44c6-964f-b4ff0eb64257",
-      "image_uri": "https://cards.scryfall.io/normal/front/4/a/4a1f905f-1d55-4d02-9d24-e58070793d3f.jpg?1783918003"
+      "image_uri": "https://cards.scryfall.io/normal/front/e/5/e51e5d02-d3d0-45e5-a589-1fe25ff5082b.jpg?1783917956"
     },
     {
       "name": "Borne Upon a Wind",
@@ -190,7 +190,7 @@ export const ORACLE_DATA = {
       },
       "scryfall_uri": "https://scryfall.com/card/tle/155/brainstorm?utm_source=api",
       "oracle_id": "36cd2364-d113-47d1-b2c4-b088d9eb88dd",
-      "image_uri": "https://cards.scryfall.io/normal/front/b/5/b5545882-6963-4729-b2c6-fb4bdc75ffcc.jpg?1783904806"
+      "image_uri": "https://cards.scryfall.io/normal/front/8/b/8beb987c-1b67-4a4e-ae71-58547afad2a0.jpg?1783909627"
     },
     {
       "name": "Breeding Pool",
@@ -236,7 +236,7 @@ export const ORACLE_DATA = {
       },
       "scryfall_uri": "https://scryfall.com/card/trk/279/breeding-pool?utm_source=api",
       "oracle_id": "20283c4a-f1f0-42f0-bc08-6da87474426b",
-      "image_uri": "https://cards.scryfall.io/normal/front/6/3/63e4dc07-c742-41bd-8301-861637908fd1.jpg?1784036820"
+      "image_uri": "https://cards.scryfall.io/normal/front/b/b/bb54233c-0844-4965-9cde-e8a4ef3e11b8.jpg?1783933618"
     },
     {
       "name": "Demonic Tutor",
@@ -279,7 +279,7 @@ export const ORACLE_DATA = {
       },
       "scryfall_uri": "https://scryfall.com/card/cmm/150/demonic-tutor?utm_source=api",
       "oracle_id": "82004860-e589-4e38-8d61-8c0210e4ea39",
-      "image_uri": "https://cards.scryfall.io/normal/front/a/2/a24b4cb6-cebb-428b-8654-74347a6a8d63.jpg?1783915679"
+      "image_uri": "https://cards.scryfall.io/normal/front/3/0/3009ba46-c9f8-46dc-8ffc-2aa4cef7b17c.jpg?1783927435"
     },
     {
       "name": "Dig Through Time",
@@ -324,7 +324,7 @@ export const ORACLE_DATA = {
       },
       "scryfall_uri": "https://scryfall.com/card/soc/195/dig-through-time?utm_source=api",
       "oracle_id": "f8b17b89-26ce-4208-874a-9e1d66514640",
-      "image_uri": "https://cards.scryfall.io/normal/front/0/2/020939d6-72f0-4aa0-9ac2-d16cc896cd7f.jpg?1783903792"
+      "image_uri": "https://cards.scryfall.io/normal/front/5/c/5c18c2d8-995c-4736-bdef-464abcd1d31a.jpg?1783939089"
     },
     {
       "name": "Flooded Strand",
@@ -409,7 +409,7 @@ export const ORACLE_DATA = {
       },
       "scryfall_uri": "https://scryfall.com/card/trk/286/hallowed-fountain?utm_source=api",
       "oracle_id": "f1750962-a87c-49f6-b731-02ae971ac6ea",
-      "image_uri": "https://cards.scryfall.io/normal/front/b/7/b7285986-7e08-4969-86ef-452dc5bfdd9f.jpg?1784036830"
+      "image_uri": "https://cards.scryfall.io/normal/front/f/9/f97a6d34-03ab-49f1-b02e-405b733f8843.jpg?1783933617"
     },
     {
       "name": "Hedge Maze",
@@ -504,7 +504,7 @@ export const ORACLE_DATA = {
       },
       "scryfall_uri": "https://scryfall.com/card/inr/68/hullbreaker-horror?utm_source=api",
       "oracle_id": "d4a84e78-d9b9-4c67-8a4b-4329e65f0f15",
-      "image_uri": "https://cards.scryfall.io/normal/front/1/3/137acb70-a1fd-4ea9-a5d9-f4b438eb5e82.jpg?1783908162"
+      "image_uri": "https://cards.scryfall.io/normal/front/4/b/4b546bcf-2e86-42af-bf32-81c7fd36ef8c.jpg?1783924891"
     },
     {
       "name": "Island",
@@ -548,7 +548,7 @@ export const ORACLE_DATA = {
       },
       "scryfall_uri": "https://scryfall.com/card/trk/319/island?utm_source=api",
       "oracle_id": "b2c6aa39-2d2a-459c-a555-fb48ba993373",
-      "image_uri": "https://cards.scryfall.io/normal/front/f/3/f3cc07cd-cc79-4745-b0b7-eade60175cc3.jpg?1785981645"
+      "image_uri": "https://cards.scryfall.io/normal/front/0/e/0e443748-edf1-4499-9507-3649dd57ee95.jpg?1783908843"
     },
     {
       "name": "Mana Drain",
@@ -594,7 +594,7 @@ export const ORACLE_DATA = {
       },
       "scryfall_uri": "https://scryfall.com/card/2x2/57/mana-drain?utm_source=api",
       "oracle_id": "74d3277a-38e5-4732-afed-084a56148f20",
-      "image_uri": "https://cards.scryfall.io/normal/front/3/c/3c429c40-2389-41e5-8681-4bb274e25eba.jpg?1783921913"
+      "image_uri": "https://cards.scryfall.io/normal/front/4/c/4c7f0ea5-a142-4157-b85d-ec49dd79adf6.jpg?1783911725"
     },
     {
       "name": "Mistrise Village",
@@ -682,7 +682,7 @@ export const ORACLE_DATA = {
       },
       "scryfall_uri": "https://scryfall.com/card/soc/388/mystic-sanctuary?utm_source=api",
       "oracle_id": "17b60106-a4c7-410a-8ac3-ec8e74e29a7c",
-      "image_uri": "https://cards.scryfall.io/normal/front/4/c/4cd86997-d7b9-4b5b-9488-11f5c679e4d3.jpg?1783903726"
+      "image_uri": "https://cards.scryfall.io/normal/front/1/7/170e792c-80d5-4775-ad95-37614574ab84.jpg?1783932577"
     },
     {
       "name": "Omniscience",
@@ -725,7 +725,7 @@ export const ORACLE_DATA = {
       },
       "scryfall_uri": "https://scryfall.com/card/fdn/161/omniscience?utm_source=api",
       "oracle_id": "730e39e6-c61d-48b5-8827-bfd952bf1be7",
-      "image_uri": "https://cards.scryfall.io/normal/front/d/3/d33d91d0-1506-45e4-9def-975bf901815e.jpg?1783909079"
+      "image_uri": "https://cards.scryfall.io/normal/front/a/3/a3c11195-144e-44c4-aaa9-c534037748ea.jpg?1783914927"
     },
     {
       "name": "Orcish Bowmasters",
@@ -947,7 +947,7 @@ export const ORACLE_DATA = {
       },
       "scryfall_uri": "https://scryfall.com/card/cn2/121/show-and-tell?utm_source=api",
       "oracle_id": "b83a3ba0-249e-4c39-bbf0-cb005413f7d2",
-      "image_uri": "https://cards.scryfall.io/normal/front/f/a/fa7b7897-36e0-415a-8bb7-602886164852.jpg?1783937320"
+      "image_uri": "https://cards.scryfall.io/normal/front/0/8/08844d76-fc69-4fe3-9c1d-118110b3eb2c.jpg?1783912751"
     },
     {
       "name": "Undercity Sewers",
@@ -1148,7 +1148,7 @@ export const ORACLE_DATA = {
       },
       "scryfall_uri": "https://scryfall.com/card/trk/306/watery-grave?utm_source=api",
       "oracle_id": "fc9ec820-4245-4a96-b009-5308a818ca58",
-      "image_uri": "https://cards.scryfall.io/normal/front/5/5/5525d6a6-e532-4047-9da4-bfae7927fecc.jpg?1784036860"
+      "image_uri": "https://cards.scryfall.io/normal/front/7/d/7d4595f2-9297-40dc-b2dd-7144bbb401f7.jpg?1783934098"
     }
   ]
 };

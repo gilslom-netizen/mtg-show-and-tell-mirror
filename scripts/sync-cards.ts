@@ -12,6 +12,12 @@ import { join } from 'node:path';
  *
  *   npm run sync:cards          # report differences, write nothing
  *   npm run sync:cards -- --write
+ *
+ * This always pulls whichever printing Scryfall calls "preferred" for a name —
+ * usually the most recent one — including its art. data/printings.json pins a
+ * specific printing per card for its art instead (see scripts/set-art.ts), so
+ * after a text sync re-run `npm run set:art -- --write` to put the chosen art
+ * back; sync:cards has no idea printings.json exists.
  */
 
 const ROOT = process.cwd();
