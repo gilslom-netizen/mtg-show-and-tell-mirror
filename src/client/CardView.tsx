@@ -49,6 +49,13 @@ const failedArt = new Set<string>();
  */
 export type ArtSize = 'normal' | 'large' | 'png';
 
+/**
+ * The widest a card is ever drawn: the largest card-size setting, in the hand,
+ * which is the one row that scales cards up. The browser multiplies this by the
+ * display's pixel ratio to choose from the srcset above.
+ */
+const ART_SIZES = '280px';
+
 export function artUrl(uri: string, size: ArtSize): string {
   const m = /^(https:\/\/cards\.scryfall\.io\/)(normal|large|png|small|art_crop|border_crop)(\/.+?)(\.jpg|\.png)(\?.*)?$/.exec(
     uri,
@@ -181,13 +188,22 @@ export const CardFace = memo(function CardFace({
       {showArt && face.imageUri && !card.isToken && !artBroken && !failedArt.has(face.imageUri) ? (
         <img
           className="card-art"
-          // 'png' is the highest resolution Scryfall serves (745px, real
-          // transparency) — the same one the hover preview already used. It is
-          // a much bigger download than 'large' (roughly 8x), which is fine
-          // once cached but costs something the instant many permanents enter
-          // at once (Show and Tell, a big Omniscience turn); loading="lazy"
-          // below is what keeps that cost off cards not actually on screen.
-          src={artUrl(face.imageUri, 'png')}
+          /*
+           * Let the browser pick the resolution instead of always taking the
+           * biggest one.
+           *
+           * A card on the table is at most ~244 CSS px wide (168px base at the
+           * largest card-size setting), and ~280px in the hand. 'png' is 745px
+           * and 357KB; 'large' is 672px and 135KB. On an ordinary or a retina
+           * display 'large' is still two to three times more pixels than the
+           * card has, so the 2.6x download bought nothing — and a Show and Tell
+           * or a big Omniscience turn puts a dozen of them on screen at once.
+           * A three-times-density display genuinely wants the bigger file, and
+           * this is exactly the decision `srcset` exists to make.
+           */
+          src={artUrl(face.imageUri, 'large')}
+          srcSet={`${artUrl(face.imageUri, 'large')} 672w, ${artUrl(face.imageUri, 'png')} 745w`}
+          sizes={ART_SIZES}
           alt={face.name}
           loading="lazy"
           decoding="async"

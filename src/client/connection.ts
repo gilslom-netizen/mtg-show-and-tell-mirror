@@ -489,6 +489,7 @@ export class HttpConnection extends BaseConnection {
       return;
     }
     this.inFlight = true;
+    const was = this.status;
     try {
       const url = `/api/game?room=${encodeURIComponent(this.opts.room)}&token=${encodeURIComponent(
         this.token,
@@ -498,6 +499,7 @@ export class HttpConnection extends BaseConnection {
         const json = (await res.json()) as Snapshot;
         if (json.unchanged) this.quiet++;
         else this.quiet = 0;
+        this.status = 'open';
         this.absorb(json);
       } else {
         this.status = 'closed';
@@ -507,6 +509,14 @@ export class HttpConnection extends BaseConnection {
       this.status = 'closed';
     } finally {
       this.inFlight = false;
+      /*
+       * Tell somebody. `absorb` is the only thing that notifies, and it returns
+       * early on an unchanged poll and is never reached at all on a failed one —
+       * so going offline was completely silent: the board simply stopped moving
+       * and clicks stopped working, which is indistinguishable from an opponent
+       * thinking. Coming back has to be announced too, so the warning clears.
+       */
+      if (this.status !== was) this.notify();
       this.schedulePoll();
     }
   }
@@ -621,6 +631,8 @@ export class RemoteConnection extends BaseConnection {
   private reconnectTimer: number | null = null;
   private closed = false;
   private everOpened = false;
+  /** Consecutive failed connections, for the reconnect backoff. */
+  private failedAttempts = 0;
   private matchState: MatchState | null = null;
   lobby: { players: { seat: PlayerId; name: string }[]; ready: boolean } = {
     players: [],
@@ -640,6 +652,7 @@ export class RemoteConnection extends BaseConnection {
     ws.onopen = () => {
       this.status = 'open';
       this.everOpened = true;
+      this.failedAttempts = 0;
       // The token is what makes a reconnect land back in the same seat rather than
       // being treated as a third player.
       ws.send(
@@ -653,7 +666,14 @@ export class RemoteConnection extends BaseConnection {
       this.notify();
     };
     ws.onmessage = (ev) => {
-      const msg = JSON.parse(String(ev.data)) as ServerMsg;
+      let msg: ServerMsg;
+      try {
+        msg = JSON.parse(String(ev.data)) as ServerMsg;
+      } catch {
+        // Anything that is not our protocol — a proxy's error page, a stray
+        // frame — is not worth taking the connection down over.
+        return;
+      }
       switch (msg.t) {
         case 'seat':
           this.seat = msg.seat;
@@ -683,12 +703,19 @@ export class RemoteConnection extends BaseConnection {
         this.error = `No game server answered at ${this.opts.url}. Run npm run selfhost and open the address it prints, or deploy where /api is served.`;
       }
       this.notify();
-      // The server replays the action log on reconnect, so this is safe to retry.
+      /*
+       * The server replays the action log on reconnect, so retrying is safe.
+       * The wait grows, though: a server that is down stays down, and hammering
+       * it once a second from every open tab for as long as the tab is open is
+       * neither kind nor useful. It resets the moment a connection succeeds.
+       */
       if (!this.closed && this.reconnectTimer === null) {
+        const wait = Math.min(15000, 1000 * 2 ** this.failedAttempts);
+        this.failedAttempts++;
         this.reconnectTimer = window.setTimeout(() => {
           this.reconnectTimer = null;
           this.open();
-        }, 1500);
+        }, wait);
       }
     };
     ws.onerror = () => {

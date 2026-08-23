@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { oracle } from '@engine/oracle';
 import type { PlayerView } from '@engine/redact';
 import { MANA_KINDS } from '@engine/mana';
@@ -112,7 +112,7 @@ export function StackPanel({ view, viewer }: { view: PlayerView; viewer: PlayerI
             const c = view.cards[iid];
             if (!c) return null;
             const name = c.isAbility
-              ? `${labelFor(view, c.abilitySource)}: ${c.abilityLabel ?? 'ability'}`
+              ? `${c.abilitySourceName ?? labelFor(view, c.abilitySource)}: ${c.abilityLabel ?? 'ability'}`
               : cardTitle(view, iid);
             return (
               <div
@@ -164,27 +164,42 @@ export function LogPanel({ view, viewer }: { view: PlayerView; viewer: PlayerId 
     ref.current?.scrollTo({ top: ref.current.scrollHeight });
   }, [view.log.length]);
 
+  /*
+   * The log is the longest list on screen — up to two hundred lines — and the
+   * view is a fresh object on every poll, so without this it was two hundred
+   * elements and four hundred handlers rebuilt every time anything happened.
+   * Log lines are append-only and never change once written, so the length
+   * together with the newest sequence number identifies the whole list: it is
+   * only rebuilt when a line is actually added, or when a new game restarts the
+   * numbering.
+   */
+  const newest = view.log.length > 0 ? view.log[view.log.length - 1].seq : 0;
+  const lines = useMemo(
+    () =>
+      view.log.map((line) => {
+        const isTurnMarker = line.text.startsWith('—');
+        return (
+          <div
+            key={line.seq}
+            className={`log-line ${isTurnMarker ? 'turn-marker' : line.player ? seatClass(line.player, viewer) : ''}`}
+            onMouseEnter={() => setHighlight(line.iids)}
+            onMouseLeave={() => setHighlight([])}
+          >
+            {!isTurnMarker && line.player && (
+              <span className="who">{line.player === viewer ? 'You' : 'Opp'}</span>
+            )}
+            {line.text}
+          </div>
+        );
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [view.log.length, newest, viewer, setHighlight],
+  );
+
   return (
     <div className="panel" ref={ref} style={{ borderBottom: 'none' }}>
       <h3>Game log</h3>
-      <div className="log">
-        {view.log.map((line) => {
-          const isTurnMarker = line.text.startsWith('—');
-          return (
-            <div
-              key={line.seq}
-              className={`log-line ${isTurnMarker ? 'turn-marker' : line.player ? seatClass(line.player, viewer) : ''}`}
-              onMouseEnter={() => setHighlight(line.iids)}
-              onMouseLeave={() => setHighlight([])}
-            >
-              {!isTurnMarker && line.player && (
-                <span className="who">{line.player === viewer ? 'You' : 'Opp'}</span>
-              )}
-              {line.text}
-            </div>
-          );
-        })}
-      </div>
+      <div className="log">{lines}</div>
     </div>
   );
 }
@@ -198,7 +213,7 @@ export function LogPanel({ view, viewer }: { view: PlayerView; viewer: PlayerId 
 export function KnownTopPanel({ view, viewer }: { view: PlayerView; viewer: PlayerId }) {
   const known = useStore((s) => s.knownTop[viewer]);
   const setHighlight = useStore((s) => s.setHighlight);
-  const visible = known.filter((e) => view.cards[e.iid] || true);
+  const visible = known;
   return (
     <div className="panel">
       <h3>Top of your library</h3>

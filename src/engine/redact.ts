@@ -48,6 +48,8 @@ export interface CardView {
   isAbility?: boolean;
   abilityLabel?: string;
   abilitySource?: IID;
+  /** The source's name, so the stack reads right even when the card is hidden. */
+  abilitySourceName?: string;
   targets?: TargetRef[];
   castForFree?: boolean;
 }
@@ -158,10 +160,21 @@ function viewCard(state: GameState, c: CardInstance): CardView {
     out.isAbility = true;
     out.abilityLabel = c.abilityLabel;
     out.abilitySource = c.abilitySource;
+    /*
+     * The name of whatever put this on the stack, carried on the ability itself.
+     *
+     * Both players watched the trigger happen, so the name is not a secret — but
+     * the source card can be somewhere private by the time the trigger resolves.
+     * A Hullbreaker Horror is allowed to bounce itself, and then its own trigger
+     * is on the stack pointing at a card sitting in its owner's hand. Handing out
+     * the card object to say "Hullbreaker Horror: return target…" put a card in
+     * the opponent's hand on their opponent's screen; the name alone does not.
+     */
+    const src = c.abilitySource !== undefined ? state.cards[c.abilitySource] : undefined;
+    if (src) out.abilitySourceName = src.isToken ? (src.token?.name ?? 'Token') : currentFace(src).name;
   }
   if (c.targets) out.targets = c.targets;
   if (c.castForFree) out.castForFree = true;
-  void state;
   return out;
 }
 
@@ -190,10 +203,16 @@ function visibleIids(state: GameState, viewer: PlayerId): Set<IID> {
     }
   }
 
-  // Ability stack objects reference their source, which may have left the battlefield.
+  /*
+   * Ability stack objects reference their source, which may have left the
+   * battlefield — the graveyard and exile are public, so those are fine to show.
+   * A source that has gone somewhere private is not: see `abilitySourceName`.
+   */
   for (const iid of state.stack) {
     const c = state.cards[iid];
-    if (c?.abilitySource !== undefined) out.add(c.abilitySource);
+    if (c?.abilitySource === undefined) continue;
+    const src = state.cards[c.abilitySource];
+    if (src && src.zone !== 'hand' && src.zone !== 'library') out.add(c.abilitySource);
   }
   return out;
 }

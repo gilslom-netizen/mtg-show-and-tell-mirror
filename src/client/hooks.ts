@@ -116,8 +116,16 @@ function adjustCardScale(direction: 1 | -1): void {
   if (next !== settings.cardScale) updateSettings({ cardScale: next });
 }
 
+/**
+ * Long enough that the board visibly moves rather than teleporting, short enough
+ * that a long chain of passes is not a wait.
+ */
+const SOLO_PASS_DELAY: [number, number] = [25, 45];
+
 export function useAutoPass(viewer: PlayerId) {
   const view = useStore((s) => s.views[viewer]);
+  // No opponent on the other side of the table means no clock to read.
+  const solo = useStore((s) => s.connInfo?.kind === 'local');
   const settings = useStore((s) => s.settings);
   const autoPass = useStore((s) => s.autoPass);
   const forceStop = useStore((s) => s.forceStop);
@@ -200,7 +208,18 @@ export function useAutoPass(viewer: PlayerId) {
     if (holdPriority) return;
     if (shouldStop(view, settings, autoPass)) return;
 
-    const [lo, hi] = settings.autoPassDelayMs;
+    /*
+     * The randomised window exists for one reason: if the client passed
+     * instantly when it had no answer and slowly when it did, the opponent would
+     * read your hand off the clock. That is a real leak against a real opponent —
+     * and there is no real opponent in a drill, a goldfish or the lab, where you
+     * are holding both seats. Paying a third of a second per pass there buys
+     * nothing and costs the whole feel of the thing: an Omniscience turn is
+     * dozens of passes, and a repeat of a loop is dozens more.
+     *
+     * Solo, a pass is as quick as the screen can show it.
+     */
+    const [lo, hi] = solo ? SOLO_PASS_DELAY : settings.autoPassDelayMs;
     const delay = lo + Math.random() * Math.max(0, hi - lo);
     // 'auto' — this is the comfort layer, not the player, so it must not be
     // taken as a change of mind that cancels a running repeat.
@@ -212,7 +231,7 @@ export function useAutoPass(viewer: PlayerId) {
     // and passing felt like it randomly stopped working. `view` is a fresh object
     // only when the game state actually changed, which is exactly when the
     // decision is worth taking again.
-  }, [view, viewer, settings, autoPass, forceStop, holdPriority, repeatHolds, send, controls]);
+  }, [view, viewer, settings, solo, autoPass, forceStop, holdPriority, repeatHolds, send, controls]);
 }
 
 /**
@@ -222,17 +241,24 @@ export function useAutoPass(viewer: PlayerId) {
  * works the same locally and over a network, and a slow server just makes the
  * run slower rather than sending a burst of actions the engine will reject.
  */
+/**
+ * How often a running repeat looks at the board.
+ *
+ * One interval for the whole run rather than a timer rescheduled from the run's
+ * own state: that arrangement made the cadence and the patience the same number,
+ * so the runner could not be made quicker without also making it give up sooner,
+ * and every wait re-rendered the bar it lives in.
+ */
+const REPEAT_TICK_MS = 25;
+
 export function useRepeatRunner() {
-  const repeat = useStore((s) => s.repeat);
-  const views = useStore((s) => s.views);
+  const running = useStore((s) => s.repeat !== null);
   const advance = useStore((s) => s.advanceRepeat);
   useEffect(() => {
-    if (!repeat) return;
-    // A tick of the event loop, so the view the store is about to hand out has
-    // settled before the next action is measured against it.
-    const t = window.setTimeout(() => advance(), 60);
-    return () => window.clearTimeout(t);
-  }, [repeat, views, advance]);
+    if (!running) return;
+    const id = window.setInterval(() => advance(), REPEAT_TICK_MS);
+    return () => window.clearInterval(id);
+  }, [running, advance]);
 }
 
 /**

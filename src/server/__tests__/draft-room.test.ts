@@ -130,10 +130,10 @@ describe('submitting a deck', () => {
   beforeEach(() => setStore(null));
 
   it('rejects a list with cards the player does not own', () => {
-    expect(deckProblem([{ oracleId: 'timetwister', count: 4 }], [])).toMatch(/do not have/);
+    expect(deckProblem([{ oracleId: 'timetwister', count: 4 }], [])).toMatch(/not in your card pool|only have/);
     // Even a single copy, if it was never drafted.
     expect(deckProblem(mergeEntries(MAINDECK, [{ oracleId: 'timetwister', count: 1 }]), []))
-      .toMatch(/do not have/);
+      .toMatch(/not in your card pool|only have/);
   });
 
   it('rejects a deck that is too small', () => {

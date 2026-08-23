@@ -260,7 +260,15 @@ control as well as a shortcut:
   card and log line, and a top bar that never wraps mid-click.
 
 Card art is probed once at startup. If Scryfall is unreachable the whole app renders
-readable text cards rather than blank rectangles, so it works offline.
+readable text cards rather than blank rectangles, so it works offline. Each card is
+offered to the browser at two resolutions and it picks: a table card is never wider
+than ~244px, so an ordinary or retina display takes the 672px file and only a
+three-times-density display takes the 745px one. A full board is 1.4MB instead of 9MB.
+
+Solo play — the lab, a goldfish, a drill — passes priority as fast as the screen can
+show it. The randomised delay online exists so an opponent cannot read your hand off
+how quickly you pass, and there is no opponent in a solo game; paying it there made an
+Omniscience turn a third of a second per pass slower for nothing.
 
 ### Online — `src/server` and `api/`
 

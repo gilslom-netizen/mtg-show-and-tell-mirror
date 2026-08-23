@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RandomBot, newGame, stateHash } from './bot.js';
+import { redact } from '../redact.js';
 import type { GameState, IID, PlayerId } from '../types.js';
 
 /**
@@ -43,6 +44,27 @@ function checkInvariants(s: GameState): void {
     }
 
     if (s.players[p].life > 100) throw new Error('life total is implausible');
+  }
+
+  /*
+   * Nobody ever sees a card in the other player's hand.
+   *
+   * Checked here rather than only in the redaction tests because the leaks that
+   * matter are the ones nobody thought to write a case for: the one this caught
+   * was a Hullbreaker Horror bouncing itself, whose trigger then sat on the
+   * stack pointing at a card in its owner's hand.
+   */
+  for (const p of ['p1', 'p2'] as PlayerId[]) {
+    const opponent: PlayerId = p === 'p1' ? 'p2' : 'p1';
+    const view = redact(s, p);
+    for (const iid of s.zones[opponent].hand) {
+      if (view.cards[iid]) {
+        throw new Error(`${p} can see ${s.cards[iid].oracleId} in ${opponent}'s hand`);
+      }
+    }
+    if (view.hand.some((iid) => !view.cards[iid])) {
+      throw new Error(`${p} was sent a hand card it cannot read`);
+    }
   }
 
   // Unless the game is over, someone must be able to act.

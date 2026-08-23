@@ -68,9 +68,42 @@ function Session({ viewer, mode }: { viewer: PlayerId; mode: Mode }) {
 
   // Online, neither the draft nor the game can start until both seats are taken.
   if (info?.kind === 'remote' && !info.ready) return <WaitingRoom />;
-  if (phase === 'draft') return <DraftScreen viewer={viewer} />;
-  if (phase === 'build') return <DeckBuilder viewer={viewer} />;
-  return <Game viewer={viewer} mode={mode} />;
+
+  const screen =
+    phase === 'draft' ? (
+      <DraftScreen viewer={viewer} />
+    ) : phase === 'build' ? (
+      <DeckBuilder viewer={viewer} />
+    ) : (
+      <Game viewer={viewer} mode={mode} />
+    );
+
+  return (
+    <>
+      {screen}
+      <OfflineBanner />
+    </>
+  );
+}
+
+/**
+ * Says so when the connection has dropped.
+ *
+ * Until this existed, losing the connection mid-game looked exactly like an
+ * opponent taking a long time: the board stopped changing, clicks did nothing,
+ * and there was nothing on screen to tell the two apart. It only ever appeared
+ * on the waiting screen, which is the one place you are not once a game starts.
+ */
+function OfflineBanner() {
+  const status = useStore((s) => s.connInfo?.status);
+  if (status !== 'closed') return null;
+  return (
+    <div className="offline-banner" role="status" data-testid="offline-banner">
+      <span className="pulse-dot" aria-hidden />
+      Connection lost — trying to get back in. Nothing you have played is lost; the
+      game picks up where it left off.
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +230,17 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
   // so this is a loud warning rather than a locked door — being unable to press
   // the button at all is its own dead end.
   const unreliable = online !== null && online.http && !online.usable;
+  /*
+   * The socket fallback is the older transport and only ever knew how to run the
+   * mirror. Offering the draft there would have taken the choice and quietly
+   * given you a classic game instead — the format is decided by whoever opens
+   * the room, so there is nowhere for that choice to go. Say so, rather than
+   * dropping it on the floor.
+   */
+  const draftAvailable = online === null || online.http;
+  useEffect(() => {
+    if (!draftAvailable) setFormat('classic');
+  }, [draftAvailable]);
 
   return (
     <div className="lobby">
@@ -216,12 +260,14 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
               className={`mode-option${format === 'draft' ? ' is-picked' : ''}`}
               data-testid="format-draft"
               aria-pressed={format === 'draft'}
+              disabled={!draftAvailable}
               onClick={() => setFormat('draft')}
             >
               <b>Draft, then play</b>
               <span>
-                Bid coins pile by pile for a shared pool, build around the mirror, then
-                play the series.
+                {draftAvailable
+                  ? 'Bid coins pile by pile for a shared pool, build around the mirror, then play the series.'
+                  : 'Not available on this host — it is serving the socket fallback, which only runs the mirror.'}
               </span>
             </button>
             <button

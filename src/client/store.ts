@@ -111,16 +111,17 @@ interface StoreState {
   /**
    * An in-progress repeat run, or null.
    *
-   * `waited` counts ticks spent expecting a question that has not appeared, so
-   * a step the trigger policy answered for us can be stepped over instead of
-   * stalling the loop for ever.
+   * `since` is when the current step started waiting, in milliseconds. Patience
+   * is measured in time rather than in ticks so that the runner's cadence and
+   * how long it is willing to wait are two separate decisions — they were one,
+   * and speeding the runner up quietly shortened every timeout with it.
    */
   repeat: {
     steps: RepeatStep[];
     index: number;
     remaining: number;
     seat: PlayerId;
-    waited: number;
+    since: number;
   } | null;
   /** Why the last run ended, shown once and then dismissed. */
   repeatNote: string | null;
@@ -412,7 +413,7 @@ export const useStore = create<StoreState>((set, get) => ({
   startRepeat(steps, times, seat) {
     if (steps.length === 0) return;
     set({
-      repeat: { steps, index: 0, remaining: Math.min(times, MAX_REPEATS), seat, waited: 0 },
+      repeat: { steps, index: 0, remaining: Math.min(times, MAX_REPEATS), seat, since: Date.now() },
       repeatNote: null,
       autoPass: 'off',
     });
@@ -456,9 +457,10 @@ export const useStore = create<StoreState>((set, get) => ({
       const remaining = nextIndex === 0 ? run.remaining - 1 : run.remaining;
       set({
         repeat:
-          remaining <= 0 ? null : { ...run, index: nextIndex, remaining, waited: 0 },
+          remaining <= 0 ? null : { ...run, index: nextIndex, remaining, since: Date.now() },
       });
     };
+    const waitedMs = Date.now() - run.since;
 
     /*
      * Whether the game is still mid-flight.
@@ -473,7 +475,16 @@ export const useStore = create<StoreState>((set, get) => ({
       view.stack.length > 0 ||
       view.waitingOnOpponentChoice ||
       view.priorityPlayer !== run.seat;
-    const wait = () => set({ repeat: { ...run, waited: run.waited + 1 } });
+    /*
+     * How long to keep waiting.
+     *
+     * Generous while anything is still resolving — a loop's later questions only
+     * arrive after several passes, and over a network those passes are a round
+     * trip each. Short when the board is quiet, because then the thing being
+     * waited for is simply not coming.
+     */
+    const SETTLING_PATIENCE_MS = 10000;
+    const QUIET_PATIENCE_MS = 400;
 
     /*
      * The start of a round waits for the board to look the way it did when you
@@ -483,10 +494,7 @@ export const useStore = create<StoreState>((set, get) => ({
      * card reached your hand is what made the run stop dead a round in.
      */
     if (waitingForAQuietBoard(run.steps, run.index, view.stack.length)) {
-      if (run.waited < 400) {
-        wait();
-        return;
-      }
+      if (waitedMs < SETTLING_PATIENCE_MS) return;
       get().stopRepeat('Stopped — the stack never cleared, so the next round never came round.');
       return;
     }
@@ -494,13 +502,10 @@ export const useStore = create<StoreState>((set, get) => ({
     if (step.what === 'answer') {
       const choice = view.choice;
       if (!choice) {
-        // Give it a few ticks even when the board is quiet: between two states
-        // there is a moment with no prompt on screen, and skipping there would
-        // put the whole run out of step.
-        if (run.waited < (settling ? 400 : 8)) {
-          wait();
-          return;
-        }
+        // Wait a beat even when the board is quiet: between two states there is
+        // a moment with no prompt on screen, and skipping there would put the
+        // whole run out of step.
+        if (waitedMs < (settling ? SETTLING_PATIENCE_MS : QUIET_PATIENCE_MS)) return;
         /*
          * Nothing is coming. Usually that means a trigger policy answered this
          * one before the run could — "bounce their spell", "their face" — in
@@ -532,10 +537,7 @@ export const useStore = create<StoreState>((set, get) => ({
     if (!action) {
       // Not there yet is not the same as gone: the card you are about to recast
       // is still on the stack for most of every loop.
-      if (view.stack.length > 0 && run.waited < 400) {
-        wait();
-        return;
-      }
+      if (view.stack.length > 0 && waitedMs < SETTLING_PATIENCE_MS) return;
       get().stopRepeat(`Stopped — "${step.label}" is not available any more.`);
       return;
     }

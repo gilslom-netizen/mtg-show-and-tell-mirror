@@ -7,6 +7,7 @@ import type { DraftAction, DraftState } from '../draft/types.js';
 import type { DeckEntry } from '../engine/state.js';
 import { Game, type Intent } from '../engine/game.js';
 import { MatchTracker, newMatchState, type MatchState } from '../engine/match.js';
+import { frontFace } from '../engine/oracle.js';
 import { redact, redactEvents, type PlayerView } from '../engine/redact.js';
 import type { ChoiceResponse, GameEvent, PlayerId } from '../engine/types.js';
 import type { LoggedAction, MatchStore, RoomMeta } from './store.js';
@@ -124,6 +125,15 @@ export function draftFor(meta: RoomMeta, log: LoggedAction[]): DraftState {
 
 export const MIN_DECK_SIZE = 60;
 
+/** A card's printed name, or the raw id when the pool has never heard of it. */
+function nameOfCard(oracleId: string): string {
+  try {
+    return frontFace(oracleId as never).name;
+  } catch {
+    return `"${oracleId}"`;
+  }
+}
+
 /**
  * Whether a submitted decklist is one this player could actually own.
  *
@@ -138,11 +148,23 @@ export function deckProblem(deck: DeckEntry[], draftedOracleIds: string[]): stri
   // and a list can easily be both.
   const { all } = draftedCardPool(draftedOracleIds);
   const owned = new Map(mergeEntries(all).map((e) => [e.oracleId, e.count]));
+
+  // Add the list up first. Checking entry by entry let the same card be sent
+  // twice — four Omnisciences plus four more, each entry legal on its own — so
+  // a hand-rolled request could put eight of anything in a deck.
+  const wanted = new Map<string, number>();
   for (const e of deck) {
+    if (typeof e?.oracleId !== 'string') return 'Malformed decklist';
     if (!Number.isInteger(e.count) || e.count < 0) return 'Malformed decklist';
-    const have = owned.get(e.oracleId) ?? 0;
-    if (e.count > have) {
-      return `You do not have ${e.count} copies of that card`;
+    wanted.set(e.oracleId, (wanted.get(e.oracleId) ?? 0) + e.count);
+  }
+  for (const [oracleId, count] of wanted) {
+    const have = owned.get(oracleId) ?? 0;
+    if (count > have) {
+      const name = nameOfCard(oracleId);
+      return have === 0
+        ? `${name} is not in your card pool`
+        : `You only have ${have} ${have === 1 ? 'copy' : 'copies'} of ${name}, not ${count}`;
     }
   }
 
@@ -356,7 +378,25 @@ export async function applyAction(
       return { ok: true, events: game.flushEvents() };
 
     case 'cancel': {
-      // Rewind the tail of this player's own half-finished action.
+      /*
+       * Only a half-finished action can be backed out of.
+       *
+       * This used to rewind the tail of the log whatever was in it, which made
+       * Escape a take-back: play a land, both players see it, press Escape, and
+       * the next rebuild has no land on the battlefield. The local engine has
+       * never allowed that — it keeps a rollback snapshot that is retaken the
+       * moment you have priority again, so a completed action has nothing to
+       * rewind to. The same rule spelled out for a log: rewind only while the
+       * engine is waiting on a choice of yours, which is exactly the window in
+       * which the action is not finished yet.
+       */
+      const pending = game.state.pendingChoice;
+      const mine =
+        pending !== null &&
+        pending.kind !== 'simultaneousSecret' &&
+        pending.kind !== 'mulligan' &&
+        pending.player === seat;
+      if (!mine) return { ok: true, events: [] };
       for (let i = log.length - 1; i >= 0; i--) {
         const a = log[i];
         if (a.seat !== seat) break;

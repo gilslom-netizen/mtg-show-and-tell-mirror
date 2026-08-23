@@ -29,6 +29,39 @@ describe('redaction', () => {
     }
   });
 
+  it('does not reveal a card that bounced itself back to hand', () => {
+    /*
+     * Hullbreaker Horror may return any nonland permanent, including itself. Its
+     * trigger then sits on the stack pointing at a card in its controller's hand,
+     * and the stack line wants the source's name — which used to be fetched by
+     * handing the opponent the whole card. Both players watched it happen, so the
+     * name is fine; the card object in a hand is not.
+     */
+    const t = testGame();
+    const [horror] = t.p1.battlefield('Hullbreaker Horror');
+    t.p1.hand('Brainstorm');
+    t.p1.battlefield('Island');
+    t.begin();
+
+    t.p1.cast('Brainstorm');
+    // The Horror triggers on the cast and is offered its two modes.
+    const modes = t.expectChoice();
+    expect(modes.kind).toBe('chooseMode');
+    t.answer({ kind: 'modes', modes: [1] });
+    // The Horror is the only nonland permanent on the table, so it targets
+    // itself without asking.
+    t.resolveStack();
+
+    expect(t.state.cards[horror].zone).toBe('hand');
+    const theirs = redact(t.state, 'p2');
+    expect(leaks(theirs, [horror])).toBe(false);
+    expect(JSON.stringify(theirs)).not.toContain('"oracleId":"hullbreaker_horror"');
+
+    // The stack still says whose trigger it is.
+    const trigger = t.state.stack.map((iid) => theirs.cards[iid]).find((c) => c?.isAbility);
+    if (trigger) expect(trigger.abilitySourceName).toBe('Hullbreaker Horror');
+  });
+
   it('never reveals library order, not even to the library owner', () => {
     const t = testGame();
     t.begin();

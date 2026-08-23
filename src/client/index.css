@@ -1017,6 +1017,30 @@ input[type='number'] {
   padding-right: 34px;
 }
 
+/* A dropped connection, said out loud, on whatever screen you happen to be on. */
+.offline-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(560px, 92vw);
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  border: 1px solid var(--danger);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.offline-banner .pulse-dot {
+  background: var(--danger);
+}
+
 /* ==========================================================================
    Repeat what you just did
    ========================================================================== */
