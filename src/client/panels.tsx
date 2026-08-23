@@ -1,5 +1,5 @@
 import { useStore } from './store';
-import type { StopMode } from './settings';
+import type { CombatStopMode, StopMode } from './settings';
 
 /** Settings and the shortcut sheet. */
 
@@ -54,12 +54,22 @@ export function SettingsPanel() {
           />
         </div>
         <div className="setting-row">
-          <div>Combat steps</div>
-          <input
-            type="checkbox"
-            checked={stops.combat}
-            onChange={(e) => setStop({ combat: e.target.checked })}
-          />
+          <div>
+            Combat steps
+            <div className="desc">
+              &ldquo;Only if combat matters&rdquo; passes straight from the beginning of
+              combat to your second main phase on the turns — most of them — where
+              nobody has a creature that could attack.
+            </div>
+          </div>
+          <select
+            value={stops.combat}
+            onChange={(e) => setStop({ combat: e.target.value as CombatStopMode })}
+          >
+            <option value="always">always stop</option>
+            <option value="ifRelevant">only if combat matters</option>
+            <option value="never">never stop</option>
+          </select>
         </div>
         <div className="setting-row">
           <div>Their upkeep</div>
@@ -74,7 +84,11 @@ export function SettingsPanel() {
         <div className="setting-row">
           <div>
             Hold priority automatically under Omniscience
-            <div className="desc">Lets a combo turn chain without giving away windows.</div>
+            <div className="desc">
+              Off by default: an Omniscience turn is mostly ordinary spells, and holding
+              for all of them turns each one into a click. <kbd>H</kbd> holds priority
+              the moment you actually want to chain.
+            </div>
           </div>
           <input
             type="checkbox"
@@ -196,6 +210,7 @@ const SHORTCUTS: [string, string][] = [
   ['1 – 9', 'Cast or play the nth card in hand'],
   ['Shift + click', 'Show the other ways to play a card (e.g. pay mana under Omniscience)'],
   ['Hold Alt', 'Ignore the trigger policy for the next prompt'],
+  ['B', 'Put the open decision aside to look at the board, and bring it back'],
   ['Esc', 'Back out of the current action'],
   ['L', 'Toggle the log panel'],
   [',', 'Settings'],
@@ -218,7 +233,8 @@ export function HelpPanel() {
         </div>
         <div className="prompt">
           Every shortcut also exists as a button, so nothing is hidden behind the
-          keyboard.
+          keyboard. The lines between the boards, beside the log and above your hand
+          are all draggable — double click one to put it back.
         </div>
         <div className="actions">
           <button className="primary" onClick={() => toggle('helpOpen')}>

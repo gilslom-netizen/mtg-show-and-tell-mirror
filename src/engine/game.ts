@@ -1155,7 +1155,17 @@ export class Game {
     s.passed = [];
     s.stepInitialized = false;
 
-    const nextIndex = s.stepIndex + 1;
+    let nextIndex = s.stepIndex + 1;
+    // CR 506.5 — if no creatures were declared as attackers, the declare blockers
+    // and combat damage steps are skipped outright. Nothing can happen in them,
+    // and without this a combatless turn still costs both players two rounds of
+    // priority they can only pass through.
+    if (
+      s.step === 'declare_attackers' &&
+      (s.combat === null || s.combat.attackers.length === 0)
+    ) {
+      nextIndex = TURN_SEQUENCE.findIndex((r) => r.step === 'end_of_combat');
+    }
     if (nextIndex >= TURN_SEQUENCE.length) {
       s.stepIndex = 0;
       const nextActive = otherPlayer(s.activePlayer);

@@ -9,6 +9,17 @@ import type { OracleId } from '@engine/types';
 
 export type StopMode = 'always' | 'ifIHaveAnswer' | 'never';
 
+/**
+ * When to stop in combat.
+ *
+ * 'ifRelevant' is the one worth explaining. This deck wins by resolving a spell,
+ * not by attacking, so most turns nobody has a creature and every combat step is
+ * three rounds of priority spent pressing pass. Under this setting the client
+ * only stops in combat when combat can actually do something — the active player
+ * has a creature that could attack, or attackers have already been declared.
+ */
+export type CombatStopMode = 'always' | 'ifRelevant' | 'never';
+
 export interface StopSettings {
   /** Stop in my own main phase whenever I have something to do. */
   myMainPhase: boolean;
@@ -17,7 +28,7 @@ export interface StopSettings {
   /** Stop in the opponent's end step. */
   opponentEndStep: StopMode;
   /** Stop before combat steps. */
-  combat: boolean;
+  combat: CombatStopMode;
   /** Stop when the opponent's turn begins, before they untap. */
   opponentUpkeep: boolean;
 }
@@ -37,10 +48,34 @@ export interface TriggerPolicy {
   rememberTriggerOrder: boolean;
 }
 
+/**
+ * Where the dividers between the parts of the table have been dragged to.
+ *
+ * `null` means "work it out from the content", which is the right answer until
+ * a player says otherwise — an empty opponent board should not be holding back
+ * space your own permanents could use.
+ */
+export interface LayoutSettings {
+  /** Width of the stack/log panel, in pixels. */
+  sideWidth: number;
+  /** Share of the table given to the opponent's half, 0–1, or null for automatic. */
+  fieldSplit: number | null;
+  /** Height of the hand, in pixels, or null to size it from the cards. */
+  handHeight: number | null;
+}
+
 export interface Settings {
   stops: StopSettings;
+  layout: LayoutSettings;
   triggers: TriggerPolicy;
-  /** Hold priority automatically while an Omniscience is out. */
+  /**
+   * Hold priority automatically while an Omniscience is out.
+   *
+   * Off by default. It sounds helpful and is not: an Omniscience turn is mostly
+   * ordinary spells, and a client that silently stops passing for you turns every
+   * one of them into a click you did not ask for. Hold priority is one keystroke
+   * (H) away when you actually want to chain.
+   */
   autoHoldUnderOmniscience: boolean;
   /** Warn before letting floating mana drain away. */
   warnOnFloatingMana: boolean;
@@ -68,15 +103,20 @@ export const DEFAULT_SETTINGS: Settings = {
     // Hullbreaker could actually be cast.
     opponentSpellOnStack: 'ifIHaveAnswer',
     opponentEndStep: 'ifIHaveAnswer',
-    combat: true,
+    combat: 'ifRelevant',
     opponentUpkeep: false,
+  },
+  layout: {
+    sideWidth: 260,
+    fieldSplit: null,
+    handHeight: null,
   },
   triggers: {
     hullbreaker: 'ask',
     bowmasters: 'ifUnambiguous',
     rememberTriggerOrder: true,
   },
-  autoHoldUnderOmniscience: true,
+  autoHoldUnderOmniscience: false,
   warnOnFloatingMana: true,
   confirmLifePaymentBelow: 6,
   autoTapMana: true,
@@ -94,12 +134,18 @@ export function loadSettings(): Settings {
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<Settings>;
     // Merge so a new setting added later still gets its default.
-    return {
+    const merged: Settings = {
       ...DEFAULT_SETTINGS,
       ...parsed,
       stops: { ...DEFAULT_SETTINGS.stops, ...(parsed.stops ?? {}) },
+      layout: { ...DEFAULT_SETTINGS.layout, ...(parsed.layout ?? {}) },
       triggers: { ...DEFAULT_SETTINGS.triggers, ...(parsed.triggers ?? {}) },
     };
+    // The combat stop used to be a checkbox. A stored `true` meant "stop at every
+    // combat step", which is now spelled 'always'; a stored `false` meant 'never'.
+    const stored = (parsed.stops as { combat?: unknown } | undefined)?.combat;
+    if (typeof stored === 'boolean') merged.stops.combat = stored ? 'always' : 'never';
+    return merged;
   } catch {
     return DEFAULT_SETTINGS;
   }

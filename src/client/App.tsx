@@ -194,58 +194,93 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
   return (
     <div className="lobby">
       <div className="lobby-card">
-        <h1>Show and Tell — the mirror</h1>
-        <p>
-          Both players run the same sixty cards. The only secrets left are order,
-          count, and what you are about to put onto the battlefield.
-        </p>
+        <header className="lobby-head">
+          <h1>Show and Tell — the mirror</h1>
+          <p>
+            Both players run the same sixty cards. The only secrets left are order,
+            count, and what you are about to put onto the battlefield.
+          </p>
+        </header>
 
-        <p style={{ margin: '14px 0 4px', fontSize: 12, color: 'var(--text-dim)' }}>
-          How you want to play
-        </p>
-        <div className="mode-grid">
-          <button
-            className={`mode-option${format === 'draft' ? ' is-picked' : ''}`}
-            data-testid="format-draft"
-            onClick={() => setFormat('draft')}
-          >
-            <b>Draft, then play</b>
-            <span>
-              Bid coins pile by pile for a shared pool, build around the mirror, then
-              play the series.
-            </span>
-          </button>
-          <button
-            className={`mode-option${format === 'classic' ? ' is-picked' : ''}`}
-            data-testid="format-classic"
-            onClick={() => setFormat('classic')}
-          >
-            <b>The mirror alone</b>
-            <span>Skip the draft. Both players run the same sixty and nothing else.</span>
-          </button>
-        </div>
-
-        <p style={{ margin: '14px 0 4px', fontSize: 12, color: 'var(--text-dim)' }}>
-          Length of the series
-        </p>
-        <div className="row" data-testid="best-of">
-          {[1, 3, 5].map((n) => (
+        <section className="lobby-section">
+          <h2>How you want to play</h2>
+          <div className="mode-grid is-two-up">
             <button
-              key={n}
-              className={`chip-choice${bestOf === n ? ' is-picked' : ''}`}
-              data-testid={`best-of-${n}`}
-              onClick={() => setBestOf(n)}
+              className={`mode-option${format === 'draft' ? ' is-picked' : ''}`}
+              data-testid="format-draft"
+              aria-pressed={format === 'draft'}
+              onClick={() => setFormat('draft')}
             >
-              Best of {n}
+              <b>Draft, then play</b>
+              <span>
+                Bid coins pile by pile for a shared pool, build around the mirror, then
+                play the series.
+              </span>
             </button>
-          ))}
-        </div>
+            <button
+              className={`mode-option${format === 'classic' ? ' is-picked' : ''}`}
+              data-testid="format-classic"
+              aria-pressed={format === 'classic'}
+              onClick={() => setFormat('classic')}
+            >
+              <b>The mirror alone</b>
+              <span>Skip the draft. Both players run the same sixty and nothing else.</span>
+            </button>
+          </div>
+        </section>
 
-        <details>
-          <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text-dim)' }}>
-            Experiments — solo modes for learning and testing
-          </summary>
-          <div className="mode-grid" style={{ marginTop: 10 }}>
+        <section className="lobby-section">
+          <h2>Length of the series</h2>
+          <div className="segmented" data-testid="best-of" role="group">
+            {[1, 3, 5].map((n) => (
+              <button
+                key={n}
+                className={`chip-choice${bestOf === n ? ' is-picked' : ''}`}
+                data-testid={`best-of-${n}`}
+                aria-pressed={bestOf === n}
+                onClick={() => setBestOf(n)}
+              >
+                Best of {n}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="lobby-section is-primary">
+          <h2>Room code</h2>
+          <div className="lobby-join">
+            <input
+              type="text"
+              aria-label="Room code"
+              data-testid="room-input"
+              placeholder="room code"
+              value={room}
+              onChange={(e) => setRoom(e.target.value.toUpperCase())}
+              className="room-input"
+            />
+            <button onClick={() => setRoom(randomRoomCode())} title="Make a different code">
+              New code
+            </button>
+            <button
+              className="primary is-cta"
+              data-testid="play-online"
+              onClick={startOnline}
+              disabled={online === null}
+            >
+              {unreliable ? 'Play online anyway' : 'Play online'}
+            </button>
+          </div>
+          <p className="lobby-note" data-testid="online-status">
+            {invited
+              ? 'You opened an invite link — press Play online to take the second seat.'
+              : 'Both players must use the same room code. Start here, then send the invite link from the next screen.'}
+          </p>
+          {unreliable && <NoStoreWarning />}
+        </section>
+
+        <details className="lobby-fold">
+          <summary>Experiments — solo modes for learning and testing</summary>
+          <div className="mode-grid is-two-up">
             <button className="mode-option" onClick={() => startLocal('lab')}>
               <b>Lab</b>
               <span>
@@ -261,11 +296,9 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
           </div>
         </details>
 
-        <details>
-          <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text-dim)' }}>
-            Drills — jump straight to a decision this deck actually faces
-          </summary>
-          <div className="mode-grid" style={{ marginTop: 10 }}>
+        <details className="lobby-fold">
+          <summary>Drills — jump straight to a decision this deck actually faces</summary>
+          <div className="mode-grid is-two-up">
             {Object.entries(SCENARIOS).map(([key, spec]) => (
               <button
                 key={key}
@@ -280,38 +313,7 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
           </div>
         </details>
 
-        <p style={{ margin: '14px 0 4px', fontSize: 12, color: 'var(--text-dim)' }}>
-          Room code
-        </p>
-        <div className="row">
-          <input
-            type="text"
-            aria-label="Room code"
-            data-testid="room-input"
-            placeholder="room code"
-            value={room}
-            onChange={(e) => setRoom(e.target.value.toUpperCase())}
-            style={{ flex: 1, fontFamily: 'var(--mono, monospace)', letterSpacing: 1 }}
-          />
-          <button onClick={() => setRoom(randomRoomCode())} title="Make a different code">
-            New code
-          </button>
-          <button
-            className="primary"
-            data-testid="play-online"
-            onClick={startOnline}
-            disabled={online === null}
-          >
-            {unreliable ? 'Play online anyway' : 'Play online'}
-          </button>
-        </div>
-        <p style={{ fontSize: 12 }} data-testid="online-status">
-          {invited
-            ? 'You opened an invite link — press Play online to take the second seat.'
-            : 'Both players must use the same room code. Start here, then send the invite link from the next screen.'}
-        </p>
-        {unreliable && <NoStoreWarning />}
-        <p style={{ fontSize: 11 }}>
+        <p className="lobby-foot">
           {online === null
             ? 'Checking whether online play is available…'
             : online.http

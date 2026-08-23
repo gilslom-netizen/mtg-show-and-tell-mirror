@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { PlayerView, ChoiceView } from '@engine/redact';
 import type { ChoiceResponse, IID, PlayerId, TargetRef } from '@engine/types';
 import { CardFace } from './CardView';
@@ -25,11 +25,71 @@ function WaitingOnOpponent({ view }: { view: PlayerView }) {
   return (
     <div className="overlay is-soft">
       <div className="dialog waiting-dialog">
+        <MinimiseButton />
         <span className="spinner" aria-hidden />
         <div className="prompt">{what}</div>
       </div>
     </div>
   );
+}
+
+/**
+ * Every decision can be put aside for a moment.
+ *
+ * A prompt is a modal over the board, and the board is usually exactly what you
+ * need to look at before answering it: how many untapped lands they have, what
+ * is in the graveyards, what the log says happened. Minimising hides the dialog
+ * without answering it and leaves the table fully visible; the decision waits in
+ * a bar at the top until you bring it back. Nothing is sent either way, so this
+ * is safe at any point in any prompt.
+ */
+const MinimiseCtx = createContext<(() => void) | null>(null);
+
+function MinimiseButton() {
+  const minimise = useContext(MinimiseCtx);
+  if (!minimise) return null;
+  return (
+    <button
+      className="dialog-minimise"
+      data-testid="minimise-choice"
+      onClick={minimise}
+      title="Look at the board (B). Nothing is answered — the decision waits for you."
+      aria-label="Hide this decision and look at the board"
+    >
+      ⤢
+    </button>
+  );
+}
+
+function MinimisedBar({ prompt, onRestore }: { prompt: string; onRestore: () => void }) {
+  return (
+    <button className="choice-minimised" data-testid="restore-choice" onClick={onRestore}>
+      <span className="pulse-dot" aria-hidden />
+      <b>Decision waiting</b>
+      <span className="choice-minimised-what">{prompt}</span>
+      <span className="chip">Back to it</span>
+    </button>
+  );
+}
+
+/** A short description of what is being asked, for the minimised bar. */
+function promptOf(choice: ChoiceView): string {
+  switch (choice.kind) {
+    case 'simultaneousSecret':
+      return choice.myPrompt;
+    case 'mulligan':
+      return 'Keep this hand or mulligan';
+    case 'orderTriggers':
+      return 'Order the triggers';
+    case 'declareAttackers':
+      return 'Declare attackers';
+    case 'declareBlockers':
+      return 'Declare blockers';
+    case 'distributeDamage':
+      return choice.prompt;
+    default:
+      return choice.prompt;
+  }
 }
 
 export function ChoiceLayer({ view, viewer }: { view: PlayerView; viewer: PlayerId }) {
@@ -38,12 +98,30 @@ export function ChoiceLayer({ view, viewer }: { view: PlayerView; viewer: Player
   const revealing = useStore((s) => s.revealing);
   const clearReveal = useStore((s) => s.clearReveal);
   const animMs = useStore((s) => s.settings.animationMs);
+  const [minimised, setMinimised] = useState(false);
 
   useEffect(() => {
     if (!revealing) return;
     const t = setTimeout(() => clearReveal(), Math.max(700, animMs * 4));
     return () => clearTimeout(t);
   }, [revealing, clearReveal, animMs]);
+
+  // A new question is a new question: it always arrives in front of you.
+  useEffect(() => setMinimised(false), [choice?.id]);
+
+  // B for board, both ways. Deliberately not Escape, which already means
+  // "back out of what I was doing" everywhere else.
+  useEffect(() => {
+    if (!choice) return;
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA' || el?.isContentEditable) return;
+      if (e.key === 'b' || e.key === 'B') setMinimised((m) => !m);
+      else if (e.key === 'Escape' && minimised) setMinimised(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [choice, minimised]);
 
   if (revealing) {
     return <RevealOverlay view={view} viewer={viewer} reveal={revealing} />;
@@ -55,6 +133,10 @@ export function ChoiceLayer({ view, viewer }: { view: PlayerView; viewer: Player
   }
   if (!choice) return null;
 
+  if (minimised) {
+    return <MinimisedBar prompt={promptOf(choice)} onRestore={() => setMinimised(false)} />;
+  }
+
   const answer = (r: ChoiceResponse) => respond(r, viewer);
 
   // Every dialog is keyed by the choice id. Without this React reuses the component
@@ -62,28 +144,36 @@ export function ChoiceLayer({ view, viewer }: { view: PlayerView; viewer: Player
   // survives — which sends a card that is not even an option for the new prompt.
   const key = choice.id;
 
-  switch (choice.kind) {
-    case 'simultaneousSecret':
-      return <ShowAndTellDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
-    case 'chooseCards':
-      return <ChooseCardsDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
-    case 'chooseTargets':
-      return <ChooseTargetsDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
-    case 'chooseMode':
-      return <ChooseModeDialog key={key} choice={choice} onAnswer={answer} />;
-    case 'yesNo':
-      return <YesNoDialog key={key} choice={choice} onAnswer={answer} />;
-    case 'mulligan':
-      return <MulliganDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
-    case 'orderTriggers':
-      return <OrderTriggersDialog key={key} view={view} choice={choice} onAnswer={answer} />;
-    case 'declareAttackers':
-      return <DeclareAttackersDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
-    case 'declareBlockers':
-      return <DeclareBlockersDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
-    case 'distributeDamage':
-      return <DistributeDamageDialog key={key} view={view} choice={choice} onAnswer={answer} />;
-  }
+  const dialog = (() => {
+    switch (choice.kind) {
+      case 'simultaneousSecret':
+        return <ShowAndTellDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
+      case 'chooseCards':
+        return <ChooseCardsDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
+      case 'chooseTargets':
+        return <ChooseTargetsDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
+      case 'chooseMode':
+        return <ChooseModeDialog key={key} choice={choice} onAnswer={answer} />;
+      case 'yesNo':
+        return <YesNoDialog key={key} choice={choice} onAnswer={answer} />;
+      case 'mulligan':
+        return <MulliganDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
+      case 'orderTriggers':
+        return <OrderTriggersDialog key={key} view={view} choice={choice} onAnswer={answer} />;
+      case 'declareAttackers':
+        return <DeclareAttackersDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
+      case 'declareBlockers':
+        return <DeclareBlockersDialog key={key} view={view} viewer={viewer} choice={choice} onAnswer={answer} />;
+      case 'distributeDamage':
+        return <DistributeDamageDialog key={key} view={view} choice={choice} onAnswer={answer} />;
+    }
+  })();
+
+  // Only a real decision gets the minimise control: the reveal and the "waiting
+  // on them" spinner are above this and have nothing to come back to.
+  return (
+    <MinimiseCtx.Provider value={() => setMinimised(true)}>{dialog}</MinimiseCtx.Provider>
+  );
 }
 
 type Answer = (r: ChoiceResponse) => void;
@@ -113,6 +203,7 @@ function ShowAndTellDialog({
   return (
     <div className="overlay">
       <div className="dialog sat-dialog">
+        <MinimiseButton />
         <h2>Show and Tell</h2>
         <div className={`sat-status${choice.opponentLockedIn ? ' locked' : ''}`}>
           {choice.opponentLockedIn ? '🔒 Opponent has locked in' : '⏳ Opponent is choosing…'}
@@ -184,6 +275,7 @@ function RevealOverlay({
   return (
     <div className="overlay" style={{ pointerEvents: 'none' }}>
       <div className="dialog sat-dialog" style={{ alignItems: 'center' }}>
+        <MinimiseButton />
         <h2>Show and Tell</h2>
         <div className="sat-reveal">
           <div>
@@ -251,6 +343,7 @@ function ChooseCardsDialog({
   return (
     <div className="overlay">
       <div className="dialog">
+        <MinimiseButton />
         <h2>{isOrderOnly ? 'Choose an order' : 'Choose'}</h2>
         <div className="prompt">
           {choice.prompt}
@@ -305,6 +398,7 @@ function ChooseTargetsDialog({
   return (
     <div className="overlay">
       <div className="dialog">
+        <MinimiseButton />
         <h2>Choose a target</h2>
         <div className="prompt">{choice.prompt}</div>
         {players.length > 0 && (
@@ -351,6 +445,7 @@ function ChooseModeDialog({
   return (
     <div className="overlay">
       <div className="dialog" style={{ minWidth: 420 }}>
+        <MinimiseButton />
         <h2>Choose a mode</h2>
         <div className="prompt">{choice.prompt}</div>
         <div className="mode-grid">
@@ -387,6 +482,7 @@ function YesNoDialog({
   return (
     <div className="overlay">
       <div className="dialog" style={{ minWidth: 360 }}>
+        <MinimiseButton />
         <h2>{choice.prompt}</h2>
         <div className="actions">
           <button onClick={() => onAnswer({ kind: 'yesNo', value: false })}>
@@ -416,6 +512,7 @@ function MulliganDialog({
   return (
     <div className="overlay">
       <div className="dialog">
+        <MinimiseButton />
         <h2>
           Opening hand
           {choice.mulligansTaken > 0 && ` · mulligan ${choice.mulligansTaken}`}
@@ -491,6 +588,7 @@ function OrderTriggersDialog({
   return (
     <div className="overlay">
       <div className="dialog" style={{ minWidth: 440 }}>
+        <MinimiseButton />
         <h2>Order your triggers</h2>
         <div className="prompt">
           {choice.prompt}. These are identical unless you need a specific order.
@@ -545,6 +643,7 @@ function DeclareAttackersDialog({
   return (
     <div className="overlay">
       <div className="dialog">
+        <MinimiseButton />
         <h2>Declare attackers</h2>
         <div className="prompt">Click the creatures that should attack.</div>
         <div className="card-grid">
@@ -606,6 +705,7 @@ function DeclareBlockersDialog({
   return (
     <div className="overlay">
       <div className="dialog">
+        <MinimiseButton />
         <h2>Declare blockers</h2>
         <div className="prompt">
           {selecting === null
@@ -707,6 +807,7 @@ function DistributeDamageDialog({
   return (
     <div className="overlay">
       <div className="dialog" style={{ minWidth: 420 }}>
+        <MinimiseButton />
         <h2>Assign combat damage</h2>
         <div className="prompt">{choice.prompt}</div>
         {choice.blockers.map((iid) => (

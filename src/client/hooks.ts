@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
+import { frontFace } from '@engine/oracle';
 import type { LegalAction } from '@engine/game';
-import type { PlayerView } from '@engine/redact';
-import type { IID, PlayerId } from '@engine/types';
+import type { CardView, PlayerView } from '@engine/redact';
+import type { IID, PlayerId, TargetRef } from '@engine/types';
 import { canAct, useStore, type AutoPassMode } from './store';
-import type { Settings } from './settings';
+import type { BowmastersPolicy, CombatStopMode, Settings } from './settings';
 
 /**
  * The comfort layer.
@@ -18,6 +19,33 @@ function meaningful(view: PlayerView): LegalAction[] {
 
 function canRespond(actions: LegalAction[]): boolean {
   return actions.some((a) => a.intent.t === 'castSpell' || a.intent.t === 'activateAbility');
+}
+
+/** Every token this pool can make is a creature; everything else reads its face. */
+function isCreature(card: CardView): boolean {
+  return card.isToken || frontFace(card.oracleId).types.includes('Creature');
+}
+
+/**
+ * Whether combat can still do anything this turn.
+ *
+ * Attackers already declared: yes, obviously — blocks, tricks and damage all
+ * follow. Otherwise it comes down to whether the active player has a creature
+ * that could be declared as an attacker at all. In this format that is usually
+ * nobody: the deck wins by resolving a spell, and a turn with no creature on
+ * either side spends three rounds of priority in combat doing nothing. This is
+ * what lets both players pass out of the beginning of combat and land in the
+ * second main phase instead.
+ */
+export function combatCanMatter(view: PlayerView): boolean {
+  if ((view.combat?.attackers.length ?? 0) > 0) return true;
+  // Past the declaration, with nothing declared, combat is over in all but name.
+  if (view.step !== 'begin_combat' && view.step !== 'declare_attackers') return false;
+  const ap = view.activePlayer;
+  return view.battlefield[ap].some((iid) => {
+    const c = view.cards[iid];
+    return !!c && isCreature(c) && !c.tapped && !c.summoningSick;
+  });
 }
 
 /** Whether the player should be stopped here rather than passed for automatically. */
@@ -49,7 +77,7 @@ export function shouldStop(view: PlayerView, settings: Settings, autoPass: AutoP
 
   if (myTurn) {
     if (isMain) return stops.myMainPhase;
-    if (view.phase === 'combat') return stops.combat;
+    if (view.phase === 'combat') return stopsInCombat(view, stops.combat);
     return false;
   }
 
@@ -59,8 +87,14 @@ export function shouldStop(view: PlayerView, settings: Settings, autoPass: AutoP
     return canRespond(actions);
   }
   if (view.step === 'upkeep') return stops.opponentUpkeep;
-  if (view.phase === 'combat') return stops.combat;
+  if (view.phase === 'combat') return stopsInCombat(view, stops.combat);
   return false;
+}
+
+function stopsInCombat(view: PlayerView, mode: CombatStopMode): boolean {
+  if (mode === 'never') return false;
+  if (mode === 'always') return true;
+  return combatCanMatter(view);
 }
 
 /**
@@ -91,14 +125,44 @@ export function useAutoPass(viewer: PlayerId) {
   const controls = useStore((s) => s.controls);
   const setAutoPass = useStore((s) => s.setAutoPass);
 
+  /*
+   * "Pass until end of turn" needs to know which turn it started in.
+   *
+   * It used to end itself on `step === 'untap'`, which never arrives: the untap
+   * step grants nobody priority, so the engine runs straight through it and the
+   * client only ever sees a view from the upkeep onwards. The run therefore never
+   * stopped — F6 in one turn kept passing through every turn after it, which is
+   * exactly the bug. Anchoring to (turn, activePlayer) at the start and ending as
+   * soon as either changes is what "until the end of this turn" actually means.
+   */
+  const runAnchor = useRef<{ turn: number; activePlayer: PlayerId } | null>(null);
+  useEffect(() => {
+    if (autoPass === 'off') runAnchor.current = null;
+    else if (view && !runAnchor.current) {
+      runAnchor.current = { turn: view.turn, activePlayer: view.activePlayer };
+    }
+  }, [autoPass, view]);
+
   // End a "pass until" run when its condition is met.
   useEffect(() => {
     if (!view || autoPass === 'off') return;
-    if (autoPass === 'endOfTurn' && view.step === 'untap') setAutoPass('off');
+    const anchor = runAnchor.current;
+    if (
+      autoPass === 'endOfTurn' &&
+      anchor &&
+      (view.turn !== anchor.turn || view.activePlayer !== anchor.activePlayer)
+    ) {
+      setAutoPass('off');
+      return;
+    }
     if (
       autoPass === 'myNextTurn' &&
       view.activePlayer === viewer &&
-      view.phase === 'precombat_main'
+      view.phase === 'precombat_main' &&
+      // Same trap: without this the run ends the instant it starts when it is
+      // already your own precombat main.
+      anchor &&
+      (view.turn !== anchor.turn || view.activePlayer !== anchor.activePlayer)
     ) {
       setAutoPass('off');
     }
@@ -201,13 +265,40 @@ export function useTriggerPolicy(viewer: PlayerId) {
     }
 
     if (source.oracleId === 'orcish_bowmasters' && choice.kind === 'chooseTargets') {
-      if (policy.bowmasters === 'opponentFace') {
-        const opponent: PlayerId = viewer === 'p1' ? 'p2' : 'p1';
-        const t = choice.candidates.find((c) => c.kind === 'player' && c.id === opponent);
-        if (t) respond({ kind: 'targets', targets: [t] }, viewer);
-      }
+      const target = bowmastersTarget(policy.bowmasters, choice.candidates, view, viewer);
+      if (target) respond({ kind: 'targets', targets: [target] }, viewer);
     }
   }, [view?.choice?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+
+/**
+ * Where the Orcish Bowmasters ping goes, or null to ask.
+ *
+ * "Only if obvious" is the default and was, until now, the one setting that did
+ * nothing: it was never implemented, so the prompt appeared on every trigger no
+ * matter what the policy bar said. Obvious means there is exactly one thing on
+ * their side worth pointing at — their face, because they control no creature
+ * one damage could matter to. The moment they have a creature the ping is a real
+ * decision again and the prompt comes back.
+ */
+export function bowmastersTarget(
+  policy: BowmastersPolicy,
+  candidates: TargetRef[],
+  view: PlayerView,
+  viewer: PlayerId,
+): TargetRef | null {
+  if (policy === 'ask') return null;
+  const opponent: PlayerId = viewer === 'p1' ? 'p2' : 'p1';
+  const face = candidates.find((c) => c.kind === 'player' && c.id === opponent);
+  if (!face) return null;
+  if (policy === 'opponentFace') return face;
+  const theirs = candidates.filter(
+    (c) =>
+      (c.kind === 'player' && c.id === opponent) ||
+      (c.kind === 'permanent' && view.cards[c.iid]?.controller === opponent),
+  );
+  return theirs.length === 1 ? face : null;
 }
 
 /** Omniscience first, then Atraxa, then anything else the opponent controls. */

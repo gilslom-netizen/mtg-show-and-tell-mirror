@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { LegalAction } from '@engine/game';
 import type { PlayerView } from '@engine/redact';
 import { isType } from '@engine/state';
@@ -7,7 +7,9 @@ import type { IID, PlayerId } from '@engine/types';
 import { CardFace, CardPreview } from './CardView';
 import { ChoiceLayer } from './dialogs';
 import { KnownTopPanel, LogPanel, PhaseTrack, PlayerBar, StackPanel, cardTitle } from './ui';
+import { Splitter, clampSize } from './Splitter';
 import { canAct, useStore } from './store';
+import { DEFAULT_SETTINGS } from './settings';
 
 /**
  * The table.
@@ -20,14 +22,45 @@ import { canAct, useStore } from './store';
 export function Board({ viewer }: { viewer: PlayerId }) {
   const view = useStore((s) => s.views[viewer]);
   const logOpen = useStore((s) => s.logOpen);
+  const layout = useStore((s) => s.settings.layout);
+  const update = useStore((s) => s.updateSettings);
+  const theirsRef = useRef<HTMLDivElement>(null);
+  const mineRef = useRef<HTMLDivElement>(null);
+  const handRef = useRef<HTMLDivElement>(null);
+
   if (!view) return null;
   const opponent: PlayerId = viewer === 'p1' ? 'p2' : 'p1';
+  const setLayout = (patch: Partial<typeof layout>) =>
+    update({ layout: { ...layout, ...patch } });
+
+  /*
+   * The midline drag works in pixels of the opponent's half and is stored as a
+   * fraction, so the split survives a resized window: measuring both halves at
+   * the moment the drag starts is also what lets the layout stay automatic
+   * until someone actually drags it.
+   */
+  const halvesHeight = () =>
+    (theirsRef.current?.offsetHeight ?? 0) + (mineRef.current?.offsetHeight ?? 0);
 
   return (
     <>
-      <div className="table">
-        <div className="field">
-          <div className="half theirs">
+      <div
+        className="table"
+        style={{ '--side-w': `${layout.sideWidth}px` } as React.CSSProperties}
+      >
+        <div
+          className="field"
+          style={
+            layout.fieldSplit === null
+              ? undefined
+              : {
+                  gridTemplateRows: `minmax(0, ${layout.fieldSplit}fr) auto minmax(0, ${
+                    1 - layout.fieldSplit
+                  }fr)`,
+                }
+          }
+        >
+          <div className="half theirs" ref={theirsRef}>
             <PlayerBar view={view} seat={opponent} viewer={viewer} />
             <OpponentHand view={view} seat={opponent} />
             <ZoneRow view={view} viewer={viewer} seat={opponent} kind="nonland" />
@@ -35,15 +68,40 @@ export function Board({ viewer }: { viewer: PlayerId }) {
             <Yards view={view} viewer={viewer} seat={opponent} />
           </div>
 
-          <div className="midline" data-label={`Turn ${view.turn}`} />
+          {/* The line between the two boards is also the handle that moves it. */}
+          <Splitter
+            axis="y"
+            className="midline"
+            label="Split between the two boards"
+            getBase={() => theirsRef.current?.offsetHeight ?? 0}
+            onResize={(next) => {
+              const total = halvesHeight();
+              if (total <= 0) return;
+              setLayout({ fieldSplit: Math.min(0.85, Math.max(0.15, next / total)) });
+            }}
+            onReset={() => setLayout({ fieldSplit: null })}
+          >
+            <span className="midline-label">Turn {view.turn}</span>
+          </Splitter>
 
-          <div className="half mine">
+          <div className="half mine" ref={mineRef}>
             <Yards view={view} viewer={viewer} seat={viewer} />
             <ZoneRow view={view} viewer={viewer} seat={viewer} kind="land" />
             <ZoneRow view={view} viewer={viewer} seat={viewer} kind="nonland" />
             <PlayerBar view={view} seat={viewer} viewer={viewer} />
           </div>
         </div>
+
+        <Splitter
+          axis="x"
+          className="side-splitter"
+          label="Width of the stack and log"
+          // The panel is on the right, so it grows as the pointer moves left.
+          direction={-1}
+          getBase={() => layout.sideWidth}
+          onResize={(next) => setLayout({ sideWidth: clampSize(next, 180, 620) })}
+          onReset={() => setLayout({ sideWidth: DEFAULT_SETTINGS.layout.sideWidth })}
+        />
 
         <div className="side">
           <div style={{ overflowY: 'auto' }}>
@@ -55,8 +113,22 @@ export function Board({ viewer }: { viewer: PlayerId }) {
         </div>
       </div>
 
-      <Hand view={view} viewer={viewer} />
+      {/* Dialogs render as fixed overlays, so the only thing this position
+          decides is where a put-aside decision waits: in its own strip between
+          the board and the hand, rather than floating over either of them. */}
       <ChoiceLayer view={view} viewer={viewer} />
+      <Splitter
+        axis="y"
+        className="hand-splitter"
+        label="Height of your hand"
+        // Dragging up makes the hand taller, which is the direction that feels
+        // like pulling it open.
+        direction={-1}
+        getBase={() => handRef.current?.offsetHeight ?? 0}
+        onResize={(next) => setLayout({ handHeight: clampSize(next, 84, 520) })}
+        onReset={() => setLayout({ handHeight: null })}
+      />
+      <Hand view={view} viewer={viewer} height={layout.handHeight} innerRef={handRef} />
       <CardPreview viewer={viewer} />
     </>
   );
@@ -225,7 +297,18 @@ function OpponentHand({ view, seat }: { view: PlayerView; seat: PlayerId }) {
 // Hand
 // ---------------------------------------------------------------------------
 
-function Hand({ view, viewer }: { view: PlayerView; viewer: PlayerId }) {
+function Hand({
+  view,
+  viewer,
+  height,
+  innerRef,
+}: {
+  view: PlayerView;
+  viewer: PlayerId;
+  /** Dragged height, or null to size the hand from the cards in it. */
+  height: number | null;
+  innerRef: React.RefObject<HTMLDivElement>;
+}) {
   const send = useStore((s) => s.send);
   const hold = useStore((s) => s.holdPriority);
   const [menu, setMenu] = useState<IID | null>(null);
@@ -246,7 +329,16 @@ function Hand({ view, viewer }: { view: PlayerView; viewer: PlayerId }) {
   }, []);
 
   return (
-    <div className={`hand${view.omniscienceActive ? ' omniscience' : ''}`}>
+    <div
+      ref={innerRef}
+      // The cards follow the height rather than the other way round: dragging the
+      // divider is how you make the hand bigger to read it or smaller to see the
+      // board, and a taller strip of the same small cards would do neither.
+      className={`hand${view.omniscienceActive ? ' omniscience' : ''}${
+        height === null ? '' : ' is-sized'
+      }`}
+      style={height === null ? undefined : ({ '--hand-h': `${height}px` } as React.CSSProperties)}
+    >
       {view.hand.map((iid, i) => {
         const card = view.cards[iid];
         if (!card) return null;

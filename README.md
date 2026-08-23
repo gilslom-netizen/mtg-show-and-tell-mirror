@@ -197,11 +197,29 @@ control as well as a shortcut:
 - **Auto-pass** with per-situation stop settings. "Only stop if I can answer" removes
   most of the clicking in this matchup. The delay is randomised inside a fixed
   window so the opponent cannot read your hand off how fast you pass.
+- **Combat that gets out of the way.** This deck wins by resolving a spell, so on
+  most turns nobody has a creature and combat is three rounds of priority spent
+  pressing pass. The engine skips the declare blockers and combat damage steps
+  when nothing attacked (CR 506.5), and the client's default combat stop is "only
+  if combat matters" — so passing out of the beginning of combat lands in the
+  second main phase. Set it back to "always stop" in Settings if you want the
+  steps.
 - **Trigger policies** for Hullbreaker Horror and Orcish Bowmasters, so an
-  Omniscience turn does not raise a modal on every free spell. Hold `Alt` to be
-  asked anyway.
-- **Omniscience mode** — FREE badges across the hand, a cast counter, and hold
-  priority switched on automatically so a combo turn chains.
+  Omniscience turn does not raise a modal on every free spell. Bowmasters defaults
+  to "only if obvious": their face when they control no creature, and a real
+  prompt the moment they do. Hold `Alt` to be asked anyway.
+- **Omniscience mode** — FREE badges across the hand and a cast counter. Holding
+  priority is `H` and is *not* automatic: an Omniscience turn is mostly ordinary
+  spells, and holding for all of them turns each one into a click. The setting is
+  still there if you prefer it.
+- **Put a decision aside.** Any prompt can be minimised with the control in its
+  corner or with `B`. The dialog goes away, the board is fully visible, and the
+  decision waits in a strip between the board and your hand until you come back.
+  Nothing is sent either way.
+- **Drag the dividers.** The line between the two boards, the one beside the log
+  and the one above your hand all resize what they separate; double click a
+  divider to put it back. The hand's cards scale with its height, so pulling it
+  down is how you see more board.
 - **Known top of library** — built only from reveals the player actually saw, wiped
   by any shuffle. This is what makes fetch-after-Brainstorm a real decision again.
 - **Cards you can actually read** — art comes from Scryfall at `large`, the hover
