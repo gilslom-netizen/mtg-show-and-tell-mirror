@@ -2,7 +2,16 @@ import { create } from 'zustand';
 import type { Intent } from '@engine/game';
 import type { PlayerView } from '@engine/redact';
 import type { ChoiceResponse, GameEvent, IID, PlayerId } from '@engine/types';
-import type { Connection, ConnectionInfo, OnlineCapability } from './connection';
+import type {
+  CardPool,
+  Connection,
+  ConnectionInfo,
+  OnlineCapability,
+  SessionPhase,
+} from './connection';
+import type { DeckEntry } from '@engine/state';
+import type { DraftView } from '../draft/redact';
+import type { DraftAction } from '../draft/types';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from './settings';
 
 /**
@@ -61,6 +70,13 @@ interface StoreState {
   connInfo: ConnectionInfo | null;
   /** What the host can actually host, from the /api/health probe. */
   online: OnlineCapability | null;
+
+  /** Draft, deckbuilding or playing. */
+  phase: SessionPhase;
+  draft: DraftView | null;
+  pool: CardPool | null;
+  /** Seats that have locked a decklist in for the game about to start. */
+  deckReady: PlayerId[];
   /** Whose side of the table we are looking at. */
   viewSeat: PlayerId;
   views: Record<PlayerId, PlayerView | null>;
@@ -85,6 +101,8 @@ interface StoreState {
    * you just did. One action per state, per seat: the next snapshot re-arms it.
    */
   actedFrom: Record<PlayerId, PlayerView | null>;
+  /** The draft view the last bid or pick was sent from. */
+  actedFromDraft: DraftView | null;
 
   hoveredIid: IID | null;
   /** Cards highlighted because the pointer is over a log line. */
@@ -117,6 +135,10 @@ interface StoreState {
   toggle(panel: 'logOpen' | 'settingsOpen' | 'helpOpen'): void;
   setArtAvailable(v: boolean): void;
   setOnlineCapability(v: OnlineCapability): void;
+  /** Bid, withdraw, or keep the cards from a pile you bought. */
+  sendDraft(action: DraftAction, seat?: PlayerId): void;
+  /** Lock a decklist in for the next game. */
+  sendDeck(deck: DeckEntry[], seat?: PlayerId): void;
   dismissError(): void;
   /** The view for the seat currently being displayed. */
   currentView(): PlayerView | null;
@@ -132,6 +154,10 @@ export const useStore = create<StoreState>((set, get) => ({
   connection: null,
   connInfo: null,
   online: null,
+  phase: 'game',
+  draft: null,
+  pool: null,
+  deckReady: [],
   viewSeat: 'p1',
   views: { p1: null, p2: null },
   settings: typeof localStorage === 'undefined' ? DEFAULT_SETTINGS : loadSettings(),
@@ -140,6 +166,7 @@ export const useStore = create<StoreState>((set, get) => ({
   forceStop: false,
   holdPriority: false,
   actedFrom: { p1: null, p2: null },
+  actedFromDraft: null,
   hoveredIid: null,
   highlightIids: [],
   revealing: null,
@@ -195,10 +222,18 @@ export const useStore = create<StoreState>((set, get) => ({
     const nextInfo = conn.info();
     const infoChanged =
       JSON.stringify(nextInfo) !== JSON.stringify(get().connInfo);
+
+    // The seat this client actually holds; online that is the only one, and in
+    // a local session it is whichever half of the table is being looked at.
+    const mySeat = seats.length === 1 ? seats[0] : get().viewSeat;
     set({
       views,
       knownTop,
       error: conn.lastError(),
+      phase: conn.phase(),
+      draft: conn.draftView(mySeat),
+      pool: conn.cardPool(mySeat),
+      deckReady: conn.deckReady(),
       ...(infoChanged ? { connInfo: nextInfo } : {}),
       ...(reveal ? { revealing: reveal } : {}),
     });
@@ -295,6 +330,28 @@ export const useStore = create<StoreState>((set, get) => ({
   },
   setOnlineCapability(v) {
     set({ online: v });
+  },
+
+  sendDraft(action, seat) {
+    const conn = get().connection;
+    if (!conn) return;
+    const s = seat ?? get().viewSeat;
+    const draft = get().draft;
+    if (draft) {
+      // Same guard as the game's send(): online there is a round trip between
+      // acting and seeing the result, and during it the screen still shows your
+      // own turn. A second click — an impatient double press on Withdraw — would
+      // otherwise send a second bid the server rightly refuses.
+      if (get().actedFromDraft === draft) return;
+      set({ actedFromDraft: draft });
+    }
+    conn.submitDraftAction(s, action);
+  },
+
+  sendDeck(deck, seat) {
+    const conn = get().connection;
+    if (!conn) return;
+    conn.submitDeck(seat ?? get().viewSeat, deck);
   },
 
   setArtAvailable(v) {

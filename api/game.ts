@@ -102,6 +102,9 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       const result = await join(store, code, {
         token,
         name: typeof body.name === 'string' ? body.name : undefined,
+        // Only used when this request is the one that creates the room.
+        format: body.format === 'draft' ? 'draft' : 'classic',
+        bestOf: typeof body.bestOf === 'number' ? body.bestOf : undefined,
       });
       if ('error' in result) return void res.status(409).json({ error: result.error });
       const snap = await snapshot(store, code, result.seat);

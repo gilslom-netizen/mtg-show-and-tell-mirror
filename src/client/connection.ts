@@ -4,6 +4,9 @@ import { redact, type PlayerView } from '@engine/redact';
 import { MatchTracker, type MatchState } from '@engine/match';
 import { stageScenario, type ScenarioSpec } from '@engine/scenario';
 import type { ChoiceResponse, GameEvent, PlayerId } from '@engine/types';
+import type { DeckEntry } from '@engine/state';
+import type { DraftView } from '../draft/redact';
+import type { DraftAction } from '../draft/types';
 
 /** What the lobby and the waiting screen need to show while nothing is playable yet. */
 export interface ConnectionInfo {
@@ -42,6 +45,16 @@ export interface Connection {
   subscribe(cb: () => void): () => void;
   /** Connection state for the lobby and the waiting screen. */
   info(): ConnectionInfo;
+  /** Which of draft, deckbuilding or playing this session is doing. */
+  phase(): SessionPhase;
+  /** The draft as this seat may see it, while drafting. */
+  draftView(seat: PlayerId): DraftView | null;
+  submitDraftAction(seat: PlayerId, action: DraftAction): void;
+  /** What this seat may build with, while deckbuilding. */
+  cardPool(seat: PlayerId): CardPool | null;
+  /** Who has already locked a list in. */
+  deckReady(): PlayerId[];
+  submitDeck(seat: PlayerId, deck: DeckEntry[]): void;
   /** Human readable problem with the last action, if any. */
   lastError(): string | null;
   clearError(): void;
@@ -69,6 +82,28 @@ abstract class BaseConnection implements Connection {
   info(): ConnectionInfo {
     return { kind: this.kind, status: 'open', players: [], ready: true };
   }
+
+  // A connection that does not draft is always in the game phase; the draft
+  // members exist so no component has to know which kind it is holding.
+  phase(): SessionPhase {
+    return 'game';
+  }
+
+  draftView(_seat: PlayerId): DraftView | null {
+    return null;
+  }
+
+  submitDraftAction(_seat: PlayerId, _action: DraftAction): void {}
+
+  cardPool(_seat: PlayerId): CardPool | null {
+    return null;
+  }
+
+  deckReady(): PlayerId[] {
+    return [];
+  }
+
+  submitDeck(_seat: PlayerId, _deck: DeckEntry[]): void {}
 
   clearError(): void {
     if (this.error !== null) {
@@ -266,8 +301,21 @@ export async function probeOnline(): Promise<OnlineCapability> {
   }
 }
 
+export type SessionPhase = 'draft' | 'build' | 'game';
+
+/** What a player may put in a deck: the shared mirror, their picks, their lands. */
+export interface CardPool {
+  base: DeckEntry[];
+  drafted: DeckEntry[];
+  lands: DeckEntry[];
+}
+
 interface Snapshot {
   seat: PlayerId;
+  phase?: SessionPhase;
+  draft?: DraftView;
+  pool?: CardPool;
+  deckReady?: PlayerId[];
   version: number;
   rev: number;
   view: PlayerView;
@@ -285,6 +333,9 @@ export interface HttpOptions {
   playerName: string;
   /** How often to look for the opponent's move. */
   pollMs?: number;
+  /** Only used by whoever opens the room; a joiner takes what is already set. */
+  format?: 'classic' | 'draft';
+  bestOf?: number;
 }
 
 export class HttpConnection extends BaseConnection {
@@ -301,6 +352,10 @@ export class HttpConnection extends BaseConnection {
   private inFlight = false;
   /** Consecutive polls that found nothing new. Drives the backoff. */
   private quiet = 0;
+  private sessionPhase: SessionPhase = 'game';
+  private draft: DraftView | null = null;
+  private pool: CardPool | null = null;
+  private ready: PlayerId[] = [];
   lobby: { players: { seat: PlayerId; name: string }[]; ready: boolean } = {
     players: [],
     ready: false,
@@ -354,6 +409,10 @@ export class HttpConnection extends BaseConnection {
       this.saveToken(snap.token);
     }
     if (snap.seat) this.seat = snap.seat;
+    this.sessionPhase = snap.phase ?? 'game';
+    this.draft = snap.draft ?? null;
+    this.pool = snap.pool ?? null;
+    this.ready = snap.deckReady ?? [];
     this.currentView = snap.view;
     this.matchState = snap.match;
     this.version = snap.version;
@@ -371,7 +430,11 @@ export class HttpConnection extends BaseConnection {
 
   private async joinRoom(): Promise<void> {
     this.token = this.loadToken() ?? null;
-    const snap = await this.post({ name: this.opts.playerName });
+    const snap = await this.post({
+      name: this.opts.playerName,
+      format: this.opts.format,
+      bestOf: this.opts.bestOf,
+    });
     this.absorb(snap);
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', this.onVisibility);
@@ -461,6 +524,30 @@ export class HttpConnection extends BaseConnection {
       players: this.lobby.players,
       ready: this.lobby.ready,
     };
+  }
+
+  phase(): SessionPhase {
+    return this.sessionPhase;
+  }
+
+  draftView(seat: PlayerId): DraftView | null {
+    return this.seat === seat ? this.draft : null;
+  }
+
+  submitDraftAction(_seat: PlayerId, action: DraftAction): void {
+    void this.act({ t: 'draft', action });
+  }
+
+  cardPool(seat: PlayerId): CardPool | null {
+    return this.seat === seat ? this.pool : null;
+  }
+
+  deckReady(): PlayerId[] {
+    return this.ready;
+  }
+
+  submitDeck(_seat: PlayerId, deck: DeckEntry[]): void {
+    void this.act({ t: 'submitDeck', deck });
   }
 
   seats(): PlayerId[] {

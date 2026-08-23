@@ -126,7 +126,10 @@ export class Game {
   static create(opts: {
     gameId: string;
     seed: number;
-    deck: DeckEntry[];
+    /** The shared decklist, for the mirror. */
+    deck?: DeckEntry[];
+    /** Per-seat decklists, for drafted play. Wins over `deck` when given. */
+    decks?: Record<PlayerId, DeckEntry[]>;
     startingPlayer: PlayerId;
     bare?: boolean;
   }): Game {

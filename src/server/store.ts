@@ -1,6 +1,8 @@
 import type { Intent } from '../engine/game.js';
 import type { MatchState } from '../engine/match.js';
+import type { DeckEntry } from '../engine/state.js';
 import type { ChoiceResponse, PlayerId } from '../engine/types.js';
+import type { DraftAction } from '../draft/types.js';
 
 /**
  * Where an online match lives between requests.
@@ -18,7 +20,19 @@ import type { ChoiceResponse, PlayerId } from '../engine/types.js';
 
 export type LoggedAction =
   | { k: 'intent'; seat: PlayerId; intent: Intent }
-  | { k: 'choice'; seat: PlayerId; choiceId: string; response: ChoiceResponse };
+  | { k: 'choice'; seat: PlayerId; choiceId: string; response: ChoiceResponse }
+  /** A bid or a pick during the draft. */
+  | { k: 'draft'; seat: PlayerId; action: DraftAction }
+  /** A finished decklist, submitted from the deckbuilder. */
+  | { k: 'deck'; seat: PlayerId; deck: DeckEntry[] };
+
+/**
+ * What a room is doing right now.
+ *
+ * A classic room is only ever playing. A drafted room walks draft → build →
+ * game, and returns to build between games so both players can sideboard.
+ */
+export type RoomPhase = 'draft' | 'build' | 'game';
 
 export interface RoomMeta {
   code: string;
@@ -32,6 +46,18 @@ export interface RoomMeta {
   createdAt: number;
   /** Bumped whenever meta changes, so a poll can notice a new game starting. */
   rev: number;
+
+  /** Whether this room drafts first. Absent on rooms made before drafting existed. */
+  format?: 'classic' | 'draft';
+  phase?: RoomPhase;
+  /** Seed for the draft, which shuffles a different pool from the game. */
+  draftSeed?: number;
+  /** What each player took, so the pool survives the log being cleared. */
+  drafted?: Partial<Record<PlayerId, string[]>>;
+  /** The decks players built, used from the next game on. */
+  decks?: Partial<Record<PlayerId, DeckEntry[]>>;
+  /** Who has confirmed their deck for the game about to start. */
+  ready?: PlayerId[];
 }
 
 export interface MatchStore {

@@ -91,6 +91,15 @@ export const hedgeMaze = surveilLand('hedge_maze');
 export const undercitySewers = surveilLand('undercity_sewers');
 
 /**
+ * The rest of the blue duals, which the draft hands every player: each colour
+ * paired with blue, two shocklands and two surveil lands. They behave exactly
+ * like the ones the mirror already runs, so they are the same two factories.
+ */
+export const steamVents = shockland('steam_vents');
+export const meticulousArchive = surveilLand('meticulous_archive');
+export const thunderingFalls = surveilLand('thundering_falls');
+
+/**
  * Mystic Sanctuary — "enters tapped unless you control three or more other Islands".
  *
  * Island is a land TYPE, so Breeding Pool, Watery Grave, Hedge Maze, Hallowed

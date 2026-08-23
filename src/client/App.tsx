@@ -18,6 +18,8 @@ import { SettingsPanel, HelpPanel } from './panels';
 import { inviteLink, normaliseRoomCode, randomRoomCode, roomFromUrl } from './room-code';
 import { canAct, useStore } from './store';
 import { PhaseTrack } from './ui';
+import { DraftScreen } from './Draft';
+import { DeckBuilder } from './DeckBuilder';
 
 /**
  * Shell: lobby, the two chrome bars and the always-visible state of the comfort
@@ -44,7 +46,24 @@ export function App() {
   }, [setArtAvailable]);
 
   if (!connection) return <Lobby onStart={setMode} />;
-  return <Game viewer={viewSeat} mode={mode} />;
+  return <Session viewer={viewSeat} mode={mode} />;
+}
+
+/**
+ * Which screen a connected session is on.
+ *
+ * A classic room only ever plays. A drafted one walks draft → build → game, and
+ * comes back to the builder between games so both players can sideboard.
+ */
+function Session({ viewer, mode }: { viewer: PlayerId; mode: Mode }) {
+  const phase = useStore((s) => s.phase);
+  const info = useStore((s) => s.connInfo);
+
+  // Online, neither the draft nor the game can start until both seats are taken.
+  if (info?.kind === 'remote' && !info.ready) return <WaitingRoom />;
+  if (phase === 'draft') return <DraftScreen viewer={viewer} />;
+  if (phase === 'build') return <DeckBuilder viewer={viewer} />;
+  return <Game viewer={viewer} mode={mode} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +131,9 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
   // Whether this tab was opened from an invite link, kept from the first render so
   // it does not flip when the code goes into the address bar.
   const [invited] = useState(() => roomFromUrl() !== null);
+  // Drafting is the main way to play; the mirror on its own is the other option.
+  const [format, setFormat] = useState<'draft' | 'classic'>('draft');
+  const [bestOf, setBestOf] = useState(3);
 
   // Which online transport is available depends on where this is running: a
   // serverless host has the HTTP API, a laptop with `npm run server` has a socket.
@@ -141,8 +163,10 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
 
   const startOnline = () => {
     const code = normaliseRoomCode(room) || randomRoomCode();
+    // Format and length only take effect for whoever opens the room; the second
+    // player joins into whatever is already set up there.
     const conn = online?.http
-      ? new HttpConnection({ room: code, playerName: 'player' })
+      ? new HttpConnection({ room: code, playerName: 'player', format, bestOf })
       : new RemoteConnection({
           url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
           room: code,
@@ -175,6 +199,47 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
           Both players run the same sixty cards. The only secrets left are order,
           count, and what you are about to put onto the battlefield.
         </p>
+
+        <p style={{ margin: '14px 0 4px', fontSize: 12, color: 'var(--text-dim)' }}>
+          How you want to play
+        </p>
+        <div className="mode-grid">
+          <button
+            className={`mode-option${format === 'draft' ? ' is-picked' : ''}`}
+            data-testid="format-draft"
+            onClick={() => setFormat('draft')}
+          >
+            <b>Draft, then play</b>
+            <span>
+              Bid coins pile by pile for a shared pool, build around the mirror, then
+              play the series.
+            </span>
+          </button>
+          <button
+            className={`mode-option${format === 'classic' ? ' is-picked' : ''}`}
+            data-testid="format-classic"
+            onClick={() => setFormat('classic')}
+          >
+            <b>The mirror alone</b>
+            <span>Skip the draft. Both players run the same sixty and nothing else.</span>
+          </button>
+        </div>
+
+        <p style={{ margin: '14px 0 4px', fontSize: 12, color: 'var(--text-dim)' }}>
+          Length of the series
+        </p>
+        <div className="row" data-testid="best-of">
+          {[1, 3, 5].map((n) => (
+            <button
+              key={n}
+              className={`chip-choice${bestOf === n ? ' is-picked' : ''}`}
+              data-testid={`best-of-${n}`}
+              onClick={() => setBestOf(n)}
+            >
+              Best of {n}
+            </button>
+          ))}
+        </div>
 
         <details>
           <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text-dim)' }}>

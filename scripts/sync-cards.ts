@@ -23,6 +23,7 @@ import { join } from 'node:path';
 const ROOT = process.cwd();
 const DATA = join(ROOT, 'data', 'oracle-cards.json');
 const DECK = join(ROOT, 'data', 'decklist.json');
+const DRAFT = join(ROOT, 'data', 'draft.json');
 const API = 'https://api.scryfall.com/cards/collection';
 const KEEP = [
   'name',
@@ -71,24 +72,47 @@ async function main(): Promise<void> {
   const deck = JSON.parse(readFileSync(DECK, 'utf8')) as {
     maindeck: { name: string }[];
   };
-  const names = [...new Set(deck.maindeck.map((c) => c.name))];
+  const draft = JSON.parse(readFileSync(DRAFT, 'utf8')) as {
+    pool: string[];
+    grantedLands: { name: string }[];
+  };
+  // One snapshot covers everything the app can ever show: the shared main deck,
+  // the draft pool, and the lands every drafter is handed. Splitting these into
+  // separate snapshots would only create a way for them to disagree.
+  const names = [
+    ...new Set([
+      ...deck.maindeck.map((c) => c.name),
+      ...draft.pool,
+      ...draft.grantedLands.map((l) => l.name),
+    ]),
+  ];
 
-  const res = await fetch(API, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      'User-Agent': 'show-and-tell-mirror/1.0',
-    },
-    body: JSON.stringify({ identifiers: names.map((name) => ({ name })) }),
-  });
-  if (!res.ok) throw new Error(`Scryfall returned ${res.status}`);
-  const json = (await res.json()) as { data: Json[]; not_found: Json[] };
-  if (json.not_found.length > 0) {
-    throw new Error(`Scryfall could not find: ${JSON.stringify(json.not_found)}`);
+  // Scryfall's collection endpoint takes at most 75 identifiers per request.
+  const batches: string[][] = [];
+  for (let i = 0; i < names.length; i += 70) batches.push(names.slice(i, i + 70));
+
+  const found: Json[] = [];
+  const notFound: Json[] = [];
+  for (const batch of batches) {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'User-Agent': 'show-and-tell-mirror/1.0',
+      },
+      body: JSON.stringify({ identifiers: batch.map((name) => ({ name })) }),
+    });
+    if (!res.ok) throw new Error(`Scryfall returned ${res.status}`);
+    const json = (await res.json()) as { data: Json[]; not_found: Json[] };
+    found.push(...json.data);
+    notFound.push(...json.not_found);
+  }
+  if (notFound.length > 0) {
+    throw new Error(`Scryfall could not find: ${JSON.stringify(notFound)}`);
   }
 
-  const fresh = json.data
+  const fresh = found
     .map(shape)
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
   const current = JSON.parse(readFileSync(DATA, 'utf8')) as { cards: Json[] };

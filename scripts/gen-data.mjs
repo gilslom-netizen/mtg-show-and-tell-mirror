@@ -33,6 +33,9 @@ export const ${constName}${type} = ${JSON.stringify(data, null, 2)};
 }
 
 mkdirSync(OUT, { recursive: true });
-const a = emit('decklist.gen.ts', 'decklist.json', 'DECKLIST', '');
-const b = emit('oracle-cards.gen.ts', 'oracle-cards.json', 'ORACLE_DATA', '');
-console.log(`Wrote src/engine/generated/decklist.gen.ts (${a} bytes) and oracle-cards.gen.ts (${b} bytes).`);
+const written = [
+  ['decklist.gen.ts', 'decklist.json', 'DECKLIST'],
+  ['oracle-cards.gen.ts', 'oracle-cards.json', 'ORACLE_DATA'],
+  ['draft.gen.ts', 'draft.json', 'DRAFT_DATA'],
+].map(([file, json, name]) => `${file} (${emit(file, json, name, '')} bytes)`);
+console.log(`Wrote ${written.join(', ')} to src/engine/generated/.`);

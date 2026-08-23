@@ -40,7 +40,7 @@ cannot end up in two different rooms — which is exactly what used to happen wh
 both of them left the box empty.
 
 ```bash
-npm test             # 183 tests, including 150 fuzzed games
+npm test             # 222 tests, including 150 fuzzed games
 npm run typecheck
 npm run check:serverless   # runs the API the way Vercel runs it
 npm run build              # typecheck + that check + the app build
@@ -114,6 +114,42 @@ tenth of what it did.
 Appends use `RPUSH`, which is atomic. That matters at exactly one moment in this
 format — the Show and Tell secret choice, where both players legitimately act at
 the same instant. Redis decides the order and the engine is happy with either.
+
+---
+
+## Drafting
+
+The main way to play. Both players start with **24 coins** and bid for the card
+pool one pile at a time.
+
+A pile is four cards: **two face up to both players, and one each that only its
+owner can see**. So you know three of the four, your opponent knows a different
+three, and the bidding is as much about what their face tells you as about what
+is on the table. The opener alternates every pile and bids at least one or
+withdraws; the other player raises or withdraws. Whoever is left takes the pile
+and pays their bid — if both withdraw, the pile is gone. The winner keeps two
+cards and throws the other two away.
+
+The screen carries the numbers that make a bid a decision rather than a guess:
+piles left, cards left, and what an average remaining pile is worth (both purses
+divided by the piles still to buy). Spend well above that and you are betting
+this pile beats the ones you are giving up later.
+
+Afterwards each player gets what they bought, the shared sixty, and **sixteen
+lands** — each colour paired with blue, two shocklands and two surveil lands, so
+a splash always has a manabase. Then the deckbuilder: one pool, two columns,
+one click to move a card. It opens again between games, which is the
+sideboarding this format never had.
+
+Series length is chosen in the lobby: best of 1, 3 (default) or 5, for drafted
+and classic rooms alike.
+
+> **What is not finished.** The drafted cards are in the card database so they
+> can be drafted, shown and deckbuilt with, but a card needs an engine script
+> before it can actually be cast — and only the ones the mirror already plays
+> have one. The deckbuilder marks the rest with ⚠ and says so in a banner rather
+> than letting it be discovered mid-game. The sixteen granted lands *are*
+> implemented, since every drafted game deals them.
 
 ---
 
@@ -232,6 +268,8 @@ with.
 | `priority-windows.test.ts` | Acting in the opponent's turn — the fetch in every step — and each form of passing |
 | `opening.test.ts` | The simultaneous mulligan, including that neither player can read the other's decision early |
 | `art.test.ts` | Art resolution and every mana symbol in the deck |
+| `draft.test.ts` | The auction rule by rule, who pays what, and that neither player's private card or picks leak |
+| `draft-room.test.ts` | A drafted room end to end over the replay-the-log path, and decklist legality |
 
 Two browser profiles joining one room over both transports is checked by hand
 against `npm run dev`, the built self-hosted server, and a static host with no

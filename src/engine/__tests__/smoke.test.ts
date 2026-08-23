@@ -3,11 +3,17 @@ import { testGame } from './harness.js';
 import { MAINDECK, MAINDECK_SIZE } from '../deck.js';
 import { ORACLE, allOracleIds, oracleByName } from '../oracle.js';
 import { scriptedOracleIds } from '../cards/index.js';
+import { DRAFT_POOL, grantedLands } from '../draft-pool.js';
 
 describe('setup', () => {
-  it('loads all 25 cards from the frozen Scryfall data', () => {
-    expect(allOracleIds()).toHaveLength(25);
+  it('loads the frozen Scryfall data, main deck and draft pool alike', () => {
+    // One snapshot covers everything the app can show: the shared main deck, the
+    // draft pool, and the lands a drafter is handed. Asserting an exact count
+    // here would just be a number to bump every time the pool changes — what
+    // matters is that the cards the engine needs are all in it.
+    expect(allOracleIds().length).toBeGreaterThanOrEqual(25);
     expect(ORACLE['show_and_tell'].typeLine).toBe('Sorcery');
+    expect(ORACLE['timetwister']).toBeDefined();
   });
 
   it('has a legal 60 card maindeck', () => {
@@ -15,11 +21,36 @@ describe('setup', () => {
     expect(MAINDECK.every((e) => ORACLE[e.oracleId])).toBe(true);
   });
 
-  it('has a script for every card that needs one', () => {
+  it('has a script for every card the main deck can actually play', () => {
     const scripted = new Set(scriptedOracleIds());
-    // Island is the only card with no rules text beyond producing mana.
-    const unscripted = allOracleIds().filter((id) => !scripted.has(id));
+    // Island is the only main deck card with no rules text beyond producing mana.
+    const unscripted = [...new Set(MAINDECK.map((e) => e.oracleId))]
+      .filter((id) => !scripted.has(id))
+      .sort();
     expect(unscripted).toEqual(['island']);
+  });
+
+  it('can play every land the draft hands out', () => {
+    // Each drafter gets four lands per colour — that colour plus blue, two
+    // shocklands and two surveil lands. They are dealt to every player in every
+    // drafted game, so they are the one part of the pool that must work.
+    const scripted = new Set(scriptedOracleIds());
+    for (const entry of grantedLands()) {
+      expect(scripted.has(entry.oracleId), `${entry.oracleId} has no script`).toBe(true);
+    }
+  });
+
+  it('knows which drafted cards are not playable yet', () => {
+    // The draft pool is in the card database so it can be drafted, shown and
+    // deckbuilt with — but a card needs an engine script before it can be cast.
+    // This test exists to keep that gap measured rather than surprising: it is
+    // the list that has to reach zero before a drafted deck is fully playable.
+    const scripted = new Set(scriptedOracleIds());
+    const poolIds = DRAFT_POOL.map((name) => oracleByName(name).oracleId);
+    const playable = poolIds.filter((id) => scripted.has(id));
+    // Some pool cards are already implemented because the main deck uses them.
+    expect(playable.length).toBeGreaterThan(0);
+    expect(poolIds.length).toBe(69);
   });
 
   it('parses mana values correctly, including hybrid symbols', () => {

@@ -69,7 +69,13 @@ export interface DeckEntry {
 export function createGameState(opts: {
   gameId: string;
   seed: number;
-  deck: DeckEntry[];
+  /**
+   * The deck both players run, for the mirror where that is the whole point.
+   * Drafted play gives each seat its own list instead — see `decks`.
+   */
+  deck?: DeckEntry[];
+  /** Per-seat decklists. Takes precedence over `deck` when given. */
+  decks?: Record<PlayerId, DeckEntry[]>;
   startingPlayer: PlayerId;
   /** Skip shuffling and opening hands — used by the test harness. */
   bare?: boolean;
@@ -110,8 +116,14 @@ export function createGameState(opts: {
     nextLogSeq: 1,
   };
 
+  const deckFor = (player: PlayerId): DeckEntry[] => {
+    const list = opts.decks?.[player] ?? opts.deck;
+    if (!list) throw new Error(`No decklist for ${player}`);
+    return list;
+  };
+
   for (const player of ['p1', 'p2'] as PlayerId[]) {
-    for (const entry of opts.deck) {
+    for (const entry of deckFor(player)) {
       for (let i = 0; i < entry.count; i++) {
         const iid = state.nextIid++;
         state.cards[iid] = makeCard(iid, entry.oracleId, player, 'library');

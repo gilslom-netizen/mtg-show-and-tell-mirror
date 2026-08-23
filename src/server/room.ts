@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { MAINDECK } from '../engine/deck.js';
+import { applyDraftAction } from '../draft/draft.js';
+import { buildDraft, draftedCardPool, mergeEntries } from '../draft/session.js';
+import { redactDraft, type DraftView } from '../draft/redact.js';
+import type { DraftAction, DraftState } from '../draft/types.js';
+import type { DeckEntry } from '../engine/state.js';
 import { Game, type Intent } from '../engine/game.js';
 import { MatchTracker, newMatchState, type MatchState } from '../engine/match.js';
 import { redact, redactEvents, type PlayerView } from '../engine/redact.js';
@@ -16,6 +21,14 @@ import type { LoggedAction, MatchStore, RoomMeta } from './store.js';
 
 export interface Snapshot {
   seat: PlayerId;
+  /** Which of draft, deckbuilding or playing this room is doing. */
+  phase: 'draft' | 'build' | 'game';
+  /** Present while drafting. */
+  draft?: DraftView;
+  /** Present while deckbuilding: what this seat may put in a deck. */
+  pool?: { base: DeckEntry[]; drafted: DeckEntry[]; lands: DeckEntry[] };
+  /** Who has locked in a deck for the game about to start. */
+  deckReady?: PlayerId[];
   version: number;
   rev: number;
   view: PlayerView;
@@ -33,17 +46,48 @@ export function normaliseCode(raw: string): string {
     .slice(0, 12);
 }
 
-export function freshMeta(code: string): RoomMeta {
+export interface RoomOptions {
+  /** Drafted rooms open with a draft; classic rooms go straight to the mirror. */
+  format?: 'classic' | 'draft';
+  /** 1, 3 or 5. */
+  bestOf?: number;
+}
+
+export function freshMeta(code: string, opts: RoomOptions = {}): RoomMeta {
   const startingPlayer: PlayerId = Math.random() < 0.5 ? 'p1' : 'p2';
+  const format = opts.format === 'draft' ? 'draft' : 'classic';
+  const bestOf = [1, 3, 5].includes(opts.bestOf ?? 3) ? (opts.bestOf ?? 3) : 3;
   return {
     code,
     seed: Math.floor(Math.random() * 2 ** 31),
     startingPlayer,
     seats: {},
-    match: newMatchState(startingPlayer),
+    match: newMatchState(startingPlayer, bestOf),
     createdAt: Date.now(),
     rev: 1,
+    format,
+    phase: format === 'draft' ? 'draft' : 'game',
+    draftSeed: Math.floor(Math.random() * 2 ** 31),
+    drafted: {},
+    decks: {},
+    ready: [],
   };
+}
+
+/** The phase a room is in, defaulting rooms made before drafting existed. */
+export function phaseOf(meta: RoomMeta): 'draft' | 'build' | 'game' {
+  return meta.phase ?? 'game';
+}
+
+/** The decks a game should be dealt from: what players built, else the mirror. */
+export function decksFor(meta: RoomMeta): {
+  deck?: DeckEntry[];
+  decks?: Record<PlayerId, DeckEntry[]>;
+} {
+  const p1 = meta.decks?.p1;
+  const p2 = meta.decks?.p2;
+  if (p1 && p2) return { decks: { p1, p2 } };
+  return { deck: MAINDECK };
 }
 
 /** Replays a log into a game. Actions that no longer apply are skipped, not fatal. */
@@ -51,14 +95,15 @@ export function buildGame(meta: RoomMeta, log: LoggedAction[]): Game {
   const game = Game.create({
     gameId: `${meta.code}-g${meta.match.gameNumber}-${meta.seed}`,
     seed: meta.seed,
-    deck: MAINDECK,
+    ...decksFor(meta),
     startingPlayer: meta.startingPlayer,
   });
   game.advance();
   for (const a of log) {
     try {
       if (a.k === 'intent') game.submitIntent(a.seat, a.intent);
-      else game.submitChoice(a.seat, a.choiceId, a.response);
+      else if (a.k === 'choice') game.submitChoice(a.seat, a.choiceId, a.response);
+      // Draft and deck entries belong to earlier phases and are not game actions.
     } catch {
       // A logged action that will not replay means the log and the engine have
       // diverged. Skipping keeps the rest of the game playable rather than
@@ -66,6 +111,44 @@ export function buildGame(meta: RoomMeta, log: LoggedAction[]): Game {
     }
   }
   return game;
+}
+
+/** Replays the draft half of a log. */
+export function draftFor(meta: RoomMeta, log: LoggedAction[]): DraftState {
+  return buildDraft(
+    `${meta.code}-draft`,
+    meta.draftSeed ?? meta.seed,
+    log.flatMap((a) => (a.k === 'draft' ? [{ seat: a.seat, action: a.action }] : [])),
+  );
+}
+
+export const MIN_DECK_SIZE = 60;
+
+/**
+ * Whether a submitted decklist is one this player could actually own.
+ *
+ * The client's builder enforces the same rules, but the server cannot take its
+ * word for it: a decklist arrives over the wire and decides what the engine
+ * deals, so a hand-rolled request must not be able to conjure four Timetwisters.
+ */
+export function deckProblem(deck: DeckEntry[], draftedOracleIds: string[]): string | null {
+  if (!Array.isArray(deck)) return 'Malformed decklist';
+
+  // Ownership first: "you do not have that card" says more than "too small",
+  // and a list can easily be both.
+  const { all } = draftedCardPool(draftedOracleIds);
+  const owned = new Map(mergeEntries(all).map((e) => [e.oracleId, e.count]));
+  for (const e of deck) {
+    if (!Number.isInteger(e.count) || e.count < 0) return 'Malformed decklist';
+    const have = owned.get(e.oracleId) ?? 0;
+    if (e.count > have) {
+      return `You do not have ${e.count} copies of that card`;
+    }
+  }
+
+  const size = deck.reduce((n, e) => n + e.count, 0);
+  if (size < MIN_DECK_SIZE) return `A deck needs at least ${MIN_DECK_SIZE} cards`;
+  return null;
 }
 
 export function trackerFor(meta: RoomMeta, game: Game): MatchTracker {
@@ -85,12 +168,14 @@ export interface JoinResult {
 export async function join(
   store: MatchStore,
   code: string,
-  opts: { token?: string; name?: string },
+  opts: { token?: string; name?: string } & RoomOptions,
 ): Promise<JoinResult | { error: string }> {
   let meta = await store.getMeta(code);
   let created = false;
   if (!meta) {
-    meta = freshMeta(code);
+    // Whoever opens the room picks the format and the length of the series;
+    // the second player joins into whatever is already set up.
+    meta = freshMeta(code, opts);
     created = true;
   }
 
@@ -122,6 +207,38 @@ export async function snapshot(
   const meta = await store.getMeta(code);
   if (!meta) return null;
   const log = await store.getLog(code);
+  const phase = phaseOf(meta);
+
+  const players = (['p1', 'p2'] as PlayerId[])
+    .filter((s) => meta.seats[s])
+    .map((s) => ({ seat: s, name: meta.seats[s]!.name }));
+  const lobby = { players, ready: players.length === 2 };
+
+  // Drafting and deckbuilding have no game to redact yet, but the client still
+  // wants one shape back, so both carry an empty game view alongside their own.
+  if (phase !== 'game') {
+    const game = buildGame(meta, []);
+    const base = {
+      seat,
+      phase,
+      version: log.length,
+      rev: meta.rev,
+      view: redact(game.state, seat),
+      match: meta.match,
+      events: [],
+      ...lobby,
+    };
+    if (phase === 'draft') {
+      return { ...base, draft: redactDraft(draftFor(meta, log), seat) };
+    }
+    const { base: mainDeck, drafted, lands } = draftedCardPool(meta.drafted?.[seat] ?? []);
+    return {
+      ...base,
+      pool: { base: mainDeck, drafted, lands },
+      deckReady: meta.ready ?? [],
+    };
+  }
+
   const game = buildGame(meta, log);
   const tracker = trackerFor(meta, game);
 
@@ -132,19 +249,15 @@ export async function snapshot(
     await store.setMeta(code, meta);
   }
 
-  const players = (['p1', 'p2'] as PlayerId[])
-    .filter((s) => meta.seats[s])
-    .map((s) => ({ seat: s, name: meta.seats[s]!.name }));
-
   return {
     seat,
+    phase,
     version: log.length,
     rev: meta.rev,
     view: redact(game.state, seat),
     match: meta.match,
     events: opts.events ? redactEvents(game.state, seat, opts.events) : [],
-    players,
-    ready: players.length === 2,
+    ...lobby,
   };
 }
 
@@ -152,7 +265,11 @@ export type RoomAction =
   | { t: 'intent'; intent: Intent }
   | { t: 'choice'; choiceId: string; response: ChoiceResponse }
   | { t: 'cancel' }
-  | { t: 'chooseFirst'; onPlay: PlayerId };
+  | { t: 'chooseFirst'; onPlay: PlayerId }
+  /** Draft: a bid (zero withdraws) or the cards kept from a won pile. */
+  | { t: 'draft'; action: DraftAction }
+  /** Deckbuilding: this seat's finished list. */
+  | { t: 'submitDeck'; deck: DeckEntry[] };
 
 export async function applyAction(
   store: MatchStore,
@@ -163,6 +280,54 @@ export async function applyAction(
   const meta = await store.getMeta(code);
   if (!meta) return { ok: false, error: 'Unknown room' };
   const log = await store.getLog(code);
+  const phase = phaseOf(meta);
+
+  // ---- draft ---------------------------------------------------------------
+  if (action.t === 'draft') {
+    if (phase !== 'draft') return { ok: false, error: 'The draft is over' };
+    const draft = draftFor(meta, log);
+    try {
+      applyDraftAction(draft, seat, action.action);
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+    await store.appendAction(code, { k: 'draft', seat, action: action.action });
+
+    if (draft.phase === 'done') {
+      // Freeze what each player bought before the log is cleared for the game,
+      // and move the room on to deckbuilding.
+      meta.drafted = {
+        p1: draft.won.p1.map((iid) => draft.cards[iid].oracleId),
+        p2: draft.won.p2.map((iid) => draft.cards[iid].oracleId),
+      };
+      meta.phase = 'build';
+      meta.ready = [];
+      meta.rev++;
+      await store.setMeta(code, meta);
+      await store.clearLog(code);
+    }
+    return { ok: true, events: [] };
+  }
+
+  // ---- deckbuilding --------------------------------------------------------
+  if (action.t === 'submitDeck') {
+    if (phase !== 'build') return { ok: false, error: 'Not deckbuilding right now' };
+    const problem = deckProblem(action.deck, meta.drafted?.[seat] ?? []);
+    if (problem) return { ok: false, error: problem };
+    meta.decks = { ...meta.decks, [seat]: action.deck };
+    meta.ready = [...new Set([...(meta.ready ?? []), seat])];
+    // Both locked in: deal the game.
+    if (meta.ready.length === 2) {
+      meta.phase = 'game';
+      meta.seed = Math.floor(Math.random() * 2 ** 31);
+    }
+    meta.rev++;
+    await store.setMeta(code, meta);
+    return { ok: true, events: [] };
+  }
+
+  if (phase !== 'game') return { ok: false, error: 'The game has not started yet' };
+
   const game = buildGame(meta, log);
   game.flushEvents();
 
@@ -208,6 +373,12 @@ export async function applyAction(
       meta.match = tracker.state;
       meta.startingPlayer = chosen;
       meta.seed = Math.floor(Math.random() * 2 ** 31);
+      // A drafted series sideboards between games: go back to the builder and
+      // wait for both players to lock a list in again.
+      if (meta.format === 'draft') {
+        meta.phase = 'build';
+        meta.ready = [];
+      }
       meta.rev++;
       await store.setMeta(code, meta);
       await store.clearLog(code);
