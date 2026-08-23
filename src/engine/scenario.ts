@@ -159,6 +159,20 @@ export const SCENARIOS: Record<string, ScenarioSpec> = {
     },
   },
 
+  bowmastersLoop: {
+    name: 'The Bowmasters loop',
+    startingPlayer: 'p1',
+    description:
+      'Omniscience and Hullbreaker Horror are down and you have two Bowmasters. Cast one, bounce the other, ping them for one, repeat until they are dead.',
+    p1: {
+      hand: ['Orcish Bowmasters'],
+      battlefield: ['Omniscience', 'Hullbreaker Horror', 'Orcish Bowmasters', 'Island'],
+    },
+    p2: {
+      battlefield: ['Watery Grave', 'Breeding Pool'],
+    },
+  },
+
   fetchBrainstorm: {
     name: 'Brainstorm into a fetchland',
     startingPlayer: 'p1',

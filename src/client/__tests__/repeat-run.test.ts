@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { oracleByName } from '@engine/oracle';
 import type { ScenarioSpec } from '@engine/scenario';
 import { LocalConnection, type Connection } from '../connection';
-import { detectPattern } from '../repeat';
-import { useStore } from '../store';
+import { DEFAULT_SETTINGS } from '../settings';
+import { MAX_REPEATS, detectPattern, repeatNeedsPriority } from '../repeat';
+import { shouldStop } from '../hooks';
+import { canAct, useStore } from '../store';
 
 /**
  * The repeat runner against a real game.
@@ -64,6 +66,177 @@ function answerAnyPrompt(): void {
   }
 }
 const history = () => useStore.getState().actionHistory;
+
+/**
+ * Stands in for the comfort layer's auto-pass, using its real rule.
+ *
+ * A repeat run does not pass priority for you — most of a loop is the stack
+ * draining between one iteration and the next, and that is the auto-pass layer's
+ * job. Driving both together here is the only way to prove they do not deadlock
+ * each other, which is precisely what they did on the first attempt.
+ */
+function autoPassTick(): boolean {
+  const st = useStore.getState();
+  for (const seat of ['p1', 'p2'] as const) {
+    const view = st.views[seat];
+    if (!view || view.winner !== null) continue;
+    if (!canAct(view, seat)) continue;
+    const run = st.repeat;
+    if (run && run.seat === seat && repeatNeedsPriority(run.steps, run.index, view)) continue;
+    if (shouldStop(view, DEFAULT_SETTINGS, 'off')) continue;
+    st.send({ t: 'passPriority' }, seat, 'auto');
+    return true;
+  }
+  return false;
+}
+
+/**
+ * The loop this whole feature exists for.
+ *
+ * Omniscience and a Hullbreaker Horror on the battlefield, two Orcish Bowmasters
+ * to pass back and forth: cast one for nothing, let the Horror bounce the one
+ * already down back to your hand, the new one resolves and pings them for 1, and
+ * you are exactly where you started with one less life on their clock. Four
+ * steps, only one of which is an action — the rest are answers, which is why a
+ * runner that only replayed actions could never drive it.
+ */
+const BOWMASTER_LOOP: ScenarioSpec = {
+  name: 'test',
+  description: 'test',
+  startingPlayer: 'p1',
+  p1: {
+    hand: ['Orcish Bowmasters'],
+    battlefield: ['Omniscience', 'Hullbreaker Horror', 'Orcish Bowmasters'],
+  },
+  p2: { life: 20 },
+};
+
+/** Everything a human clicks through in one turn of the loop, once. */
+function playOneLoop(): void {
+  const st = () => useStore.getState();
+  castFromHand('Orcish Bowmasters');
+  for (let guard = 0; guard < 60; guard++) {
+    const view = st().views.p1!;
+    const choice = view.choice;
+    if (choice?.kind === 'chooseMode') {
+      // The Horror's second mode: return target nonland permanent.
+      st().respond({ kind: 'modes', modes: [1] }, 'p1');
+      continue;
+    }
+    if (choice?.kind === 'chooseTargets') {
+      const bowmasters = choice.candidates.find(
+        (c) =>
+          c.kind === 'permanent' &&
+          view.cards[c.iid]?.oracleId === oracleByName('Orcish Bowmasters').oracleId &&
+          view.cards[c.iid]?.controller === 'p1',
+      );
+      const face = choice.candidates.find((c) => c.kind === 'player' && c.id === 'p2');
+      // The Horror bounces my own Bowmasters; the Bowmasters points at them.
+      const pick = choice.source?.oracleId === 'hullbreaker_horror' ? bowmasters : face;
+      if (!pick) throw new Error('the loop lost its target');
+      st().respond({ kind: 'targets', targets: [pick] }, 'p1');
+      continue;
+    }
+    if (choice) throw new Error(`unexpected prompt: ${choice.kind}`);
+    if (view.stack.length === 0) return;
+    // Let the stack resolve; both seats are ours in a local game.
+    const prio = view.priorityPlayer;
+    if (prio) st().send({ t: 'passPriority' }, prio);
+    else return;
+  }
+  throw new Error('the loop did not come back round');
+}
+
+describe('the Bowmasters loop', () => {
+  beforeEach(() => {
+    useStore.getState().detach();
+  });
+
+  it('is recognised as a process after two turns of it', () => {
+    attachScenario(BOWMASTER_LOOP);
+    playOneLoop();
+    playOneLoop();
+    const found = detectPattern(useStore.getState().actionHistory)!;
+    expect(found).not.toBeNull();
+    expect(found.times).toBe(2);
+    // One cast and three answers — the answers are most of the loop.
+    expect(found.steps.filter((s) => s.what === 'act')).toHaveLength(1);
+    expect(found.steps.filter((s) => s.what === 'answer').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('runs itself, and every round takes another point off their life', () => {
+    attachScenario(BOWMASTER_LOOP);
+    playOneLoop();
+    playOneLoop();
+    const before = useStore.getState().views.p1!.players.p2.life;
+    const pattern = detectPattern(useStore.getState().actionHistory)!;
+
+    useStore.getState().startRepeat(pattern.steps, 5, 'p1');
+    for (let tick = 0; tick < 600 && useStore.getState().repeat; tick++) {
+      useStore.getState().advanceRepeat();
+      autoPassTick();
+    }
+    expect(useStore.getState().repeat).toBeNull();
+    expect(useStore.getState().repeatNote).toBeNull();
+
+    // The run goes as fast as the rules allow, which means it recasts as soon as
+    // the bounce resolves and leaves the pings queued behind it. They still all
+    // land — the stack just has to finish.
+    for (let tick = 0; tick < 200 && useStore.getState().views.p1!.stack.length > 0; tick++) {
+      if (!autoPassTick()) break;
+    }
+    expect(useStore.getState().views.p1!.stack).toHaveLength(0);
+    expect(before - useStore.getState().views.p1!.players.p2.life).toBe(5);
+  });
+
+  it('as many as possible actually kills them', () => {
+    attachScenario(BOWMASTER_LOOP);
+    playOneLoop();
+    playOneLoop();
+    const pattern = detectPattern(useStore.getState().actionHistory)!;
+
+    useStore.getState().startRepeat(pattern.steps, MAX_REPEATS, 'p1');
+    for (let tick = 0; tick < 3000; tick++) {
+      const st = useStore.getState();
+      if (!st.repeat && st.views.p1!.stack.length === 0) break;
+      st.advanceRepeat();
+      if (!autoPassTick() && !useStore.getState().repeat) break;
+    }
+    // Twenty life, one ping a round: the loop is lethal and the run gets there.
+    expect(useStore.getState().views.p1!.winner).toBe('p1');
+  });
+
+  it('stops rather than guessing when the loop breaks', () => {
+    attachScenario(BOWMASTER_LOOP);
+    playOneLoop();
+    playOneLoop();
+    const pattern = detectPattern(useStore.getState().actionHistory)!;
+
+    // Take the Horror away: the bounce it depends on is no longer on offer.
+    const view = useStore.getState().views.p1!;
+    const horror = view.battlefield.p1.find(
+      (iid) => view.cards[iid]?.oracleId === oracleByName('Hullbreaker Horror').oracleId,
+    )!;
+    const conn = useStore.getState().connection as unknown as { game: { state: never } };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const state = (conn as any).game.state;
+    state.zones.p1.battlefield = state.zones.p1.battlefield.filter((i: number) => i !== horror);
+    state.cards[horror].zone = 'exile';
+    state.zones.p1.exile.push(horror);
+    useStore.getState().refresh();
+
+    const life = useStore.getState().views.p1!.players.p2.life;
+    useStore.getState().startRepeat(pattern.steps, 5, 'p1');
+    for (let tick = 0; tick < 600 && useStore.getState().repeat; tick++) {
+      useStore.getState().advanceRepeat();
+      autoPassTick();
+    }
+    expect(useStore.getState().repeat).toBeNull();
+    expect(useStore.getState().repeatNote).toBeTruthy();
+    // It got at most one more ping in before noticing, never five.
+    expect(life - useStore.getState().views.p1!.players.p2.life).toBeLessThan(5);
+  });
+});
 
 describe('running a repeat', () => {
   beforeEach(() => {

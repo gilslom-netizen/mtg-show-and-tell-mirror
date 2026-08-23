@@ -212,13 +212,23 @@ control as well as a shortcut:
   priority is `H` and is *not* automatic: an Omniscience turn is mostly ordinary
   spells, and holding for all of them turns each one into a click. The setting is
   still there if you prefer it.
-- **Repeat what you just did.** Some turns are a rhythm rather than a decision:
-  the same land tapped every turn, the same free spell off four copies. Once the
-  client has watched you actually repeat something, a chip offers to run the same
-  stretch again as many times as you say. It only ever replays *your* actions
-  against the legal actions the engine is offering at the time, it never answers
-  a question (a prompt pauses the run and it picks up after you answer), and any
-  click of your own ends it.
+- **Repeat a loop.** Omniscience and a Hullbreaker Horror out, two Orcish
+  Bowmasters: cast one for nothing, let the Horror bounce the other back to your
+  hand, the new one resolves and pings them for one, and you are back where you
+  started. That is twenty round trips through the same four clicks. Once the
+  client has watched you do it twice, a chip offers to run it as many more times
+  as you say — and it does, all the way to a dead opponent.
+
+  A recorded step is either an action you took or an answer you gave, stored by
+  what it *is* rather than which card object it touched: "cast an Orcish
+  Bowmasters", "bounce the Bowmasters I control", "point the ping at them". Every
+  step is resolved against what the engine is offering at that moment, so nothing
+  is fabricated; a question the recording has no answer for stops the run and
+  hands it back to you rather than being guessed at; a round waits for the board
+  to look the way it did when you started that round; and any click of your own
+  ends it. Passing priority is deliberately not repeatable, and the run does not
+  pass for you — the auto-pass layer does that, which is what makes the loop come
+  back round at all.
 - **Atraxa, one type at a time — in any order.** The trigger asks about eight card
   types, and the answers depend on each other: whether you want the artifact
   depends on what the creature and land slots turn out to hold. Any question can

@@ -13,7 +13,14 @@ import type { DeckEntry } from '@engine/state';
 import type { DraftView } from '../draft/redact';
 import type { DraftAction } from '../draft/types';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from './settings';
-import { MAX_REPEATS, signatureOf, type RepeatStep } from './repeat';
+import {
+  MAX_REPEATS,
+  responseFor,
+  waitingForAQuietBoard,
+  stepForChoice,
+  stepForIntent,
+  type RepeatStep,
+} from './repeat';
 
 /**
  * Whether this seat may act right now.
@@ -101,8 +108,20 @@ interface StoreState {
    */
   actionHistory: RepeatStep[];
   historySeat: PlayerId | null;
-  /** An in-progress repeat run, or null. */
-  repeat: { steps: RepeatStep[]; index: number; remaining: number; seat: PlayerId } | null;
+  /**
+   * An in-progress repeat run, or null.
+   *
+   * `waited` counts ticks spent expecting a question that has not appeared, so
+   * a step the trigger policy answered for us can be stepped over instead of
+   * stalling the loop for ever.
+   */
+  repeat: {
+    steps: RepeatStep[];
+    index: number;
+    remaining: number;
+    seat: PlayerId;
+    waited: number;
+  } | null;
   /** Why the last run ended, shown once and then dismissed. */
   repeatNote: string | null;
 
@@ -139,12 +158,17 @@ interface StoreState {
   setViewSeat(seat: PlayerId): void;
   updateSettings(patch: Partial<Settings>): void;
   /**
-   * `source` distinguishes a click from a step of a running repeat: anything the
-   * player does by hand ends the run, which is the only cancel gesture people
-   * reliably reach for.
+   * `source` says where this came from. Only a deliberate click ends a running
+   * repeat — that is the cancel gesture people reliably reach for — so the
+   * comfort layer's own auto-passes and the run's own steps are marked as such.
    */
-  send(intent: Intent, seat?: PlayerId, source?: 'user' | 'repeat'): void;
-  respond(response: ChoiceResponse, seat?: PlayerId): void;
+  send(intent: Intent, seat?: PlayerId, source?: 'user' | 'repeat' | 'auto'): void;
+  /**
+   * `source` says who is answering: you, a step of a running repeat, or a
+   * trigger policy. Only the first two are worth remembering — a policy answers
+   * itself again next time round, so recording it would double the pattern.
+   */
+  respond(response: ChoiceResponse, seat?: PlayerId, source?: 'user' | 'repeat' | 'policy'): void;
   cancel(): void;
   setAutoPass(mode: AutoPassMode): void;
   /** Run the detected pattern again `times` more times. */
@@ -289,7 +313,9 @@ export const useStore = create<StoreState>((set, get) => ({
     if (!conn) return;
     const s = seat ?? get().viewSeat;
     if (!conn.seats().includes(s)) return;
-    if (source === 'user' && get().repeat) set({ repeat: null });
+    // Only your own seat's clicks; in lab mode the other side is auto-passing
+    // constantly and that is not you changing your mind.
+    if (source === 'user' && get().repeat?.seat === s) set({ repeat: null });
 
     // Guard rails against a stale click. The engine rejects these anyway, but a
     // rejection surfaces as an error toast, and an action the player could not
@@ -323,7 +349,7 @@ export const useStore = create<StoreState>((set, get) => ({
      * player's rhythm entirely.
      */
     if (view && intent.t !== 'passPriority') {
-      const step = signatureOf(intent, view);
+      const step = stepForIntent(intent, view);
       if (step) {
         const sameSeat = get().historySeat === s;
         set((st) => ({
@@ -336,7 +362,7 @@ export const useStore = create<StoreState>((set, get) => ({
     conn.submitIntent(s, intent);
   },
 
-  respond(response, seat) {
+  respond(response, seat, source = 'user') {
     const conn = get().connection;
     if (!conn) return;
     const s = seat ?? get().viewSeat;
@@ -347,6 +373,19 @@ export const useStore = create<StoreState>((set, get) => ({
     if (!choice) return;
     if (choice.kind === 'simultaneousSecret' && choice.iHaveLockedIn) return;
     if (choice.kind === 'mulligan' && choice.iHaveDecided) return;
+
+    // An answer is part of the process too. A loop is mostly answers — bounce
+    // this, ping them — and a recording of only the casts could never replay it.
+    if (source !== 'policy' && view) {
+      const step = stepForChoice(choice, response, view, s);
+      if (step) {
+        const sameSeat = get().historySeat === s;
+        set((st) => ({
+          historySeat: s,
+          actionHistory: [...(sameSeat ? st.actionHistory : []), step].slice(-32),
+        }));
+      }
+    }
 
     // Learn the top of the library from choices the player just made.
     const learned = knownTopFromChoice(choice, response);
@@ -373,7 +412,7 @@ export const useStore = create<StoreState>((set, get) => ({
   startRepeat(steps, times, seat) {
     if (steps.length === 0) return;
     set({
-      repeat: { steps, index: 0, remaining: Math.min(times, MAX_REPEATS), seat },
+      repeat: { steps, index: 0, remaining: Math.min(times, MAX_REPEATS), seat, waited: 0 },
       repeatNote: null,
       autoPass: 'off',
     });
@@ -391,9 +430,14 @@ export const useStore = create<StoreState>((set, get) => ({
   /**
    * One step of a running repeat.
    *
-   * Driven by the view rather than by a timer: each action is only sent once the
+   * Driven by the view rather than by a timer: each step is only taken once the
    * previous one has actually landed, which is what makes this safe over a
    * network as well as locally.
+   *
+   * A step is either an action or an answer, and the loop this exists for is
+   * mostly answers. The rule for both is the same — resolve it against what the
+   * engine is offering right now, and if it does not fit, stop and say so rather
+   * than pressing something arbitrary.
    */
   advanceRepeat() {
     const run = get().repeat;
@@ -404,18 +448,94 @@ export const useStore = create<StoreState>((set, get) => ({
       get().stopRepeat('The game ended.');
       return;
     }
-    // A question is never answered by a repeat. The run simply waits.
-    if (view.choice || view.waitingOnOpponentChoice) return;
-    if (!canAct(view, run.seat)) return;
     if (!get().controls(run.seat)) return;
 
     const step = run.steps[run.index];
-    const conn = get().connection;
-    if (!conn) return;
+    const advance = () => {
+      const nextIndex = (run.index + 1) % run.steps.length;
+      const remaining = nextIndex === 0 ? run.remaining - 1 : run.remaining;
+      set({
+        repeat:
+          remaining <= 0 ? null : { ...run, index: nextIndex, remaining, waited: 0 },
+      });
+    };
+
+    /*
+     * Whether the game is still mid-flight.
+     *
+     * A loop's later questions only arrive once the stack has drained — the
+     * Bowmasters ping is asked when the spell resolves, four passes after it was
+     * cast. So "the step I want is not here" means nothing while anything is
+     * still resolving; it only means the loop is broken once the board is quiet
+     * and the decision is yours again.
+     */
+    const settling =
+      view.stack.length > 0 ||
+      view.waitingOnOpponentChoice ||
+      view.priorityPlayer !== run.seat;
+    const wait = () => set({ repeat: { ...run, waited: run.waited + 1 } });
+
+    /*
+     * The start of a round waits for the board to look the way it did when you
+     * started the round yourself. For a loop that is a clear stack: the
+     * Bowmasters has to actually be back on the battlefield before the next
+     * bounce has anything to point at, and firing the recast the instant the
+     * card reached your hand is what made the run stop dead a round in.
+     */
+    if (waitingForAQuietBoard(run.steps, run.index, view.stack.length)) {
+      if (run.waited < 400) {
+        wait();
+        return;
+      }
+      get().stopRepeat('Stopped — the stack never cleared, so the next round never came round.');
+      return;
+    }
+
+    if (step.what === 'answer') {
+      const choice = view.choice;
+      if (!choice) {
+        // Give it a few ticks even when the board is quiet: between two states
+        // there is a moment with no prompt on screen, and skipping there would
+        // put the whole run out of step.
+        if (run.waited < (settling ? 400 : 8)) {
+          wait();
+          return;
+        }
+        /*
+         * Nothing is coming. Usually that means a trigger policy answered this
+         * one before the run could — "bounce their spell", "their face" — in
+         * which case stepping over it is exactly right.
+         */
+        advance();
+        return;
+      }
+      const response = responseFor(step, choice, view, run.seat);
+      if (!response) {
+        get().stopRepeat(
+          `Stopped — the game asked something the run has no answer for. Over to you.`,
+        );
+        return;
+      }
+      advance();
+      get().respond(response, run.seat, 'repeat');
+      return;
+    }
+
+    // An action step. A question that is not part of the pattern is not the
+    // run's to answer: it waits, and picks up once you have dealt with it.
+    if (view.choice || view.waitingOnOpponentChoice) return;
+    if (!canAct(view, run.seat)) return;
+
     const action = view.legalActions.find(
-      (a) => signatureOf(a.intent, view)?.sig === step.sig,
+      (a) => stepForIntent(a.intent, view)?.sig === step.sig,
     );
     if (!action) {
+      // Not there yet is not the same as gone: the card you are about to recast
+      // is still on the stack for most of every loop.
+      if (view.stack.length > 0 && run.waited < 400) {
+        wait();
+        return;
+      }
       get().stopRepeat(`Stopped — "${step.label}" is not available any more.`);
       return;
     }
@@ -423,12 +543,7 @@ export const useStore = create<StoreState>((set, get) => ({
     // enforces it too, but bailing here keeps the index honest.
     if (get().actedFrom[run.seat] === view && action.intent.t !== 'tapForMana') return;
 
-    const nextIndex = (run.index + 1) % run.steps.length;
-    const finishedLoop = nextIndex === 0;
-    const remaining = finishedLoop ? run.remaining - 1 : run.remaining;
-    set({
-      repeat: remaining <= 0 ? null : { ...run, index: nextIndex, remaining },
-    });
+    advance();
     get().send(action.intent, run.seat, 'repeat');
   },
   setForceStop(v) {

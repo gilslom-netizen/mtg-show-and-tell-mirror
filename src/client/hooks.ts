@@ -3,6 +3,7 @@ import { frontFace } from '@engine/oracle';
 import type { LegalAction } from '@engine/game';
 import type { CardView, PlayerView } from '@engine/redact';
 import type { IID, PlayerId, TargetRef } from '@engine/types';
+import { repeatNeedsPriority } from './repeat';
 import { canAct, useStore, type AutoPassMode } from './store';
 import type { BowmastersPolicy, CombatStopMode, Settings } from './settings';
 
@@ -121,7 +122,18 @@ export function useAutoPass(viewer: PlayerId) {
   const autoPass = useStore((s) => s.autoPass);
   const forceStop = useStore((s) => s.forceStop);
   const holdPriority = useStore((s) => s.holdPriority);
-  const repeat = useStore((s) => s.repeat);
+  /*
+   * A boolean, not the run itself, and the reason is the same trap the comment
+   * at the bottom of this effect describes. A running repeat updates its own
+   * state every tick while it waits; with the run object in the dependency list
+   * that cancelled the pending auto-pass timer before it could ever fire, so the
+   * stack never drained and the loop sat there for ever waiting for it to.
+   */
+  const repeatHolds = useStore((s) => {
+    const run = s.repeat;
+    const v = s.views[viewer];
+    return !!run && !!v && run.seat === viewer && repeatNeedsPriority(run.steps, run.index, v);
+  });
   const send = useStore((s) => s.send);
   const controls = useStore((s) => s.controls);
   const setAutoPass = useStore((s) => s.setAutoPass);
@@ -175,9 +187,14 @@ export function useAutoPass(viewer: PlayerId) {
     if (!canAct(view, viewer)) return;
     if (!controls(viewer)) return;
     if (forceStop) return;
-    // A repeat run is taking actions on this seat; passing for it would end the
-    // very window it needs.
-    if (repeat) return;
+    /*
+     * A repeat run needs the auto-pass layer, it does not replace it: most of a
+     * loop is the stack resolving between one iteration and the next, and that
+     * only happens because both players keep passing. So passing is suppressed
+     * for exactly one case — the run has an action ready to take right now, and
+     * passing first would give away the window it needs.
+     */
+    if (repeatHolds) return;
     // Holding priority is a deliberate "do not pass for me" — chaining spells
     // under an Omniscience is the whole reason it exists.
     if (holdPriority) return;
@@ -185,7 +202,9 @@ export function useAutoPass(viewer: PlayerId) {
 
     const [lo, hi] = settings.autoPassDelayMs;
     const delay = lo + Math.random() * Math.max(0, hi - lo);
-    const t = window.setTimeout(() => send({ t: 'passPriority' }, viewer), delay);
+    // 'auto' — this is the comfort layer, not the player, so it must not be
+    // taken as a change of mind that cancels a running repeat.
+    const t = window.setTimeout(() => send({ t: 'passPriority' }, viewer, 'auto'), delay);
     return () => window.clearTimeout(t);
     // The dependency list is the point, not a formality. With none, every render
     // — a hover, a highlight, an unrelated poll — cancelled the pending timer and
@@ -193,7 +212,7 @@ export function useAutoPass(viewer: PlayerId) {
     // and passing felt like it randomly stopped working. `view` is a fresh object
     // only when the game state actually changed, which is exactly when the
     // decision is worth taking again.
-  }, [view, viewer, settings, autoPass, forceStop, holdPriority, repeat, send, controls]);
+  }, [view, viewer, settings, autoPass, forceStop, holdPriority, repeatHolds, send, controls]);
 }
 
 /**
@@ -261,18 +280,18 @@ export function useTriggerPolicy(viewer: PlayerId) {
         case 'ask':
           return;
         case 'none':
-          respond({ kind: 'modes', modes: [] }, viewer);
+          respond({ kind: 'modes', modes: [] }, viewer, 'policy');
           return;
         case 'bounceOpposingSpell':
-          respond({ kind: 'modes', modes: spellMode ? [0] : [] }, viewer);
+          respond({ kind: 'modes', modes: spellMode ? [0] : [] }, viewer, 'policy');
           return;
         case 'bounceBest': {
           if (spellMode) {
-            respond({ kind: 'modes', modes: [0] }, viewer);
+            respond({ kind: 'modes', modes: [0] }, viewer, 'policy');
             return;
           }
           const permMode = choice.modes.find((m) => m.index === 1 && m.enabled);
-          respond({ kind: 'modes', modes: permMode ? [1] : [] }, viewer);
+          respond({ kind: 'modes', modes: permMode ? [1] : [] }, viewer, 'policy');
           return;
         }
       }
@@ -284,13 +303,13 @@ export function useTriggerPolicy(viewer: PlayerId) {
       policy.hullbreaker === 'bounceBest'
     ) {
       const best = pickBestBounceTarget(view, choice.candidates, viewer);
-      if (best) respond({ kind: 'targets', targets: [best] }, viewer);
+      if (best) respond({ kind: 'targets', targets: [best] }, viewer, 'policy');
       return;
     }
 
     if (source.oracleId === 'orcish_bowmasters' && choice.kind === 'chooseTargets') {
       const target = bowmastersTarget(policy.bowmasters, choice.candidates, view, viewer);
-      if (target) respond({ kind: 'targets', targets: [target] }, viewer);
+      if (target) respond({ kind: 'targets', targets: [target] }, viewer, 'policy');
     }
   }, [view?.choice?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 }
