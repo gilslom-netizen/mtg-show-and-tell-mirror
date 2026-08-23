@@ -212,6 +212,21 @@ control as well as a shortcut:
   priority is `H` and is *not* automatic: an Omniscience turn is mostly ordinary
   spells, and holding for all of them turns each one into a click. The setting is
   still there if you prefer it.
+- **Repeat what you just did.** Some turns are a rhythm rather than a decision:
+  the same land tapped every turn, the same free spell off four copies. Once the
+  client has watched you actually repeat something, a chip offers to run the same
+  stretch again as many times as you say. It only ever replays *your* actions
+  against the legal actions the engine is offering at the time, it never answers
+  a question (a prompt pauses the run and it picks up after you answer), and any
+  click of your own ends it.
+- **Atraxa, one type at a time — in any order.** The trigger asks about eight card
+  types, and the answers depend on each other: whether you want the artifact
+  depends on what the creature and land slots turn out to hold. Any question can
+  be pushed to the back and comes back after you have seen the rest. Two passes
+  and no more, so it always terminates.
+- **Sorting the builder** by mana cost, by type, or A–Z, with sticky headings and
+  a count per group. Cost is the curve, type is how a decklist is written, and
+  A–Z is how you find one card among ninety while sideboarding.
 - **Put a decision aside.** Any prompt can be minimised with the control in its
   corner or with `B`. The dialog goes away, the board is fully visible, and the
   decision waits in a strip between the board and your hand until you come back.

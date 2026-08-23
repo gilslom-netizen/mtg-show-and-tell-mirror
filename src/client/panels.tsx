@@ -211,6 +211,7 @@ const SHORTCUTS: [string, string][] = [
   ['Shift + click', 'Show the other ways to play a card (e.g. pay mana under Omniscience)'],
   ['Hold Alt', 'Ignore the trigger policy for the next prompt'],
   ['B', 'Put the open decision aside to look at the board, and bring it back'],
+  ['⟳ chip', 'Appears once you repeat something — offers to do it again N times'],
   ['Esc', 'Back out of the current action'],
   ['L', 'Toggle the log panel'],
   [',', 'Settings'],

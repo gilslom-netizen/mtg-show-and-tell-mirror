@@ -25,6 +25,74 @@ describe('Atraxa, Grand Unifier', () => {
     expect(t.countTriggers('Atraxa, Grand Unifier')).toBe(1);
   });
 
+  it('lets you skip a card type and come back to it after seeing the rest', () => {
+    // Whether you want the instant depends on what the creature slot holds, so
+    // the questions run in two passes: skip one and it is asked again at the end.
+    const t = testGame();
+    t.p1.hand('Atraxa, Grand Unifier');
+    t.p1.manaBase(7);
+    t.p1.libraryTop('Brainstorm', 'Orcish Bowmasters');
+    t.p1.librarySize(2);
+    t.begin();
+    t.p1.cast('Atraxa, Grand Unifier');
+    t.resolveStack();
+
+    // The types are asked alphabetically, so creature comes before instant.
+    const first = t.expectChoice();
+    expect(first.kind).toBe('chooseCards');
+    if (first.kind !== 'chooseCards') throw new Error('expected a card choice');
+    expect(first.prompt).toMatch(/creature/i);
+    // Something else is still open, so this one can be postponed.
+    expect(first.deferrable).toBeTruthy();
+    t.answer({ kind: 'cards', iids: [], deferred: true });
+
+    // The instant question comes next, and it is the last of the first pass —
+    // nothing left to come back from, so it is not offered as postponable.
+    const second = t.expectChoice();
+    if (second.kind !== 'chooseCards') throw new Error('expected a card choice');
+    expect(second.prompt).toMatch(/instant/i);
+    expect(second.deferrable).toBeFalsy();
+    t.chooseCards('Brainstorm');
+
+    // And now the creature comes back around.
+    const third = t.expectChoice();
+    if (third.kind !== 'chooseCards') throw new Error('expected a card choice');
+    expect(third.prompt).toMatch(/creature/i);
+    expect(third.deferrable).toBeFalsy();
+    t.chooseCards('Orcish Bowmasters');
+
+    t.resolveAll(200);
+    expect(t.p1.handNames().sort()).toEqual(['Brainstorm', 'Orcish Bowmasters']);
+    t.assertCardConservation();
+  });
+
+  it('asks a postponed type only once more, so it always terminates', () => {
+    const t = testGame();
+    t.p1.hand('Atraxa, Grand Unifier');
+    t.p1.manaBase(7);
+    t.p1.libraryTop('Brainstorm', 'Orcish Bowmasters');
+    t.p1.librarySize(2);
+    t.begin();
+    t.p1.cast('Atraxa, Grand Unifier');
+    t.resolveStack();
+
+    // Postpone everything that can be postponed; the second pass is final.
+    let deferrals = 0;
+    for (let i = 0; i < 20; i++) {
+      const c = t.choice();
+      if (!c) break;
+      if (c.kind === 'chooseCards' && c.deferrable) {
+        deferrals++;
+        t.answer({ kind: 'cards', iids: [], deferred: true });
+      } else {
+        t.auto();
+      }
+    }
+    expect(deferrals).toBe(1);
+    expect(t.choice()).toBeNull();
+    t.assertCardConservation();
+  });
+
   it('72. a modal DFC among the revealed cards counts as an instant, never a land', () => {
     const t = testGame();
     t.p1.hand('Atraxa, Grand Unifier');

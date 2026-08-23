@@ -368,6 +368,18 @@ function ChooseCardsDialog({
           <span className="chip">
             {chosen.length} / {choice.min === choice.max ? choice.min : `${choice.min}–${choice.max}`}
           </span>
+          {/* Atraxa asks about one card type at a time and the answers depend on
+              each other, so a question can be pushed to the back of the queue
+              rather than guessed at. Nothing is taken and nothing is lost. */}
+          {choice.deferrable && (
+            <button
+              data-testid="defer-choice"
+              title="Skip to the other card types and come back to this one"
+              onClick={() => onAnswer({ kind: 'cards', iids: [], deferred: true })}
+            >
+              {choice.deferrable}
+            </button>
+          )}
           {choice.min === 0 && (
             <button onClick={() => onAnswer({ kind: 'cards', iids: [] })}>Choose none</button>
           )}

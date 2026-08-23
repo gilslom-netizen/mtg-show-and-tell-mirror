@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { frontFace, oracle } from '@engine/oracle';
 import type { DeckEntry } from '@engine/state';
 import type { OracleId, PlayerId } from '@engine/types';
@@ -25,13 +25,72 @@ interface Row {
   owned: number;
 }
 
-function sortRows(rows: Row[]): Row[] {
+/**
+ * How the two lists are ordered.
+ *
+ * All three answer a different question. Cost is the curve — the one you want
+ * while deciding what to cut. Type groups the deck the way a decklist is
+ * written. Name is how you find a specific card in a hurry, which with sixty
+ * plus a drafted pool is the common case during sideboarding.
+ */
+export type SortMode = 'cost' | 'type' | 'name';
+
+export const SORT_LABEL: Record<SortMode, string> = {
+  cost: 'Mana cost',
+  type: 'Type',
+  name: 'A–Z',
+};
+
+/** Reading order of a written decklist. Lands last, as they always are. */
+const TYPE_ORDER = [
+  'Creature',
+  'Planeswalker',
+  'Battle',
+  'Instant',
+  'Sorcery',
+  'Artifact',
+  'Enchantment',
+  'Land',
+];
+
+function typeRank(types: string[]): number {
+  // A card with several types is filed under the first one that appears here,
+  // which is why the list is in the order a decklist is written rather than
+  // alphabetical: an artifact creature belongs with the creatures.
+  const i = TYPE_ORDER.findIndex((t) => types.includes(t));
+  return i === -1 ? TYPE_ORDER.length : i;
+}
+
+/** The heading a row sits under, or null when the list is not grouped. */
+export function groupOf(oracleId: OracleId, mode: SortMode): string | null {
+  const face = frontFace(oracleId);
+  if (mode === 'type') return TYPE_ORDER[typeRank(face.types)] ?? 'Other';
+  if (mode === 'cost') {
+    if (face.types.includes('Land')) return 'Lands';
+    return face.mv === 0 ? 'Free' : `${face.mv} mana`;
+  }
+  return null;
+}
+
+export function sortRows(rows: Row[], mode: SortMode): Row[] {
   return [...rows].sort((a, b) => {
     const fa = frontFace(a.oracleId);
     const fb = frontFace(b.oracleId);
+    if (mode === 'name') return fa.name.localeCompare(fb.name);
+
+    if (mode === 'type') {
+      const ra = typeRank(fa.types);
+      const rb = typeRank(fb.types);
+      if (ra !== rb) return ra - rb;
+      // Inside a type the curve is still the useful second key.
+      if (fa.mv !== fb.mv) return fa.mv - fb.mv;
+      return fa.name.localeCompare(fb.name);
+    }
+
+    // Cost. Lands have no meaningful mana value, so they go last as a block
+    // rather than sitting in with the free spells.
     const la = fa.types.includes('Land') ? 1 : 0;
     const lb = fb.types.includes('Land') ? 1 : 0;
-    // Lands last, then by cost, then by name — the order a decklist is read in.
     if (la !== lb) return la - lb;
     if (fa.mv !== fb.mv) return fa.mv - fb.mv;
     return fa.name.localeCompare(fb.name);
@@ -91,6 +150,83 @@ function CardRow({
   );
 }
 
+/**
+ * A sorted list with a heading whenever the group changes.
+ *
+ * The headings are what make sorting worth having: a list ordered by cost with
+ * no "3 mana" markers is just a list, and counting the curve by eye is exactly
+ * the thing you opened the builder to do.
+ */
+function RowList({
+  rows,
+  side,
+  sort,
+  isPlayable,
+  shown,
+  onShow,
+  onMove,
+}: {
+  rows: Row[];
+  side: 'deck' | 'bench';
+  sort: SortMode;
+  isPlayable: (id: OracleId) => boolean;
+  shown: OracleId | null;
+  onShow: (id: OracleId) => void;
+  onMove: (id: OracleId, n: number) => void;
+}) {
+  let lastGroup: string | null = null;
+  return (
+    <>
+      {rows.map((r) => {
+        const group = groupOf(r.oracleId, sort);
+        const heading = group !== null && group !== lastGroup ? group : null;
+        lastGroup = group;
+        return (
+          <div key={r.oracleId}>
+            {heading && (
+              <div className="build-group">
+                <span>{heading}</span>
+                <span className="build-group-count">
+                  {rows
+                    .filter((x) => groupOf(x.oracleId, sort) === group)
+                    .reduce((n, x) => n + (side === 'deck' ? x.inDeck : x.owned - x.inDeck), 0)}
+                </span>
+              </div>
+            )}
+            <CardRow
+              row={r}
+              side={side}
+              playable={isPlayable(r.oracleId)}
+              shown={shown === r.oracleId}
+              onMove={(n) => onMove(r.oracleId, n)}
+              onShow={() => onShow(r.oracleId)}
+            />
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+const SORT_KEY = 'satm.build.sort.v1';
+
+function loadSort(): SortMode {
+  try {
+    const raw = localStorage.getItem(SORT_KEY);
+    return raw === 'type' || raw === 'name' || raw === 'cost' ? raw : 'cost';
+  } catch {
+    return 'cost';
+  }
+}
+
+function saveSort(mode: SortMode): void {
+  try {
+    localStorage.setItem(SORT_KEY, mode);
+  } catch {
+    // A private window with storage disabled is not a reason to break the builder.
+  }
+}
+
 export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
   const pool = useStore((s) => s.pool);
   const ready = useStore((s) => s.deckReady);
@@ -119,6 +255,8 @@ export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
   // Sticky: the pane keeps showing the last card the pointer was over, so it
   // does not flash empty every time the mouse crosses a gap between rows.
   const [shown, setShown] = useState<OracleId | null>(null);
+  const [sort, setSort] = useState<SortMode>(() => loadSort());
+  useEffect(() => saveSort(sort), [sort]);
   // A card is playable if the engine has a script for it — or if it is a basic
   // land, which has no rules text to script beyond producing mana. Flagging
   // Island as "not implemented" would be both wrong and alarming.
@@ -135,8 +273,8 @@ export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
     [owned, deck],
   );
 
-  const inDeck = sortRows(rows.filter((r) => r.inDeck > 0));
-  const bench = sortRows(rows.filter((r) => r.owned - r.inDeck > 0));
+  const inDeck = sortRows(rows.filter((r) => r.inDeck > 0), sort);
+  const bench = sortRows(rows.filter((r) => r.owned - r.inDeck > 0), sort);
   const size = [...deck.values()].reduce((n, c) => n + c, 0);
 
   const move = (oracleId: OracleId, delta: number) => {
@@ -159,6 +297,13 @@ export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
   // A drafted card with no engine script can be put in a list but not cast, so
   // the builder says so rather than letting it be discovered mid-game.
   const unplayableInDeck = inDeck.filter((r) => !isPlayable(r.oracleId));
+
+  const rowProps = {
+    isPlayable,
+    shown,
+    onShow: setShown,
+    onMove: move,
+  };
 
   return (
     <div className="build-screen">
@@ -194,23 +339,30 @@ export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
         </div>
       )}
 
+      <div className="build-sort">
+        <span className="bid-note">Sort by</span>
+        <div className="segmented" data-testid="sort-mode" role="group">
+          {(['cost', 'type', 'name'] as SortMode[]).map((m) => (
+            <button
+              key={m}
+              className={`chip-choice${sort === m ? ' is-picked' : ''}`}
+              data-testid={`sort-${m}`}
+              aria-pressed={sort === m}
+              onClick={() => setSort(m)}
+            >
+              {SORT_LABEL[m]}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <main className="build-columns">
         <section className="build-col">
           <h2>
             Deck <span>{size}</span>
           </h2>
           <div className="build-list" data-testid="deck-list">
-            {inDeck.map((r) => (
-              <CardRow
-                key={r.oracleId}
-                row={r}
-                side="deck"
-                playable={isPlayable(r.oracleId)}
-                shown={shown === r.oracleId}
-                onMove={(n) => move(r.oracleId, n)}
-                onShow={() => setShown(r.oracleId)}
-              />
-            ))}
+            <RowList rows={inDeck} side="deck" sort={sort} {...rowProps} />
           </div>
         </section>
 
@@ -219,17 +371,7 @@ export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
             Bench <span>{[...owned].reduce((n, [id, c]) => n + c - (deck.get(id) ?? 0), 0)}</span>
           </h2>
           <div className="build-list" data-testid="bench-list">
-            {bench.map((r) => (
-              <CardRow
-                key={r.oracleId}
-                row={r}
-                side="bench"
-                playable={isPlayable(r.oracleId)}
-                shown={shown === r.oracleId}
-                onMove={(n) => move(r.oracleId, n)}
-                onShow={() => setShown(r.oracleId)}
-              />
-            ))}
+            <RowList rows={bench} side="bench" sort={sort} {...rowProps} />
           </div>
         </section>
 

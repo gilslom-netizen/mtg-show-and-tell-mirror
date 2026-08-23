@@ -36,6 +36,11 @@ export interface ChooseCardsOpts {
   publicReveal?: boolean;
   /** Cards to display greyed out with a reason, for teaching and clarity. */
   disabled?: { iid: IID; reason: string }[];
+  /**
+   * Offer to postpone this question, with this label on the button. The caller
+   * is responsible for asking it again — see Atraxa.
+   */
+  deferrable?: string;
   /** Filled in automatically by the engine. */
   source?: ChoiceSource;
 }
@@ -117,6 +122,8 @@ export interface Ctx {
   bottomInRandomOrder(iids: IID[]): void;
 
   chooseCards(opts: ChooseCardsOpts): Eff<IID[]>;
+  /** As `chooseCards`, but reports a postponement instead of swallowing it. */
+  chooseCardsOrDefer(opts: ChooseCardsOpts): Eff<{ iids: IID[]; deferred: boolean }>;
   chooseTargets(opts: ChooseTargetsOpts): Eff<TargetRef[]>;
   chooseMode(opts: {
     player: PlayerId;

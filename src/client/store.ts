@@ -13,6 +13,7 @@ import type { DeckEntry } from '@engine/state';
 import type { DraftView } from '../draft/redact';
 import type { DraftAction } from '../draft/types';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from './settings';
+import { MAX_REPEATS, signatureOf, type RepeatStep } from './repeat';
 
 /**
  * Whether this seat may act right now.
@@ -92,6 +93,20 @@ interface StoreState {
   holdPriority: boolean;
 
   /**
+   * The actions this client has taken, newest last, for the repeat detector.
+   *
+   * Only actions taken by one seat in a row are kept: in lab mode the player
+   * drives both sides, and a run of "tap Island" on one board followed by the
+   * same on the other is two rhythms, not one.
+   */
+  actionHistory: RepeatStep[];
+  historySeat: PlayerId | null;
+  /** An in-progress repeat run, or null. */
+  repeat: { steps: RepeatStep[]; index: number; remaining: number; seat: PlayerId } | null;
+  /** Why the last run ended, shown once and then dismissed. */
+  repeatNote: string | null;
+
+  /**
    * The view each seat last acted from.
    *
    * Online there is a round trip between sending an action and seeing its result,
@@ -123,10 +138,22 @@ interface StoreState {
   refresh(): void;
   setViewSeat(seat: PlayerId): void;
   updateSettings(patch: Partial<Settings>): void;
-  send(intent: Intent, seat?: PlayerId): void;
+  /**
+   * `source` distinguishes a click from a step of a running repeat: anything the
+   * player does by hand ends the run, which is the only cancel gesture people
+   * reliably reach for.
+   */
+  send(intent: Intent, seat?: PlayerId, source?: 'user' | 'repeat'): void;
   respond(response: ChoiceResponse, seat?: PlayerId): void;
   cancel(): void;
   setAutoPass(mode: AutoPassMode): void;
+  /** Run the detected pattern again `times` more times. */
+  startRepeat(steps: RepeatStep[], times: number, seat: PlayerId): void;
+  /** End the run. `note` explains why, when it was not the player's doing. */
+  stopRepeat(note?: string): void;
+  /** Advance a running repeat by one step. Called by the runner hook. */
+  advanceRepeat(): void;
+  dismissRepeatNote(): void;
   setForceStop(v: boolean): void;
   setHoldPriority(v: boolean): void;
   setHovered(iid: IID | null): void;
@@ -165,6 +192,10 @@ export const useStore = create<StoreState>((set, get) => ({
   autoPass: 'off',
   forceStop: false,
   holdPriority: false,
+  actionHistory: [],
+  historySeat: null,
+  repeat: null,
+  repeatNote: null,
   actedFrom: { p1: null, p2: null },
   actedFromDraft: null,
   hoveredIid: null,
@@ -184,6 +215,10 @@ export const useStore = create<StoreState>((set, get) => ({
       viewSeat,
       knownTop: emptyKnownTop(),
       autoPass: 'off',
+      actionHistory: [],
+      historySeat: null,
+      repeat: null,
+      repeatNote: null,
       actedFrom: { p1: null, p2: null },
       error: null,
     });
@@ -249,11 +284,12 @@ export const useStore = create<StoreState>((set, get) => ({
     set({ settings: next });
   },
 
-  send(intent, seat) {
+  send(intent, seat, source = 'user') {
     const conn = get().connection;
     if (!conn) return;
     const s = seat ?? get().viewSeat;
     if (!conn.seats().includes(s)) return;
+    if (source === 'user' && get().repeat) set({ repeat: null });
 
     // Guard rails against a stale click. The engine rejects these anyway, but a
     // rejection surfaces as an error toast, and an action the player could not
@@ -276,6 +312,27 @@ export const useStore = create<StoreState>((set, get) => ({
 
     // Any deliberate action cancels a running auto-pass run.
     if (intent.t !== 'passPriority') set({ autoPass: 'off' });
+
+    /*
+     * Remember what was done, so the repeat detector has something to see.
+     *
+     * Passes are not recorded and do not break the run. A rhythm is made of
+     * actions, and plenty of real ones span a pass or a whole turn — playing a
+     * fetchland and cracking it, every turn, is the obvious example. What does
+     * break it is the other seat acting, which in lab mode is a different
+     * player's rhythm entirely.
+     */
+    if (view && intent.t !== 'passPriority') {
+      const step = signatureOf(intent, view);
+      if (step) {
+        const sameSeat = get().historySeat === s;
+        set((st) => ({
+          historySeat: s,
+          actionHistory: [...(sameSeat ? st.actionHistory : []), step].slice(-24),
+        }));
+      }
+    }
+
     conn.submitIntent(s, intent);
   },
 
@@ -308,7 +365,71 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   setAutoPass(mode) {
-    set({ autoPass: mode });
+    // A "pass until" run and a repeat run are two different automations; the
+    // one you asked for most recently is the one that should be happening.
+    set({ autoPass: mode, ...(mode === 'off' ? {} : { repeat: null }) });
+  },
+
+  startRepeat(steps, times, seat) {
+    if (steps.length === 0) return;
+    set({
+      repeat: { steps, index: 0, remaining: Math.min(times, MAX_REPEATS), seat },
+      repeatNote: null,
+      autoPass: 'off',
+    });
+  },
+
+  stopRepeat(note) {
+    if (!get().repeat) return;
+    set({ repeat: null, repeatNote: note ?? null });
+  },
+
+  dismissRepeatNote() {
+    set({ repeatNote: null });
+  },
+
+  /**
+   * One step of a running repeat.
+   *
+   * Driven by the view rather than by a timer: each action is only sent once the
+   * previous one has actually landed, which is what makes this safe over a
+   * network as well as locally.
+   */
+  advanceRepeat() {
+    const run = get().repeat;
+    if (!run) return;
+    const view = get().views[run.seat];
+    if (!view) return;
+    if (view.winner !== null) {
+      get().stopRepeat('The game ended.');
+      return;
+    }
+    // A question is never answered by a repeat. The run simply waits.
+    if (view.choice || view.waitingOnOpponentChoice) return;
+    if (!canAct(view, run.seat)) return;
+    if (!get().controls(run.seat)) return;
+
+    const step = run.steps[run.index];
+    const conn = get().connection;
+    if (!conn) return;
+    const action = view.legalActions.find(
+      (a) => signatureOf(a.intent, view)?.sig === step.sig,
+    );
+    if (!action) {
+      get().stopRepeat(`Stopped — "${step.label}" is not available any more.`);
+      return;
+    }
+    // One action per view, exactly like a human click; the guard in send()
+    // enforces it too, but bailing here keeps the index honest.
+    if (get().actedFrom[run.seat] === view && action.intent.t !== 'tapForMana') return;
+
+    const nextIndex = (run.index + 1) % run.steps.length;
+    const finishedLoop = nextIndex === 0;
+    const remaining = finishedLoop ? run.remaining - 1 : run.remaining;
+    set({
+      repeat: remaining <= 0 ? null : { ...run, index: nextIndex, remaining },
+    });
+    get().send(action.intent, run.seat, 'repeat');
   },
   setForceStop(v) {
     set({ forceStop: v });
@@ -419,6 +540,8 @@ function knownTopFromChoice(
 ): KnownTopEntry[] | null {
   if (choice.kind !== 'chooseCards' || choice.from !== 'library') return null;
   if (response.kind !== 'cards') return null;
+  // Postponing is not an answer: nothing was looked past, so nothing was learned.
+  if (response.deferred) return null;
   const isSurveil = /surveil/i.test(choice.prompt);
   if (!isSurveil) return null;
   const kept = choice.options.map((o) => o.iid).filter((iid) => !response.iids.includes(iid));

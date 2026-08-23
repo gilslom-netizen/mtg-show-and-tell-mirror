@@ -1538,14 +1538,21 @@ export class Game {
   }
 
   private *chooseCardsInternal(opts: ChooseCardsOpts): Eff<IID[]> {
-    if (opts.cards.length === 0 && opts.min === 0) return [];
+    const res = yield* this.chooseCardsOrDeferInternal(opts);
+    return res.iids;
+  }
+
+  private *chooseCardsOrDeferInternal(
+    opts: ChooseCardsOpts,
+  ): Eff<{ iids: IID[]; deferred: boolean }> {
+    if (opts.cards.length === 0 && opts.min === 0) return { iids: [], deferred: false };
     const disabledMap = new Map((opts.disabled ?? []).map((d) => [d.iid, d.reason]));
     const options = opts.cards.map((iid) => ({
       iid,
       disabledReason: disabledMap.get(iid),
     }));
     const selectable = options.filter((o) => !o.disabledReason).length;
-    if (selectable === 0 && opts.min === 0) return [];
+    if (selectable === 0 && opts.min === 0) return { iids: [], deferred: false };
     const res = (yield this.request({
       kind: 'chooseCards',
       player: opts.player,
@@ -1556,9 +1563,13 @@ export class Game {
       prompt: opts.prompt,
       from: opts.from,
       publicReveal: opts.publicReveal,
+      deferrable: opts.deferrable,
       source: opts.source,
     })) as ChoiceResponse;
-    return res.kind === 'cards' ? res.iids : [];
+    if (res.kind !== 'cards') return { iids: [], deferred: false };
+    // A postponement is only honoured where the caller offered one; otherwise it
+    // would strand a question nobody is going to ask again.
+    return { iids: res.iids, deferred: Boolean(res.deferred) && Boolean(opts.deferrable) };
   }
 
   /**
@@ -1827,6 +1838,7 @@ export class Game {
       },
 
       chooseCards: (opts) => game.chooseCardsInternal({ ...opts, source }),
+      chooseCardsOrDefer: (opts) => game.chooseCardsOrDeferInternal({ ...opts, source }),
       chooseTargets: function* (opts: ChooseTargetsOpts) {
         const res = (yield req({
           kind: 'chooseTargets',

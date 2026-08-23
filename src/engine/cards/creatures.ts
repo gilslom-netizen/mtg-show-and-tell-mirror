@@ -22,28 +22,55 @@ export const atraxaGrandUnifier: CardScript = {
         ctx.log(`reveals the top ${top.length} card${top.length === 1 ? '' : 's'}`, top);
 
         const picked: IID[] = [];
-        for (const type of ATRAXA_TYPES) {
-          const available = top.filter((iid) => {
+        const availableFor = (type: (typeof ATRAXA_TYPES)[number]) =>
+          top.filter((iid) => {
             if (picked.includes(iid)) return false;
             const c = ctx.card(iid);
             // Cards in the library show only their front face, so an MDFC like
             // Waterlogged Teachings is available as an instant and never as a land.
             return c ? frontFace(c.oracleId).types.includes(type) : false;
           });
-          if (available.length === 0) continue;
 
-          const choice = yield* ctx.chooseCards({
-            player: ctx.controller,
-            cards: available,
-            min: 0,
-            max: 1,
-            prompt: `You may put ${
-              /^[AEIOU]/.test(type) ? 'an' : 'a'
-            } ${type.toLowerCase()} card into your hand`,
-            from: 'library',
-            publicReveal: true,
-          });
-          if (choice.length > 0) picked.push(choice[0]);
+        /*
+         * Atraxa asks one card type at a time, and the types are not independent:
+         * whether you want the artifact often depends on what the creature and
+         * land slots turn out to hold, and the same card can be the only option
+         * for two different types. Asking in a fixed order with no way back made
+         * that a guess. So the questions run in two passes — anything you skip in
+         * the first comes back in the second, by which point you have seen the
+         * rest. Two passes and no more, so this always terminates.
+         */
+        const withCards = ATRAXA_TYPES.filter((t) => availableFor(t).length > 0);
+        const later: (typeof ATRAXA_TYPES)[number][] = [];
+
+        for (const pass of [0, 1] as const) {
+          const queue = pass === 0 ? withCards : later;
+          for (let i = 0; i < queue.length; i++) {
+            const type = queue[i];
+            // A card taken for an earlier type is gone; recompute every time.
+            const available = availableFor(type);
+            if (available.length === 0) continue;
+            // Nothing to come back from if this is the last open question.
+            const somethingElseOpen = pass === 0 && i < queue.length - 1;
+
+            const choice = yield* ctx.chooseCardsOrDefer({
+              player: ctx.controller,
+              cards: available,
+              min: 0,
+              max: 1,
+              prompt: `You may put ${
+                /^[AEIOU]/.test(type) ? 'an' : 'a'
+              } ${type.toLowerCase()} card into your hand`,
+              from: 'library',
+              publicReveal: true,
+              deferrable: somethingElseOpen ? 'Decide this one last' : undefined,
+            });
+            if (choice.deferred) {
+              later.push(type);
+              continue;
+            }
+            if (choice.iids.length > 0) picked.push(choice.iids[0]);
+          }
         }
 
         // These go to hand, they are not drawn — no Orcish Bowmasters triggers.

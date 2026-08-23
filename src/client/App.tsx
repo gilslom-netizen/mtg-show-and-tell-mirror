@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MANA_KINDS } from '@engine/mana';
 import { summarise, type MatchState } from '@engine/match';
 import { SCENARIOS, type ScenarioSpec } from '@engine/scenario';
@@ -13,7 +13,14 @@ import {
   type Connection,
   type OnlineCapability,
 } from './connection';
-import { useAutoPass, useHotkeys, useOmniscienceHold, useTriggerPolicy } from './hooks';
+import {
+  useAutoPass,
+  useHotkeys,
+  useOmniscienceHold,
+  useRepeatRunner,
+  useTriggerPolicy,
+} from './hooks';
+import { MAX_REPEATS, describePattern, detectPattern } from './repeat';
 import { SettingsPanel, HelpPanel } from './panels';
 import { inviteLink, normaliseRoomCode, randomRoomCode, roomFromUrl } from './room-code';
 import { canAct, useStore } from './store';
@@ -346,6 +353,7 @@ function Game({ viewer, mode }: { viewer: PlayerId; mode: Mode }) {
   useTriggerPolicy(viewer);
   useHotkeys(viewer);
   useOmniscienceHold(viewer);
+  useRepeatRunner();
   useGoldfishOpponent(mode === 'goldfish' ? (viewer === 'p1' ? 'p2' : 'p1') : null);
 
   // Online, the server hands out a view as soon as this client has a seat — but a
@@ -560,6 +568,139 @@ function TopBar({ viewer, mode }: { viewer: PlayerId; mode: Mode }) {
   );
 }
 
+/**
+ * "You have done that three times — want to do it again?"
+ *
+ * The control only exists once the client has actually watched you repeat
+ * something, so it never sits there suggesting automation you did not ask for.
+ * Picking a number replays exactly the actions you took, resolved against what
+ * is legal at the time, and any click of your own ends the run.
+ */
+function RepeatControl({ viewer }: { viewer: PlayerId }) {
+  const history = useStore((s) => s.actionHistory);
+  const historySeat = useStore((s) => s.historySeat);
+  const run = useStore((s) => s.repeat);
+  const note = useStore((s) => s.repeatNote);
+  const dismissNote = useStore((s) => s.dismissRepeatNote);
+  const start = useStore((s) => s.startRepeat);
+  const stop = useStore((s) => s.stopRepeat);
+  const [open, setOpen] = useState(false);
+  const [count, setCount] = useState(2);
+  // The bottom bar scrolls sideways and therefore clips anything positioned
+  // inside it, so the popover is a fixed layer measured off the chip instead.
+  const anchor = useRef<HTMLButtonElement>(null);
+  const [at, setAt] = useState<{ left: number; bottom: number } | null>(null);
+
+  // Only while it is actually your move: an offer to repeat something during the
+  // opponent's turn is an offer you cannot take, and the pattern may be several
+  // turns stale by then.
+  //
+  // Subscribing to the boolean rather than to the view keeps this out of the
+  // re-render on every poll — the view object is new each time even when nothing
+  // about it that matters here has changed.
+  const canRepeatNow = useStore((s) => {
+    const v = s.views[viewer];
+    return !!v && canAct(v, viewer);
+  });
+  const pattern = canRepeatNow && historySeat === viewer ? detectPattern(history) : null;
+
+  // The popover must not outlive the thing it is about.
+  useEffect(() => {
+    if (!pattern || run) setOpen(false);
+  }, [pattern?.steps.map((s) => s.sig).join('|'), run]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (run) {
+    return (
+      <button
+        className="chip on"
+        data-testid="repeat-stop"
+        onClick={() => stop()}
+        title="Stop repeating"
+      >
+        ⟳ Repeating · {run.remaining} left — stop
+      </button>
+    );
+  }
+
+  if (note) {
+    return (
+      <button className="chip warn" data-testid="repeat-note" onClick={dismissNote} title={note}>
+        {note}
+      </button>
+    );
+  }
+
+  if (!pattern) return null;
+
+  const go = (times: number) => {
+    setOpen(false);
+    start(pattern.steps, times, viewer);
+  };
+
+  const place = () => {
+    const r = anchor.current?.getBoundingClientRect();
+    if (!r) return;
+    setAt({
+      left: Math.max(8, Math.min(r.left, window.innerWidth - 440)),
+      bottom: window.innerHeight - r.top + 8,
+    });
+  };
+
+  return (
+    <span className="repeat-control">
+      <button
+        ref={anchor}
+        className="chip"
+        data-testid="repeat-open"
+        onClick={() => {
+          place();
+          setOpen((o) => !o);
+        }}
+        title={`You have done this ${pattern.times} times in a row`}
+      >
+        ⟳ Repeat: {describePattern(pattern.steps)}
+      </button>
+      {open && at && (
+        <div
+          className="repeat-pop"
+          data-testid="repeat-pop"
+          style={{ left: at.left, bottom: at.bottom }}
+        >
+          <div className="bid-note">
+            How many more times? Each round is {pattern.steps.length}{' '}
+            {pattern.steps.length === 1 ? 'action' : 'actions'}, and any click of your own
+            stops it.
+          </div>
+          <div className="row">
+            {[1, 2, 3, 5].map((n) => (
+              <button key={n} data-testid={`repeat-${n}`} onClick={() => go(n)}>
+                ×{n}
+              </button>
+            ))}
+            <input
+              type="number"
+              min={1}
+              max={MAX_REPEATS}
+              value={count}
+              onChange={(e) => setCount(Math.max(1, Math.min(MAX_REPEATS, Number(e.target.value))))}
+              style={{ width: 66 }}
+              aria-label="How many times"
+            />
+            <button className="primary" data-testid="repeat-go" onClick={() => go(count)}>
+              Go
+            </button>
+          </div>
+          <div className="row">
+            <button data-testid="repeat-max" onClick={() => go(MAX_REPEATS)}>
+              As many as possible
+            </button>
+          </div>
+        </div>
+      )}
+    </span>
+  );
+}
+
 function BottomBar({ viewer }: { viewer: PlayerId }) {
   const view = useStore((s) => s.views[viewer])!;
   const send = useStore((s) => s.send);
@@ -608,6 +749,8 @@ function BottomBar({ viewer }: { viewer: PlayerId }) {
       >
         {autoPass === 'myNextTurn' ? 'Stop passing' : 'Pass to my turn'} <kbd>F8</kbd>
       </button>
+
+      <RepeatControl viewer={viewer} />
 
       <label className={`chip${hold ? ' on' : ''}`} style={{ cursor: 'pointer' }}>
         <input

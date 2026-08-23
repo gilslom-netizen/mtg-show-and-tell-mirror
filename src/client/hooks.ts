@@ -121,6 +121,7 @@ export function useAutoPass(viewer: PlayerId) {
   const autoPass = useStore((s) => s.autoPass);
   const forceStop = useStore((s) => s.forceStop);
   const holdPriority = useStore((s) => s.holdPriority);
+  const repeat = useStore((s) => s.repeat);
   const send = useStore((s) => s.send);
   const controls = useStore((s) => s.controls);
   const setAutoPass = useStore((s) => s.setAutoPass);
@@ -174,6 +175,9 @@ export function useAutoPass(viewer: PlayerId) {
     if (!canAct(view, viewer)) return;
     if (!controls(viewer)) return;
     if (forceStop) return;
+    // A repeat run is taking actions on this seat; passing for it would end the
+    // very window it needs.
+    if (repeat) return;
     // Holding priority is a deliberate "do not pass for me" — chaining spells
     // under an Omniscience is the whole reason it exists.
     if (holdPriority) return;
@@ -189,7 +193,27 @@ export function useAutoPass(viewer: PlayerId) {
     // and passing felt like it randomly stopped working. `view` is a fresh object
     // only when the game state actually changed, which is exactly when the
     // decision is worth taking again.
-  }, [view, viewer, settings, autoPass, forceStop, holdPriority, send, controls]);
+  }, [view, viewer, settings, autoPass, forceStop, holdPriority, repeat, send, controls]);
+}
+
+/**
+ * Runs a repeat, one action per state.
+ *
+ * The step is only taken once the previous one has produced a new view, so this
+ * works the same locally and over a network, and a slow server just makes the
+ * run slower rather than sending a burst of actions the engine will reject.
+ */
+export function useRepeatRunner() {
+  const repeat = useStore((s) => s.repeat);
+  const views = useStore((s) => s.views);
+  const advance = useStore((s) => s.advanceRepeat);
+  useEffect(() => {
+    if (!repeat) return;
+    // A tick of the event loop, so the view the store is about to hand out has
+    // settled before the next action is measured against it.
+    const t = window.setTimeout(() => advance(), 60);
+    return () => window.clearTimeout(t);
+  }, [repeat, views, advance]);
 }
 
 /**

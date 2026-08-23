@@ -357,6 +357,15 @@ export type ChoiceRequest =
       from: ZoneName;
       /** True if every player may see these cards (Atraxa's reveal). */
       publicReveal?: boolean;
+      /**
+       * This question can be put back in the queue and asked again later.
+       *
+       * Atraxa asks about one card type at a time, and the right answer to
+       * "take an instant?" often depends on what the creature and land slots
+       * turn out to hold. Deferring moves on to the other types and comes back
+       * to this one afterwards; the text describes what "later" means here.
+       */
+      deferrable?: string;
     }
   | {
       kind: 'chooseTargets';
@@ -457,7 +466,12 @@ export type ChoiceRequest =
     };
 
 export type ChoiceResponse =
-  | { kind: 'cards'; iids: IID[] }
+  | {
+      kind: 'cards';
+      iids: IID[];
+      /** Ask me again after the other questions — only for a deferrable choice. */
+      deferred?: boolean;
+    }
   | { kind: 'targets'; targets: TargetRef[] }
   | { kind: 'modes'; modes: number[] }
   | { kind: 'yesNo'; value: boolean }
