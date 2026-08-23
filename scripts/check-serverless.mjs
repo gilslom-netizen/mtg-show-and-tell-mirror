@@ -21,6 +21,32 @@ import { pathToFileURL } from 'node:url';
 const ROOT = process.cwd();
 const work = mkdtempSync(join(tmpdir(), 'serverless-check-'));
 
+/**
+ * Run against the in-memory store, never a real one.
+ *
+ * On Vercel the build step is handed the project's live KV credentials, so this
+ * check — which imports the handlers in-process — was talking to production
+ * Redis. That made a build fail for reasons that had nothing to do with what it
+ * tests (an Upstash read-after-write can come back empty, and the joined room
+ * then has no seat), and it wrote a junk room into the real store on every
+ * single deploy. What this script is for is proving the modules load and the
+ * handlers answer under plain Node ESM; the store is not part of that.
+ */
+for (const key of [
+  'KV_REST_API_URL',
+  'KV_REST_API_TOKEN',
+  'UPSTASH_REDIS_REST_URL',
+  'UPSTASH_REDIS_REST_TOKEN',
+]) {
+  delete process.env[key];
+}
+// The store also finds a prefixed pair by shape, so clear anything matching that.
+for (const key of Object.keys(process.env)) {
+  if (/REST_API_URL$|REDIS_REST_URL$|REST_API_TOKEN$|REDIS_REST_TOKEN$/.test(key)) {
+    delete process.env[key];
+  }
+}
+
 try {
   // Same layout Vercel ships: the traced sources, compiled in place.
   for (const dir of ['api', 'src', 'data']) {
@@ -77,14 +103,10 @@ try {
       await handler(
         route === 'health'
           ? {}
-          : // A fresh code every run: this script's own build-time env vars point
-            // at the real Redis when one is configured, so a fixed room code
-            // persisted between builds and the second run ever after failed with
-            // "That room already has two players" — a false alarm about the API
-            // that was actually a stale room left over from the first check.
-            // Room codes are truncated to 12 chars server-side, so base36 keeps
-            // the whole thing inside that budget instead of losing entropy to
-            // a slice cut mid-timestamp.
+          : // A fresh code per run. The store is in-memory now so nothing can be
+            // left over, but a unique code keeps a re-run inside one process
+            // from tripping over its own room. Codes are truncated to 12 chars
+            // server-side, so base36 keeps it inside that budget.
             {
               method: 'POST',
               body: {
@@ -103,7 +125,9 @@ try {
       failures.push(`api/health reported itself unhealthy: ${out.body?.error ?? '(no reason)'}`);
     }
     if (route === 'game' && !out.body?.seat) {
-      failures.push(`api/game did not seat a player: ${JSON.stringify(out.body)}`);
+      failures.push(
+        `api/game did not seat a player (status ${out.code}): ${JSON.stringify(out.body)}`,
+      );
     }
   }
 
