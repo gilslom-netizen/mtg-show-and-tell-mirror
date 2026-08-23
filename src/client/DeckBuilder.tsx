@@ -5,6 +5,7 @@ import type { OracleId, PlayerId } from '@engine/types';
 import { scriptedOracleIds } from '@engine/cards/index';
 import { useStore } from './store';
 import { ManaCost } from './mana';
+import { OracleCardDetail } from './CardView';
 
 /**
  * Deckbuilding and sideboarding.
@@ -41,19 +42,27 @@ function CardRow({
   row,
   side,
   playable,
+  shown,
   onMove,
+  onShow,
 }: {
   row: Row;
   side: 'deck' | 'bench';
   playable: boolean;
+  /** This is the card in the reading pane. */
+  shown: boolean;
   onMove: (n: number) => void;
+  onShow: () => void;
 }) {
   const face = frontFace(row.oracleId);
   const count = side === 'deck' ? row.inDeck : row.owned - row.inDeck;
-  const setHovered = useStore((s) => s.setHovered);
   return (
     <div
-      className={`build-row${playable ? '' : ' is-unplayable'}`}
+      className={`build-row${playable ? '' : ' is-unplayable'}${shown ? ' is-shown' : ''}`}
+      // Pointing at a row is enough to read the card — no click needed, and no
+      // click conflict either, since a click already moves the card across.
+      onMouseEnter={onShow}
+      onFocus={onShow}
       onClick={() => onMove(side === 'deck' ? -1 : 1)}
       onContextMenu={(e) => {
         // Right click moves the whole stack; the common case when cutting a card.
@@ -73,7 +82,6 @@ function CardRow({
           onMove(side === 'deck' ? -1 : 1);
         }
       }}
-      onMouseEnter={() => setHovered(null)}
     >
       <span className="build-count">{count}</span>
       <span className="build-name">{face.name}</span>
@@ -108,6 +116,9 @@ export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
   });
 
   const scripted = useMemo(() => new Set(scriptedOracleIds()), []);
+  // Sticky: the pane keeps showing the last card the pointer was over, so it
+  // does not flash empty every time the mouse crosses a gap between rows.
+  const [shown, setShown] = useState<OracleId | null>(null);
   // A card is playable if the engine has a script for it — or if it is a basic
   // land, which has no rules text to script beyond producing mana. Flagging
   // Island as "not implemented" would be both wrong and alarming.
@@ -195,7 +206,9 @@ export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
                 row={r}
                 side="deck"
                 playable={isPlayable(r.oracleId)}
+                shown={shown === r.oracleId}
                 onMove={(n) => move(r.oracleId, n)}
+                onShow={() => setShown(r.oracleId)}
               />
             ))}
           </div>
@@ -212,11 +225,21 @@ export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
                 row={r}
                 side="bench"
                 playable={isPlayable(r.oracleId)}
+                shown={shown === r.oracleId}
                 onMove={(n) => move(r.oracleId, n)}
+                onShow={() => setShown(r.oracleId)}
               />
             ))}
           </div>
         </section>
+
+        <aside className="build-preview" data-testid="build-preview">
+          {shown ? (
+            <OracleCardDetail oracleId={shown} className="is-inline" />
+          ) : (
+            <p className="bid-note">Point at a card to read it.</p>
+          )}
+        </aside>
       </main>
 
       <footer className="build-bottom">

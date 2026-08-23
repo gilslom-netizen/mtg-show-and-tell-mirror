@@ -1,7 +1,7 @@
 import { memo, useState } from 'react';
-import { faceOf, oracle } from '@engine/oracle';
+import { faceOf, frontFace, oracle } from '@engine/oracle';
 import type { CardView as CardData } from '@engine/redact';
-import type { OracleFace, PlayerId } from '@engine/types';
+import type { OracleFace, OracleId, PlayerId } from '@engine/types';
 import { ManaCost } from './mana';
 import { useStore } from './store';
 
@@ -205,7 +205,21 @@ export const CardFace = memo(function CardFace({
         </div>
       )}
 
-      {selectionIndex !== undefined && <div className="order-badge">{selectionIndex + 1}</div>}
+      {/*
+        A selected card gets a mark in the top left corner: the number when the
+        order of the selection matters, a plain check when it does not. The ring
+        alone was easy to miss in a row of cards that all have a coloured border
+        already, and the two can never collide because they share the slot.
+      */}
+      {selectionIndex !== undefined ? (
+        <div className="order-badge">{selectionIndex + 1}</div>
+      ) : (
+        selected && (
+          <span className="card-badge selected-check" aria-hidden>
+            ✓
+          </span>
+        )
+      )}
 
       {free ? (
         <span className="card-badge cost is-free">FREE</span>
@@ -233,18 +247,26 @@ export const CardFace = memo(function CardFace({
 });
 
 /** The large hover preview, pinned so it never jumps around under the pointer. */
-export function CardPreview({ viewer }: { viewer: PlayerId }) {
-  const hovered = useStore((s) => s.hoveredIid);
-  const view = useStore((s) => s.views[viewer]);
+/**
+ * A card at reading size: the art, the name and cost, and the full rules text.
+ *
+ * Shared by the game's hover preview and the deckbuilder, which both need
+ * exactly this and would otherwise drift apart — one of them growing a back
+ * face or a power/toughness line the other never got.
+ */
+export function CardDetail({
+  face,
+  full,
+  className = '',
+}: {
+  face: OracleFace;
+  /** The whole card, when there is one — a token has only a face. */
+  full: ReturnType<typeof oracle> | null;
+  className?: string;
+}) {
   const showArt = useStore((s) => s.settings.showCardArt && s.artAvailable === true);
-  if (!hovered || !view) return null;
-  const card = view.cards[hovered];
-  if (!card) return null;
-  const face = faceOfCard(card);
-  const full = card.isToken ? null : oracle(card.oracleId);
-
   return (
-    <div className="preview">
+    <div className={`preview ${className}`.trim()}>
       {showArt && face.imageUri && !failedArt.has(face.imageUri) && (
         <img
           src={artUrl(face.imageUri, 'png')}
@@ -258,7 +280,10 @@ export function CardPreview({ viewer }: { viewer: PlayerId }) {
           <span>{face.name}</span>
           <ManaCost cost={face.manaCost} />
         </h4>
-        <div className="type">{face.typeLine}</div>
+        <div className="type">
+          {face.typeLine}
+          {face.power !== null && ` · ${face.power}/${face.toughness}`}
+        </div>
         <div className="oracle">{face.oracleText}</div>
         {full?.layout === 'modal_dfc' && (
           <div className="oracle" style={{ marginTop: 8, opacity: 0.75 }}>
@@ -268,5 +293,31 @@ export function CardPreview({ viewer }: { viewer: PlayerId }) {
         )}
       </div>
     </div>
+  );
+}
+
+/** The same detail view, addressed by oracle id — for screens with no game. */
+export function OracleCardDetail({
+  oracleId,
+  className,
+}: {
+  oracleId: OracleId | null;
+  className?: string;
+}) {
+  if (!oracleId) return null;
+  return <CardDetail face={frontFace(oracleId)} full={oracle(oracleId)} className={className} />;
+}
+
+export function CardPreview({ viewer }: { viewer: PlayerId }) {
+  const hovered = useStore((s) => s.hoveredIid);
+  const view = useStore((s) => s.views[viewer]);
+  if (!hovered || !view) return null;
+  const card = view.cards[hovered];
+  if (!card) return null;
+  return (
+    <CardDetail
+      face={faceOfCard(card)}
+      full={card.isToken ? null : oracle(card.oracleId)}
+    />
   );
 }

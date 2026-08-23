@@ -32,6 +32,11 @@
   --theirs-dim: #7a5218;
   --theirs-glow: rgba(224, 149, 47, 0.32);
 
+  /* Selection. Deliberately brighter than the seat colour it derives from:
+     "I chose this one" has to beat "this is mine" when both are on screen. */
+  --select: #5ce0f5;
+  --select-halo: rgba(92, 224, 245, 0.28);
+
   /* Semantic */
   --good: #4bbf73;
   --warn: #e8b13d;
@@ -95,6 +100,8 @@
   --theirs: #a8630a;
   --theirs-dim: #f0d0a0;
   --theirs-glow: rgba(168, 99, 10, 0.18);
+  --select: #0a6b7c;
+  --select-halo: rgba(10, 107, 124, 0.22);
   --shadow: 0 4px 14px rgba(20, 30, 45, 0.12);
   --shadow-lg: 0 12px 36px rgba(20, 30, 45, 0.2);
 }
@@ -387,9 +394,41 @@ input[type='number'] {
 .card.dimmed {
   filter: grayscale(0.7) brightness(0.55);
 }
+/*
+ * Selection has to survive being seen out of the corner of an eye, in a row of
+ * eleven near-identical cards, while a clock is running. A faint tinted ring did
+ * not: it read as "hovered" at best. So a selected card says so four ways —
+ * a solid ring in the seat colour, a halo around it, a lift out of the row, and
+ * a checkmark — and the unselected cards beside it are dimmed by comparison.
+ */
 .card.selected {
-  border-color: var(--mine);
-  box-shadow: 0 0 0 3px var(--mine-glow);
+  border-color: var(--select);
+  box-shadow:
+    0 0 0 3px var(--select),
+    0 0 0 7px var(--select-halo),
+    0 10px 22px rgba(0, 0, 0, 0.5);
+  z-index: 6;
+}
+/* Tapped cards carry a rotation in `transform`, so they get the ring only. */
+.card.selected:not(.tapped) {
+  transform: translateY(-8px);
+}
+.card.selected.clickable:hover {
+  transform: translateY(-12px);
+}
+.card-badge.selected-check {
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 12px;
+  background: var(--select);
+  border-color: var(--select);
+  color: #06121a;
 }
 .card.highlight {
   box-shadow: 0 0 0 3px var(--warn);
@@ -924,7 +963,7 @@ input[type='number'] {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--mine);
+  background: var(--select);
   color: #06121a;
   display: grid;
   place-items: center;
@@ -1581,11 +1620,42 @@ kbd {
 
 .build-columns {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* Deck, bench, and the card you are pointing at. Sideboarding is reading
+     first and clicking second — deciding whether a card comes in means reading
+     what it does — so the reading surface is a permanent third column rather
+     than a tooltip that appears over the list you are working in. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) clamp(230px, 21vw, 320px);
   gap: 14px;
   padding: 14px 18px;
   min-height: 0;
   overflow: hidden;
+}
+.build-preview {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.build-preview .bid-note {
+  margin: 0;
+  padding: 12px;
+  text-align: center;
+}
+/* The game's preview is pinned over the side panel; this one lives in a column,
+   so it drops the fixed positioning and fills the width it is given. */
+.preview.is-inline {
+  position: static;
+  width: 100%;
+  max-height: none;
+  pointer-events: auto;
+}
+@media (max-width: 900px) {
+  /* Too narrow for three: the reader would squeeze both lists to nothing. */
+  .build-columns {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .build-preview {
+    display: none;
+  }
 }
 .build-col {
   display: flex;
@@ -1628,6 +1698,10 @@ kbd {
 }
 .build-row:hover {
   background: var(--panel-2);
+}
+.build-row.is-shown {
+  background: var(--panel-2);
+  box-shadow: inset 3px 0 0 var(--select);
 }
 .build-count {
   min-width: 22px;
