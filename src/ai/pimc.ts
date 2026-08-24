@@ -199,7 +199,7 @@ export class PimcAgent implements Agent {
  * even though "cast this or hold it" is one of the five decisions §2.3 says the game
  * actually turns on.
  */
-function contenders(ranked: RankedAction[], cap: number): RankedAction[] {
+export function contenders(ranked: RankedAction[], cap: number): RankedAction[] {
   if (ranked.length === 0) return [];
   const best = ranked[0].score;
   const out = ranked.filter((a) => a.score > 0 && a.score >= best * CONTENDER_RATIO).slice(0, cap);

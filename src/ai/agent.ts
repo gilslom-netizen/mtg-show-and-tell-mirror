@@ -59,3 +59,29 @@ export interface Agent {
 
 /** How long a decision may take when nothing else says otherwise. */
 export const DEFAULT_BUDGET_MS = 50;
+
+/**
+ * A deliberate hole in principle ע1, for measurement and never for play.
+ *
+ * §14 says exploitability is the only number that means anything in an
+ * imperfect-information game, and that beating the agent you trained against is
+ * close to meaningless without it — which bites here, because PIMC uses the
+ * heuristic as its own rollout policy and so is partly beating itself.
+ *
+ * A true best response needs a learner. What is tractable now is the question
+ * underneath it: **how much is the hidden information actually costing?** An agent
+ * that implements this is handed the real state instead of having to guess at it, so
+ * the gap between it and the same agent guessing is the value of perfect information
+ * — which is exactly the headroom that better belief and search (stages 3, 5 and 12)
+ * could recover, and exactly what tells us whether they are worth building.
+ *
+ * The driver only offers this to an agent that asks for it, and nothing registered
+ * for real play may ask.
+ */
+export interface SeesTruth {
+  observeTruth(state: unknown): void;
+}
+
+export function seesTruth(agent: Agent): agent is Agent & SeesTruth {
+  return typeof (agent as Partial<SeesTruth>).observeTruth === 'function';
+}

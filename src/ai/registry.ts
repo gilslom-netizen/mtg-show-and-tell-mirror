@@ -1,5 +1,6 @@
 import type { Agent } from './agent.js';
 import { HeuristicAgent } from './heuristic.js';
+import { OracleAgent } from './oracle-agent.js';
 import { PimcAgent } from './pimc.js';
 import { RandomAgent } from './random.js';
 
@@ -17,6 +18,7 @@ export const AGENT_SPECS = [
   'heuristic',
   'pimc',
   'pimc:<determinizations>',
+  'oracle (cheats — for measurement only)',
 ] as const;
 
 export function makeAgent(spec: string): Agent {
@@ -37,6 +39,14 @@ export function makeAgent(spec: string): Agent {
       }
       return new PimcAgent({ determinizations });
     }
+    /*
+     * A measuring instrument rather than an opponent: it is shown the opponent's
+     * actual hand. Never deploy it, and never read a result against it as strength —
+     * the number it produces is the value of perfect information, which is what
+     * decides whether the work left is about belief or about evaluation (§14).
+     */
+    case 'oracle':
+      return new OracleAgent();
     default:
       throw new Error(`Unknown agent "${spec}". Known: ${AGENT_SPECS.join(', ')}`);
   }

@@ -3,7 +3,7 @@ import { Game, type Intent } from '../engine/game.js';
 import { MatchTracker, type GameResult, type MatchState } from '../engine/match.js';
 import { redact } from '../engine/redact.js';
 import type { ChoiceResponse, PlayerId } from '../engine/types.js';
-import { DEFAULT_BUDGET_MS, type Agent } from './agent.js';
+import { DEFAULT_BUDGET_MS, seesTruth, type Agent } from './agent.js';
 
 /**
  * Headless self-play: two agents, one engine, no UI.
@@ -176,6 +176,10 @@ export function runToEnd(
     }
 
     const view = redact(game.state, seat);
+    // The measurement hole, and the only place in the codebase where an agent is
+    // shown anything but a redacted view. See `SeesTruth`.
+    const agent = agents[seat];
+    if (seesTruth(agent)) agent.observeTruth(game.state);
     opts.onDecision?.(game, seat, 'priority');
     decisions++;
     let intent: Intent;
