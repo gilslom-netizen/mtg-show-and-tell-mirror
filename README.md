@@ -40,10 +40,17 @@ cannot end up in two different rooms — which is exactly what used to happen wh
 both of them left the box empty.
 
 ```bash
-npm test             # 222 tests, including 150 fuzzed games
+npm test             # 312 tests, including 150 fuzzed games
 npm run typecheck
 npm run check:serverless   # runs the API the way Vercel runs it
 npm run build              # typecheck + that check + the app build
+```
+
+There is also an AI opponent under construction, with its own two commands:
+
+```bash
+npm run ai:bench                                           # what the engine costs
+npm run ai:arena -- --a heuristic --b random --games 2000  # who is stronger, and by how much
 ```
 
 **One convention worth knowing before editing `src/engine`, `src/server` or
@@ -286,6 +293,47 @@ seat rather than being treated as a third player, and a rejected action returns 
 current state so a client can never be left showing a board the server disagrees
 with.
 
+### An opponent to play against — `src/ai`
+
+Two of the five stages in [`DESIGN-AI.md`](DESIGN-AI.md) are built: the infrastructure
+and a hand-written heuristic. It is not wired into the UI yet — it exists to be
+measured, and it is measured against a random-legal-move baseline:
+
+| | |
+|---|---|
+| heuristic vs random | **97.7%** over 2,000 games, ±1% at 95% confidence (about +647 Elo) |
+| heuristic vs itself | 300–300, which is what a mirror should say |
+
+**Every agent takes a `PlayerView` and nothing else.** That is the same redacted
+object the client gets over the wire, so an agent cannot see your hand even by
+accident, the same code can eventually run in your own browser, and a policy learned
+later cannot come to depend on something it will not have at the table. A test walks
+the views actually handed out during real games and checks none of them names a card
+in the other hand.
+
+A finished game is stored as `(seed, starting player, action log)` — nothing else,
+because the engine is deterministic. That is around 300× smaller than the states it
+stands in for, which is the difference between a million-game training corpus being
+gigabytes and being terabytes.
+
+```bash
+npm run ai:arena -- --a heuristic --b random --games 2000
+```
+
+Two things about that command are the point rather than the packaging. Every seed is
+played **twice**, once with each agent on the play, because being on the play in a
+combo mirror is worth more than most differences between agents — pairing cancels it
+instead of averaging over it. And every number comes with a confidence interval
+computed over pairs, so a run that has not established anything says so in as many
+words. A 55% win rate over 200 games of this deck means nothing at all.
+
+`npm run ai:bench` reports what the engine costs — decision time, branching factor,
+what a state clone costs against what a decision costs — because those numbers are
+what decides which approaches are affordable. Two of them changed the plan: turning
+off the Esc snapshot for headless play (`Game.create({ undoable: false })`) roughly
+halves the cost of a decision, and more threads help far less than the core count
+suggests, because the work is bound by memory bandwidth rather than by CPU.
+
 ---
 
 ## Deliberately not built
@@ -321,6 +369,9 @@ with.
 | `art.test.ts` | Art resolution and every mana symbol in the deck |
 | `draft.test.ts` | The auction rule by rule, who pays what, and that neither player's private card or picks leak |
 | `draft-room.test.ts` | A drafted room end to end over the replay-the-log path, and decklist legality |
+| `ai/contract.test.ts` | That the views actually handed to an agent during a game never name a hidden card |
+| `ai/arena.test.ts` | Determinism, that a record replays to the identical final state, and that an even run is not called significant |
+| `ai/heuristic.test.ts` | The positions where there is a right answer — the Show and Tell pick, what a counter is worth, mulligans, and the two loops the mirror can produce |
 
 Two browser profiles joining one room over both transports is checked by hand
 against `npm run dev`, the built self-hosted server, and a static host with no
@@ -330,6 +381,12 @@ than sit on a waiting screen.
 The fuzzer found three real bugs during development: a spell that left every zone
 while waiting on a choice, an exponential blow-up in the mana solver, and a crash
 when an attacking token died before blockers were declared.
+
+The arena found a fourth thing, which is not a bug in the engine but is worth knowing
+about the format: two Hullbreaker Horrors across two Omnisciences can bounce each
+other's Mana Drains for ever. Nothing is spent, no life total moves, and neither
+player has any reason to stop — which is a genuine non-terminating loop and, under the
+real rules, a draw. It surfaced as 65 games out of 600 that simply refused to end.
 
 ---
 

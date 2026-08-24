@@ -52,10 +52,18 @@ try {
   for (const dir of ['api', 'src', 'data']) {
     cpSync(join(ROOT, dir), join(work, dir), { recursive: true });
   }
+  /*
+   * esbuild is run through its own JS entry point rather than through npx.
+   *
+   * execFileSync does not go through a shell, and on Windows there is no bare `npx`
+   * to find — only `npx.cmd`, which recent Node refuses to spawn without a shell.
+   * Running the dependency directly sidesteps both, needs no quoting, and does not
+   * consult the network for something that is already installed.
+   */
   execFileSync(
-    'npx',
+    process.execPath,
     [
-      'esbuild',
+      join(ROOT, 'node_modules', 'esbuild', 'bin', 'esbuild'),
       `${work}/api/*.ts`,
       `${work}/src/**/*.ts`,
       '--outdir=' + work,
