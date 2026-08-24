@@ -35,10 +35,23 @@
 # From nothing to running
 # ---------------------------------------------------------------------------
 #
-#   git clone https://github.com/gilslom-netizen/mtg-show-and-tell-mirror.git
+# The repository is private, so the clone needs credentials. The least fuss on a
+# throwaway machine is the GitHub CLI's device login -- it prints a code, you type it
+# into a browser you are already signed in to, and nothing long-lived is left on the
+# VM afterwards beyond a token you can revoke with `gh auth logout`:
+#
+#   sudo apt-get update && sudo apt-get install -y gh nodejs npm   # or the distro's
+#   gh auth login                                                  # device flow
+#   gh repo clone gilslom-netizen/mtg-show-and-tell-mirror
 #   cd mtg-show-and-tell-mirror
 #   npm ci
 #   ./scripts/evaluate-stage2.sh
+#
+# If the VM must not hold credentials at all, copy the working tree up instead --
+# it is a few MB without node_modules:
+#
+#   git archive --format=tar.gz -o repo.tar.gz HEAD     # on the machine that has it
+#   scp repo.tar.gz user@vm:~/ && ssh user@vm 'mkdir -p m && tar xzf repo.tar.gz -C m'
 #
 # Leave it running under tmux or nohup if the connection might drop:
 #
