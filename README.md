@@ -306,6 +306,7 @@ random-legal-move baseline:
 | heuristic vs itself | 300–300, which is what a mirror should say |
 | search vs heuristic | **62.0%** over 2,000 games, 59.0%–65.0% at 95% (about +85 Elo) |
 | more search vs less | **53.6%** — four times the determinizations buys +25 Elo |
+| search *given* the opponent's hand | **64.3%** vs 61.0% for guessing it — not a significant difference |
 
 The third row is worth two sentences, because the first attempt at it was 24 games
 and came back 54% — with an interval of 29% to 78%, which is not a result at all.
@@ -317,6 +318,14 @@ The fourth row is the more useful finding. Search is what buys the strength — 
 times the determinizations really does win, significantly — but it buys +25 Elo
 where the first step from no search at all bought +85. What is left on the table is
 a better evaluation, not a longer search.
+
+The last row is the one that decided what *not* to build next. An agent handed the
+opponent's actual hand — cheating, as a measuring instrument — plays no better than
+the same search guessing at it. An agent handed the hand *and* the order of both
+libraries wins 90.7%, but that second number is not headroom: library order is not
+information anybody is withholding, it is the future, and no amount of belief
+modelling recovers a card's worth of it. So the work left is in evaluating positions
+better, not in guessing hidden cards better.
 
 The price: a playout costs about 100ms, a game four to nine seconds across twelve
 threads, and games between two competent agents run eighteen turns and end with an

@@ -19,7 +19,8 @@
     "check:serverless": "node scripts/check-serverless.mjs",
     "set:art": "tsx scripts/set-art.ts",
     "ai:arena": "tsx scripts/ai-arena.ts",
-    "ai:bench": "tsx scripts/ai-bench.ts"
+    "ai:bench": "tsx scripts/ai-bench.ts",
+    "ai:compare": "tsx scripts/ai-compare.ts"
   },
   "dependencies": {
     "react": "^18.3.1",
