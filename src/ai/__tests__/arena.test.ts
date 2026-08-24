@@ -4,7 +4,7 @@ import { playGame, playGameDetailed, playMatch, replayRecord } from '../arena.js
 import { HeuristicAgent } from '../heuristic.js';
 import { RandomAgent } from '../random.js';
 import { eloFromScore, summarise } from '../elo.js';
-import { runPairRange } from '../series.js';
+import { runPairRange, runSeries, type MatchOutcome } from '../series.js';
 
 describe('the arena', () => {
   it('plays games to a real ending', () => {
@@ -104,6 +104,42 @@ describe('the arena', () => {
     expect(JSON.stringify(runPairRange(opts, 1, 2))).toBe(
       JSON.stringify(runPairRange(opts, 0, 3).filter((o) => o.pair === 1)),
     );
+  });
+});
+
+/**
+ * A search run takes hours, so it has to survive being interrupted. The interesting
+ * case is not a clean stop but a dirty one: killed part-way through writing a pair.
+ */
+describe('resuming an interrupted run', () => {
+  const opts = { a: 'heuristic', b: 'random:6', pairs: 6, seed: 8899, workers: 1 };
+
+  it('reaches the same answer whether or not it was interrupted', async () => {
+    const whole = await runSeries({ ...opts });
+
+    // Stop after two and a half pairs, exactly as a kill -9 would.
+    const partial: MatchOutcome[] = [];
+    await runSeries({
+      ...opts,
+      onOutcomes: (outcomes) => partial.push(...outcomes),
+    });
+    const torn = partial.slice(0, 5);
+    expect(torn.filter((o) => o.pair === torn[4].pair)).toHaveLength(1);
+
+    const resumed = await runSeries({ ...opts, done: torn });
+    expect(resumed.totalGames).toBe(whole.totalGames);
+    expect(resumed.summary.pairs).toBe(whole.summary.pairs);
+    expect(resumed.summary.score).toBeCloseTo(whole.summary.score, 10);
+  });
+
+  it('does no work at all when the checkpoint is already complete', async () => {
+    const done: MatchOutcome[] = [];
+    await runSeries({ ...opts, onOutcomes: (o) => done.push(...o) });
+
+    const again = await runSeries({ ...opts, done });
+    expect(again.summary.pairs).toBe(opts.pairs);
+    // Nothing was played, so nothing was spread across anything.
+    expect(again.workers).toBe(0);
   });
 });
 

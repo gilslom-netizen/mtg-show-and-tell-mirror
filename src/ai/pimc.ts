@@ -81,8 +81,16 @@ export class PimcAgent implements Agent {
   private readonly maxCandidates: number;
   private rng: RngState;
 
-  /** Counters, for the benchmark rather than for play. */
-  readonly stats = { decisions: 0, searched: 0, playouts: 0, unfaithful: 0 };
+  /**
+   * Counters, for the benchmark rather than for play.
+   *
+   * `budgetExceeded` is the one worth watching. A wall-clock deadline is the right
+   * budget for a game against a person (§5.1) and the wrong one for an experiment:
+   * how many determinizations fit in 200ms depends on what else the machine is doing,
+   * so a run in which the deadline ever bites is a run that will not reproduce. Size
+   * `budgetMs` so this stays at zero when the answer needs to be repeatable.
+   */
+  readonly stats = { decisions: 0, searched: 0, playouts: 0, unfaithful: 0, budgetExceeded: 0 };
 
   constructor(opts: PimcOptions = {}) {
     this.determinizations = Math.max(1, opts.determinizations ?? DEFAULT_DETERMINIZATIONS);
@@ -106,7 +114,10 @@ export class PimcAgent implements Agent {
     for (let d = 0; d < this.determinizations; d++) {
       // Always take one sample: an agent that returns the heuristic's move because
       // the clock was already gone is an agent that never searches on a slow machine.
-      if (sampled > 0 && now() >= deadline) break;
+      if (sampled > 0 && now() >= deadline) {
+        this.stats.budgetExceeded++;
+        break;
+      }
 
       const dealt = determinizedGame(view, this.rng);
       if (!dealt) {

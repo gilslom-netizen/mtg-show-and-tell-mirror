@@ -59,13 +59,25 @@ export interface SeriesResult {
   workers: number;
 }
 
-/** One shard: pairs `[from, to)`. Shared by the in-process path and the worker. */
+/** One shard: pairs `[from, to)`. */
 export function runPairRange(opts: SeriesOptions, from: number, to: number): MatchOutcome[] {
+  const pairs: number[] = [];
+  for (let pair = from; pair < to; pair++) pairs.push(pair);
+  return runPairs(opts, pairs);
+}
+
+/**
+ * Play a specific list of mirror pairs. Shared by the in-process path and the worker.
+ *
+ * A list rather than a range because a resumed run is not contiguous: it is whatever
+ * the last attempt did not finish.
+ */
+export function runPairs(opts: SeriesOptions, pairs: number[]): MatchOutcome[] {
   const baseSeed = opts.seed ?? 12345;
   const bestOf = opts.bestOf ?? 1;
   const out: MatchOutcome[] = [];
 
-  for (let pair = from; pair < to; pair++) {
+  for (const pair of pairs) {
     const seed = gameSeed(baseSeed, pair + 1);
     for (const half of [0, 1] as const) {
       // Seat A is always p1 so the result needs no unpicking; what flips is who
@@ -150,54 +162,115 @@ export interface RunOptions extends SeriesOptions {
   /** Threads to spread the pairs across. 1 runs in this process. */
   workers?: number;
   onProgress?: (donePairs: number, totalPairs: number) => void;
+  /**
+   * Called with each batch of finished matches as they arrive.
+   *
+   * A search run is measured in hours, and one that only reports at the end is one
+   * where those hours are hostage to a lid closing. This is where a caller persists
+   * what it has so a re-run can start from there instead of from nothing.
+   */
+  onOutcomes?: (outcomes: MatchOutcome[]) => void;
+  /** Pairs already played, from a previous run's checkpoint. Skipped rather than replayed. */
+  done?: MatchOutcome[];
 }
 
 export async function runSeries(opts: RunOptions): Promise<SeriesResult> {
   const started = Date.now();
-  const threads = Math.max(1, Math.min(opts.workers ?? 1, opts.pairs));
+
+  /*
+   * Only whole pairs are carried over.
+   *
+   * A pair with one half in it is a pair that is going to be replayed, and keeping
+   * its orphaned half would then count that match twice — inflating the sample with
+   * a duplicate and, because the pairing rule wants exactly two halves, quietly
+   * dropping the pair from the statistics altogether. Half a pair is also worthless
+   * on its own: it carries the play/draw bias the pairing exists to cancel.
+   */
+  const finishedPairs = new Set<number>(countCompletePairs(opts.done ?? []));
+  const alreadyDone = (opts.done ?? []).filter((o) => finishedPairs.has(o.pair));
+
+  const todo: number[] = [];
+  for (let pair = 0; pair < opts.pairs; pair++) {
+    if (!finishedPairs.has(pair)) todo.push(pair);
+  }
+  if (todo.length === 0) {
+    opts.onProgress?.(opts.pairs, opts.pairs);
+    return aggregate(opts, alreadyDone, Date.now() - started, 0);
+  }
+
+  const threads = Math.max(1, Math.min(opts.workers ?? 1, todo.length));
 
   if (threads === 1) {
-    const outcomes = runPairRange(opts, 0, opts.pairs);
-    opts.onProgress?.(opts.pairs, opts.pairs);
-    return aggregate(opts, outcomes, Date.now() - started, 1);
+    const outcomes: MatchOutcome[] = [];
+    for (const pair of todo) {
+      const batch = runPairRange(opts, pair, pair + 1);
+      outcomes.push(...batch);
+      opts.onOutcomes?.(batch);
+      opts.onProgress?.(finishedPairs.size + outcomes.length / 2, opts.pairs);
+    }
+    return aggregate(opts, [...alreadyDone, ...outcomes], Date.now() - started, 1);
   }
 
-  // Contiguous shards rather than round-robin: a shard is two numbers, and games in
-  // this deck all cost about the same, so there is nothing to gain from interleaving.
-  const bounds: [number, number][] = [];
-  const per = Math.ceil(opts.pairs / threads);
-  for (let i = 0; i < threads; i++) {
-    const from = i * per;
-    if (from >= opts.pairs) break;
-    bounds.push([from, Math.min(opts.pairs, from + per)]);
-  }
+  /*
+   * Round-robin rather than contiguous blocks.
+   *
+   * A resumed run has holes in it, and dealing the remaining pairs out one at a time
+   * keeps every worker's share the same size however ragged those holes are. Games
+   * here all cost about the same, so nothing else about the split matters.
+   */
+  const shards: number[][] = Array.from({ length: threads }, () => []);
+  todo.forEach((pair, i) => shards[i % threads].push(pair));
 
-  let done = 0;
-  const shards = await Promise.all(
-    bounds.map(
-      ([from, to]) =>
-        new Promise<MatchOutcome[]>((resolve, reject) => {
-          const worker = new Worker(new URL('./worker.ts', import.meta.url), {
-            workerData: { opts: stripCallbacks(opts), from, to },
-          });
-          worker.on('message', (msg: WorkerMessage) => {
-            if (msg.t === 'progress') {
-              done += msg.pairs;
-              opts.onProgress?.(done, opts.pairs);
-              return;
-            }
-            resolve(msg.outcomes);
-            void worker.terminate();
-          });
-          worker.on('error', reject);
-          worker.on('exit', (code) => {
-            if (code !== 0) reject(new Error(`arena worker exited with code ${code}`));
-          });
-        }),
-    ),
+  let done = finishedPairs.size;
+  const results = await Promise.all(
+    shards
+      .filter((s) => s.length > 0)
+      .map(
+        (pairs) =>
+          new Promise<MatchOutcome[]>((resolve, reject) => {
+            const collected: MatchOutcome[] = [];
+            const worker = new Worker(new URL('./worker.ts', import.meta.url), {
+              workerData: { opts: stripCallbacks(opts), pairs },
+            });
+            worker.on('message', (msg: WorkerMessage) => {
+              if (msg.t === 'progress') {
+                collected.push(...msg.outcomes);
+                // Hand them over as they land, so a caller can write them down
+                // before the next hour of the run has a chance to go wrong.
+                opts.onOutcomes?.(msg.outcomes);
+                done += msg.pairs;
+                opts.onProgress?.(done, opts.pairs);
+                return;
+              }
+              resolve(collected);
+              void worker.terminate();
+            });
+            worker.on('error', reject);
+            worker.on('exit', (code) => {
+              if (code !== 0) reject(new Error(`arena worker exited with code ${code}`));
+            });
+          }),
+      ),
   );
 
-  return aggregate(opts, shards.flat(), Date.now() - started, bounds.length);
+  return aggregate(
+    opts,
+    [...alreadyDone, ...results.flat()],
+    Date.now() - started,
+    shards.filter((s) => s.length > 0).length,
+  );
+}
+
+/** Pairs for which both halves have been played, which is the resumable unit. */
+function countCompletePairs(outcomes: MatchOutcome[]): number[] {
+  const halves = new Map<number, Set<number>>();
+  for (const o of outcomes) {
+    if (!halves.has(o.pair)) halves.set(o.pair, new Set());
+    halves.get(o.pair)!.add(o.half);
+  }
+  // Half a pair still carries the play/draw bias the pairing exists to remove, so a
+  // pair is only worth keeping — and only worth skipping — once both halves are in.
+  return [...halves.entries()].filter(([, s]) => s.size === 2).map(([pair]) => pair);
 }
 
 /** `workerData` is structured-cloned, and a function is not cloneable. */
@@ -214,5 +287,5 @@ function stripCallbacks(opts: RunOptions): SeriesOptions {
 }
 
 export type WorkerMessage =
-  | { t: 'progress'; pairs: number }
+  | { t: 'progress'; pairs: number; outcomes: MatchOutcome[] }
   | { t: 'done'; outcomes: MatchOutcome[] };

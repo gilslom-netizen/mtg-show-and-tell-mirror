@@ -1,5 +1,5 @@
 import { parentPort, workerData } from 'node:worker_threads';
-import { runPairRange, type MatchOutcome, type SeriesOptions, type WorkerMessage } from './series.js';
+import { runPairs, type MatchOutcome, type SeriesOptions, type WorkerMessage } from './series.js';
 
 /**
  * One shard of an arena run.
@@ -10,17 +10,23 @@ import { runPairRange, type MatchOutcome, type SeriesOptions, type WorkerMessage
  * self-play, with no shared state to get wrong. See DESIGN-AI.md 6.4.
  */
 
-const { opts, from, to } = workerData as { opts: SeriesOptions; from: number; to: number };
+const { opts, pairs } = workerData as { opts: SeriesOptions; pairs: number[] };
 
-const outcomes: MatchOutcome[] = [];
-const CHUNK = 8;
+/**
+ * Results are sent back as they are finished rather than in one lump at the end.
+ *
+ * A search run takes hours, and a run that only reports when it is over is a run
+ * where an hour of it is lost to a laptop lid or an out-of-memory kill. Streaming
+ * lets the caller checkpoint, and lets a re-run pick up where the last one stopped.
+ */
+const CHUNK = 4;
 
-for (let start = from; start < to; start += CHUNK) {
-  const end = Math.min(to, start + CHUNK);
-  outcomes.push(...runPairRange(opts, start, end));
-  const progress: WorkerMessage = { t: 'progress', pairs: end - start };
+for (let start = 0; start < pairs.length; start += CHUNK) {
+  const batch = pairs.slice(start, start + CHUNK);
+  const outcomes: MatchOutcome[] = runPairs(opts, batch);
+  const progress: WorkerMessage = { t: 'progress', pairs: batch.length, outcomes };
   parentPort?.postMessage(progress);
 }
 
-const done: WorkerMessage = { t: 'done', outcomes };
+const done: WorkerMessage = { t: 'done', outcomes: [] };
 parentPort?.postMessage(done);

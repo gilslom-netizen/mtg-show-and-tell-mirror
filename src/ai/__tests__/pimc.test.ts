@@ -178,16 +178,9 @@ describe('the Show and Tell matrix', () => {
 const SLOW = 60_000;
 
 describe('the PIMC agent', () => {
-  const smallGame = (seed: number, dets = 2) => {
+  const smallGame = (seed: number, dets = 1, budgetMs = 60_000) => {
     const pimc = new PimcAgent({ determinizations: dets, seed: 3 });
-    const record = playGame({
-      p1: pimc,
-      p2: new HeuristicAgent(),
-      seed,
-      // One determinization's worth of thinking: enough that search happens and is
-      // observable, not enough to make the suite a benchmark.
-      budgetMs: 120,
-    });
+    const record = playGame({ p1: pimc, p2: new HeuristicAgent(), seed, budgetMs });
     return { record, stats: pimc.stats };
   };
 
@@ -229,16 +222,34 @@ describe('the PIMC agent', () => {
     SLOW,
   );
 
+  /**
+   * Reproducible from its seed — but only while the clock stays out of it.
+   *
+   * A wall-clock budget is the right thing to search against in a real game and the
+   * wrong thing to run an experiment on: how many determinizations fit into 200ms
+   * depends on what else the machine happens to be doing, so a run in which the
+   * deadline bites is a run that will not repeat. That is not a bug to fix, it is a
+   * property to know about, which is why the agent counts it — and why an evaluation
+   * run gives itself a budget big enough never to reach.
+   */
   it(
-    'is reproducible from its seed',
+    'is reproducible from its seed, when the deadline is not what stopped it',
     () => {
       const once = smallGame(52004);
       const twice = smallGame(52004);
+      expect(once.stats.budgetExceeded).toBe(0);
       expect(twice.record.winner).toBe(once.record.winner);
       expect(JSON.stringify(twice.record.actions)).toBe(JSON.stringify(once.record.actions));
     },
     SLOW,
   );
+
+  it('reports when the clock, rather than the plan, ended the search', () => {
+    // One millisecond: every search after the first sample is cut short.
+    const pimc = new PimcAgent({ determinizations: 8, seed: 3 });
+    playGame({ p1: pimc, p2: new HeuristicAgent(), seed: 52007, budgetMs: 1 });
+    expect(pimc.stats.budgetExceeded).toBeGreaterThan(0);
+  }, SLOW);
 
   it('falls back to the heuristic where a position cannot be searched', () => {
     // Every choice — a mulligan, a Brainstorm, a target — arrives mid-resolution,
