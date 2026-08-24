@@ -1886,3 +1886,109 @@
 {"pair":951,"half":1,"aScore":0,"games":1,"turns":6,"reasons":["life total reached 0"],"unfinished":0,"decisions":116}
 {"pair":955,"half":0,"aScore":1,"games":1,"turns":6,"reasons":["life total reached 0"],"unfinished":0,"decisions":227}
 {"pair":955,"half":1,"aScore":1,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":138}
+{"pair":926,"half":0,"aScore":1,"games":1,"turns":39,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1450}
+{"pair":926,"half":1,"aScore":1,"games":1,"turns":9,"reasons":["life total reached 0"],"unfinished":0,"decisions":247}
+{"pair":930,"half":0,"aScore":1,"games":1,"turns":26,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":941}
+{"pair":930,"half":1,"aScore":0,"games":1,"turns":23,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":794}
+{"pair":934,"half":0,"aScore":0,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":107}
+{"pair":934,"half":1,"aScore":1,"games":1,"turns":4,"reasons":["life total reached 0"],"unfinished":0,"decisions":90}
+{"pair":938,"half":0,"aScore":1,"games":1,"turns":6,"reasons":["life total reached 0"],"unfinished":0,"decisions":155}
+{"pair":938,"half":1,"aScore":1,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":163}
+{"pair":956,"half":0,"aScore":1,"games":1,"turns":31,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1167}
+{"pair":956,"half":1,"aScore":1,"games":1,"turns":6,"reasons":["life total reached 0"],"unfinished":0,"decisions":104}
+{"pair":960,"half":0,"aScore":0,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":212}
+{"pair":960,"half":1,"aScore":1,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":101}
+{"pair":964,"half":0,"aScore":0,"games":1,"turns":31,"reasons":["life total reached 0"],"unfinished":0,"decisions":1173}
+{"pair":964,"half":1,"aScore":1,"games":1,"turns":26,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":968}
+{"pair":968,"half":0,"aScore":1,"games":1,"turns":41,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1432}
+{"pair":968,"half":1,"aScore":1,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":99}
+{"pair":959,"half":0,"aScore":0,"games":1,"turns":4,"reasons":["life total reached 0"],"unfinished":0,"decisions":110}
+{"pair":959,"half":1,"aScore":0,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":103}
+{"pair":963,"half":0,"aScore":0,"games":1,"turns":6,"reasons":["life total reached 0"],"unfinished":0,"decisions":190}
+{"pair":963,"half":1,"aScore":1,"games":1,"turns":4,"reasons":["life total reached 0"],"unfinished":0,"decisions":67}
+{"pair":967,"half":0,"aScore":1,"games":1,"turns":37,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1345}
+{"pair":967,"half":1,"aScore":1,"games":1,"turns":38,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1399}
+{"pair":971,"half":0,"aScore":0,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":196}
+{"pair":971,"half":1,"aScore":0,"games":1,"turns":6,"reasons":["life total reached 0"],"unfinished":0,"decisions":126}
+{"pair":941,"half":0,"aScore":0,"games":1,"turns":7,"reasons":["life total reached 0"],"unfinished":0,"decisions":256}
+{"pair":941,"half":1,"aScore":1,"games":1,"turns":41,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1423}
+{"pair":945,"half":0,"aScore":1,"games":1,"turns":40,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1342}
+{"pair":945,"half":1,"aScore":0,"games":1,"turns":40,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1389}
+{"pair":949,"half":0,"aScore":1,"games":1,"turns":31,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1067}
+{"pair":949,"half":1,"aScore":0,"games":1,"turns":7,"reasons":["life total reached 0"],"unfinished":0,"decisions":158}
+{"pair":953,"half":0,"aScore":0,"games":1,"turns":21,"reasons":["life total reached 0"],"unfinished":0,"decisions":756}
+{"pair":953,"half":1,"aScore":0,"games":1,"turns":33,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1222}
+{"pair":942,"half":0,"aScore":0,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":171}
+{"pair":942,"half":1,"aScore":0,"games":1,"turns":28,"reasons":["life total reached 0"],"unfinished":0,"decisions":1116}
+{"pair":946,"half":0,"aScore":1,"games":1,"turns":7,"reasons":["life total reached 0"],"unfinished":0,"decisions":119}
+{"pair":946,"half":1,"aScore":1,"games":1,"turns":6,"reasons":["life total reached 0"],"unfinished":0,"decisions":134}
+{"pair":950,"half":0,"aScore":1,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":183}
+{"pair":950,"half":1,"aScore":0,"games":1,"turns":6,"reasons":["life total reached 0"],"unfinished":0,"decisions":207}
+{"pair":954,"half":0,"aScore":1,"games":1,"turns":38,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1395}
+{"pair":954,"half":1,"aScore":1,"games":1,"turns":8,"reasons":["life total reached 0"],"unfinished":0,"decisions":252}
+{"pair":975,"half":0,"aScore":0,"games":1,"turns":4,"reasons":["life total reached 0"],"unfinished":0,"decisions":69}
+{"pair":975,"half":1,"aScore":0,"games":1,"turns":40,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1445}
+{"pair":979,"half":0,"aScore":1,"games":1,"turns":14,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":528}
+{"pair":979,"half":1,"aScore":0,"games":1,"turns":6,"reasons":["life total reached 0"],"unfinished":0,"decisions":116}
+{"pair":983,"half":0,"aScore":1,"games":1,"turns":38,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1417}
+{"pair":983,"half":1,"aScore":1,"games":1,"turns":4,"reasons":["life total reached 0"],"unfinished":0,"decisions":86}
+{"pair":987,"half":0,"aScore":1,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":93}
+{"pair":987,"half":1,"aScore":0,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":127}
+{"pair":972,"half":0,"aScore":0,"games":1,"turns":8,"reasons":["life total reached 0"],"unfinished":0,"decisions":241}
+{"pair":972,"half":1,"aScore":1,"games":1,"turns":34,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1223}
+{"pair":976,"half":0,"aScore":0,"games":1,"turns":4,"reasons":["life total reached 0"],"unfinished":0,"decisions":87}
+{"pair":976,"half":1,"aScore":0,"games":1,"turns":21,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":827}
+{"pair":980,"half":0,"aScore":1,"games":1,"turns":27,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1042}
+{"pair":980,"half":1,"aScore":1,"games":1,"turns":22,"reasons":["life total reached 0"],"unfinished":0,"decisions":949}
+{"pair":984,"half":0,"aScore":1,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":106}
+{"pair":984,"half":1,"aScore":0,"games":1,"turns":34,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1240}
+{"pair":957,"half":0,"aScore":1,"games":1,"turns":6,"reasons":["life total reached 0"],"unfinished":0,"decisions":112}
+{"pair":957,"half":1,"aScore":1,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":129}
+{"pair":961,"half":0,"aScore":0,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":95}
+{"pair":961,"half":1,"aScore":0,"games":1,"turns":7,"reasons":["life total reached 0"],"unfinished":0,"decisions":128}
+{"pair":965,"half":0,"aScore":1,"games":1,"turns":4,"reasons":["life total reached 0"],"unfinished":0,"decisions":76}
+{"pair":965,"half":1,"aScore":0,"games":1,"turns":6,"reasons":["life total reached 0"],"unfinished":0,"decisions":142}
+{"pair":969,"half":0,"aScore":0,"games":1,"turns":7,"reasons":["life total reached 0"],"unfinished":0,"decisions":127}
+{"pair":969,"half":1,"aScore":0,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":78}
+{"pair":958,"half":0,"aScore":1,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":82}
+{"pair":958,"half":1,"aScore":0,"games":1,"turns":37,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1305}
+{"pair":962,"half":0,"aScore":1,"games":1,"turns":35,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1303}
+{"pair":962,"half":1,"aScore":1,"games":1,"turns":4,"reasons":["life total reached 0"],"unfinished":0,"decisions":55}
+{"pair":966,"half":0,"aScore":0,"games":1,"turns":6,"reasons":["life total reached 0"],"unfinished":0,"decisions":154}
+{"pair":966,"half":1,"aScore":0,"games":1,"turns":12,"reasons":["life total reached 0"],"unfinished":0,"decisions":398}
+{"pair":970,"half":0,"aScore":1,"games":1,"turns":4,"reasons":["life total reached 0"],"unfinished":0,"decisions":130}
+{"pair":970,"half":1,"aScore":0,"games":1,"turns":36,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1321}
+{"pair":991,"half":0,"aScore":0,"games":1,"turns":7,"reasons":["life total reached 0"],"unfinished":0,"decisions":135}
+{"pair":991,"half":1,"aScore":0,"games":1,"turns":45,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1628}
+{"pair":995,"half":0,"aScore":0,"games":1,"turns":4,"reasons":["life total reached 0"],"unfinished":0,"decisions":137}
+{"pair":995,"half":1,"aScore":0,"games":1,"turns":4,"reasons":["life total reached 0"],"unfinished":0,"decisions":197}
+{"pair":999,"half":0,"aScore":1,"games":1,"turns":28,"reasons":["life total reached 0"],"unfinished":0,"decisions":1076}
+{"pair":999,"half":1,"aScore":1,"games":1,"turns":23,"reasons":["life total reached 0"],"unfinished":0,"decisions":1082}
+{"pair":988,"half":0,"aScore":1,"games":1,"turns":8,"reasons":["life total reached 0"],"unfinished":0,"decisions":233}
+{"pair":988,"half":1,"aScore":1,"games":1,"turns":32,"reasons":["life total reached 0"],"unfinished":0,"decisions":1244}
+{"pair":992,"half":0,"aScore":0,"games":1,"turns":7,"reasons":["life total reached 0"],"unfinished":0,"decisions":264}
+{"pair":992,"half":1,"aScore":0,"games":1,"turns":33,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1160}
+{"pair":996,"half":0,"aScore":1,"games":1,"turns":9,"reasons":["life total reached 0"],"unfinished":0,"decisions":215}
+{"pair":996,"half":1,"aScore":1,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":130}
+{"pair":973,"half":0,"aScore":0,"games":1,"turns":9,"reasons":["life total reached 0"],"unfinished":0,"decisions":200}
+{"pair":973,"half":1,"aScore":1,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":72}
+{"pair":977,"half":0,"aScore":0,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":166}
+{"pair":977,"half":1,"aScore":1,"games":1,"turns":6,"reasons":["life total reached 0"],"unfinished":0,"decisions":336}
+{"pair":981,"half":0,"aScore":1,"games":1,"turns":40,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1451}
+{"pair":981,"half":1,"aScore":1,"games":1,"turns":21,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":872}
+{"pair":985,"half":0,"aScore":1,"games":1,"turns":7,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":260}
+{"pair":985,"half":1,"aScore":1,"games":1,"turns":11,"reasons":["life total reached 0"],"unfinished":0,"decisions":452}
+{"pair":974,"half":0,"aScore":1,"games":1,"turns":37,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1364}
+{"pair":974,"half":1,"aScore":1,"games":1,"turns":29,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1074}
+{"pair":978,"half":0,"aScore":0,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":79}
+{"pair":978,"half":1,"aScore":0,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":115}
+{"pair":982,"half":0,"aScore":1,"games":1,"turns":22,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":778}
+{"pair":982,"half":1,"aScore":0,"games":1,"turns":41,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1399}
+{"pair":986,"half":0,"aScore":1,"games":1,"turns":15,"reasons":["life total reached 0"],"unfinished":0,"decisions":780}
+{"pair":986,"half":1,"aScore":0,"games":1,"turns":6,"reasons":["life total reached 0"],"unfinished":0,"decisions":199}
+{"pair":989,"half":0,"aScore":1,"games":1,"turns":32,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1114}
+{"pair":989,"half":1,"aScore":1,"games":1,"turns":44,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1539}
+{"pair":993,"half":0,"aScore":1,"games":1,"turns":6,"reasons":["life total reached 0"],"unfinished":0,"decisions":223}
+{"pair":993,"half":1,"aScore":1,"games":1,"turns":5,"reasons":["life total reached 0"],"unfinished":0,"decisions":106}
+{"pair":997,"half":0,"aScore":0,"games":1,"turns":45,"reasons":["tried to draw from an empty library"],"unfinished":0,"decisions":1582}
+{"pair":997,"half":1,"aScore":0,"games":1,"turns":39,"reasons":["life total reached 0"],"unfinished":0,"decisions":1474}
