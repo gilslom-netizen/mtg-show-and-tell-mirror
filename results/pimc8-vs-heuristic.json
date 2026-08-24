@@ -1,0 +1,37 @@
+{
+  "a": "pimc:8",
+  "b": "heuristic",
+  "matches": 2000,
+  "bestOf": 1,
+  "seed": 20260824,
+  "budgetMs": 30000,
+  "workers": 4,
+  "reproduce": "--a pimc:8 --b heuristic --games 2000 --bo 1 --seed 20260824 --budget 30000",
+  "summary": {
+    "games": 2000,
+    "pairs": 1000,
+    "wins": 1240,
+    "losses": 760,
+    "draws": 0,
+    "unfinished": 0,
+    "score": 0.62,
+    "scoreLow": 0.5895108840773737,
+    "scoreHigh": 0.6495706938716597,
+    "elo": 85.04323715257745,
+    "eloLow": 62.87607260181566,
+    "eloHigh": 107.21040170333929,
+    "significant": true
+  },
+  "totalGames": 2000,
+  "averageTurns": 18.057,
+  "averageDecisions": 638.544,
+  "byReason": {
+    "tried to draw from an empty library": 901,
+    "life total reached 0": 1099
+  },
+  "elapsedMs": 12523242,
+  "gamesPerSecond": 0.15970305452853184,
+  "node": "v22.22.2",
+  "platform": "linux/x64",
+  "cores": 4
+}
