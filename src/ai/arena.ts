@@ -104,14 +104,29 @@ export function playGame(opts: PlayGameOptions): GameRecord {
  * record for it. Replaying costs about as much as playing did, and doing it for
  * every game of every match in an arena run is most of the run.
  */
-export function playGameDetailed(opts: PlayGameOptions): { record: GameRecord; game: Game } {
-  const startingPlayer = opts.startingPlayer ?? 'p1';
+export interface RunToEndOptions {
+  budgetMs?: number;
+  maxSteps?: number;
+  /** Appended to as the game goes. Omit when the log is not wanted. */
+  actions?: RecordedAction[];
+  onDecision?: PlayGameOptions['onDecision'];
+}
+
+/**
+ * Drive a game from wherever it is to wherever it stops.
+ *
+ * Shared by the arena and by search: a rollout is the same loop as a game, started
+ * from a position somebody imagined rather than from a shuffle. Keeping it in one
+ * place is what makes a rollout play by the same rules the arena does — including
+ * which seat is asked what, which is the part that is easy to get subtly wrong.
+ */
+export function runToEnd(
+  game: Game,
+  agents: Record<PlayerId, Agent>,
+  opts: RunToEndOptions = {},
+): { decisions: number; unfinished: boolean } {
   const budgetMs = opts.budgetMs ?? DEFAULT_BUDGET_MS;
   const maxSteps = opts.maxSteps ?? DEFAULT_MAX_STEPS;
-  const agents: Record<PlayerId, Agent> = { p1: opts.p1, p2: opts.p2 };
-
-  const game = newArenaGame(opts.seed, startingPlayer, opts.undoable ?? false);
-  const actions: RecordedAction[] = [];
   let decisions = 0;
   let steps = 0;
 
@@ -149,7 +164,7 @@ export function playGameDetailed(opts: PlayGameOptions): { record: GameRecord; g
         } catch (e) {
           fail(agents[seat], seat, `answered ${view.choice.kind} illegally`, e);
         }
-        actions.push({ k: 'choice', seat, choiceId: pc.id, response });
+        opts.actions?.push({ k: 'choice', seat, choiceId: pc.id, response });
       }
       continue;
     }
@@ -174,8 +189,27 @@ export function playGameDetailed(opts: PlayGameOptions): { record: GameRecord; g
     } catch (e) {
       fail(agents[seat], seat, `played an illegal action ${JSON.stringify(intent)}`, e);
     }
-    actions.push({ k: 'intent', seat, intent });
+    opts.actions?.push({ k: 'intent', seat, intent });
   }
+
+  return { decisions, unfinished: game.state.winner === null };
+}
+
+export function playGameDetailed(opts: PlayGameOptions): { record: GameRecord; game: Game } {
+  const startingPlayer = opts.startingPlayer ?? 'p1';
+  const game = newArenaGame(opts.seed, startingPlayer, opts.undoable ?? false);
+  const actions: RecordedAction[] = [];
+
+  const { decisions } = runToEnd(
+    game,
+    { p1: opts.p1, p2: opts.p2 },
+    {
+      budgetMs: opts.budgetMs,
+      maxSteps: opts.maxSteps,
+      actions,
+      onDecision: opts.onDecision,
+    },
+  );
 
   return {
     record: {

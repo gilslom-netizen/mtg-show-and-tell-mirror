@@ -36,6 +36,14 @@ import { faceOfView, isLandSource, read, remainingToughness, type Read } from '.
 
 type ChoiceOf<K extends ChoiceView['kind']> = Extract<ChoiceView, { kind: K }>;
 
+/** One action, with what the heuristic thinks of it. */
+export interface RankedAction {
+  intent: Intent;
+  score: number;
+  /** Tapping a land is legal everywhere and is never a candidate for anything. */
+  isManaAbility: boolean;
+}
+
 /** Lands that come in untapped only if you pay two life. */
 const SHOCKLANDS: OracleId[] = [
   'breeding_pool',
@@ -115,18 +123,34 @@ export class HeuristicAgent implements Agent {
   // -------------------------------------------------------------------------
 
   act(view: PlayerView): Intent {
+    return this.rank(view)[0].intent;
+  }
+
+  /**
+   * Every action available here, best first, with the score behind it.
+   *
+   * `act` is the first element of this. It is exposed because a search agent needs
+   * exactly this list: something has to decide which two or three of the legal
+   * actions are worth spending playouts on, and until there is a policy head
+   * (§9.3) the heuristic is the thing that knows. Passing is always in the list,
+   * scored zero, so "do nothing" is a candidate like any other.
+   */
+  rank(view: PlayerView): RankedAction[] {
     const r = read(view);
-    // Passing scores zero, so anything not worth doing loses to doing nothing.
-    let bestScore = 0;
-    let best: Intent = { t: 'passPriority' };
+    const scored: RankedAction[] = [
+      { intent: { t: 'passPriority' }, score: 0, isManaAbility: false },
+    ];
     for (const action of view.legalActions) {
-      const score = this.scoreAction(action, r);
-      if (score > bestScore) {
-        bestScore = score;
-        best = action.intent;
-      }
+      if (action.intent.t === 'passPriority') continue;
+      scored.push({
+        intent: action.intent,
+        score: this.scoreAction(action, r),
+        isManaAbility: Boolean(action.isManaAbility),
+      });
     }
-    return best;
+    // A stable sort, so two actions the heuristic cannot separate are separated the
+    // same way every time and a replay stays a replay.
+    return scored.sort((a, b) => b.score - a.score);
   }
 
   private scoreAction(action: LegalAction, r: Read): number {

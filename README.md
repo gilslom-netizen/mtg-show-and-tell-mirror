@@ -295,14 +295,22 @@ with.
 
 ### An opponent to play against — `src/ai`
 
-Two of the five stages in [`DESIGN-AI.md`](DESIGN-AI.md) are built: the infrastructure
-and a hand-written heuristic. It is not wired into the UI yet — it exists to be
-measured, and it is measured against a random-legal-move baseline:
+Three of the five stages in [`DESIGN-AI.md`](DESIGN-AI.md) are built: the
+infrastructure, a hand-written heuristic, and a determinizing search. None of it is
+wired into the UI yet — it exists to be measured, and it is measured against a
+random-legal-move baseline:
 
 | | |
 |---|---|
 | heuristic vs random | **97.7%** over 2,000 games, ±1% at 95% confidence (about +647 Elo) |
 | heuristic vs itself | 300–300, which is what a mirror should say |
+| search vs heuristic | **not established.** 54% over 24 games, which is 29%–78% at 95% — i.e. nothing |
+
+That last row is the honest state of it. A playout costs about 100ms, a game about
+fifty seconds of CPU, and the 2,000 games this deck's variance demands is roughly
+seven hours on a laptop. The search is built, it reconstructs every position it
+searches correctly, and whether it is actually stronger is an open question with a
+price tag on it.
 
 **Every agent takes a `PlayerView` and nothing else.** That is the same redacted
 object the client gets over the wire, so an agent cannot see your hand even by
@@ -315,6 +323,15 @@ A finished game is stored as `(seed, starting player, action log)` — nothing e
 because the engine is deterministic. That is around 300× smaller than the states it
 stands in for, which is the difference between a million-game training corpus being
 gigabytes and being terabytes.
+
+The search agent has to square a circle: it may only see a `PlayerView`, and it needs
+a whole board to play forward. So it rebuilds one — dealing the opponent a hand at
+random out of the cards neither player can see, which is an *exact* sample rather than
+a guess, because both players are known to be on the same sixty cards. Then it checks
+its own work: redact the rebuild, and compare it against the view it was rebuilt from,
+right down to the list of legal actions. A position that fails that check is not
+searched. It costs one redaction, and it means a reconstruction bug shows up as a
+merely ordinary move instead of as a confident answer to the wrong question.
 
 ```bash
 npm run ai:arena -- --a heuristic --b random --games 2000
@@ -372,6 +389,8 @@ suggests, because the work is bound by memory bandwidth rather than by CPU.
 | `ai/contract.test.ts` | That the views actually handed to an agent during a game never name a hidden card |
 | `ai/arena.test.ts` | Determinism, that a record replays to the identical final state, and that an even run is not called significant |
 | `ai/heuristic.test.ts` | The positions where there is a right answer — the Show and Tell pick, what a counter is worth, mulligans, and the two loops the mirror can produce |
+| `ai/determinize.test.ts` | That a position rebuilt from a view really is that position, at every priority window of real games |
+| `ai/pimc.test.ts` | Matrix games with answers known in advance, and that search declines to run where it cannot rebuild the board |
 
 Two browser profiles joining one room over both transports is checked by hand
 against `npm run dev`, the built self-hosted server, and a static host with no
