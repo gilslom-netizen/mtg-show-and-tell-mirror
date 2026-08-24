@@ -19,6 +19,7 @@ export const AGENT_SPECS = [
   'pimc',
   'pimc:<determinizations>',
   'oracle (cheats — for measurement only)',
+  'oracle-hands:<determinizations> (cheats — for measurement only)',
 ] as const;
 
 export function makeAgent(spec: string): Agent {
@@ -46,7 +47,19 @@ export function makeAgent(spec: string): Agent {
      * decides whether the work left is about belief or about evaluation (§14).
      */
     case 'oracle':
-      return new OracleAgent();
+      return new OracleAgent({ knows: 'everything' });
+    /*
+     * The half of the gap that is actually recoverable: it knows the hands, which is
+     * what PIMC is guessing at, and reshuffles the libraries, which nobody could ever
+     * deduce. Same playout count as `pimc:<n>`, so the only difference is knowing.
+     */
+    case 'oracle-hands': {
+      const determinizations = arg === undefined ? 8 : Number(arg);
+      if (!Number.isFinite(determinizations) || determinizations < 1) {
+        throw new Error(`oracle-hands needs a positive count, got "${arg}"`);
+      }
+      return new OracleAgent({ knows: 'hands', determinizations });
+    }
     default:
       throw new Error(`Unknown agent "${spec}". Known: ${AGENT_SPECS.join(', ')}`);
   }

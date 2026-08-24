@@ -18,10 +18,40 @@ import { RandomAgent } from '../random.js';
 describe('the oracle agent', () => {
   it('is the only agent that asks to see the state', () => {
     expect(seesTruth(new OracleAgent())).toBe(true);
+    expect(seesTruth(new OracleAgent({ knows: 'hands' }))).toBe(true);
     for (const agent of [new HeuristicAgent(), new RandomAgent(1), new PimcAgent()]) {
       expect(seesTruth(agent as Agent)).toBe(false);
     }
   });
+
+  /**
+   * The distinction the whole decision rests on. Knowing the hands is knowledge that
+   * a belief model could in principle recover; knowing the order of a shuffled
+   * library is not knowledge at all, it is the future. An instrument that conflated
+   * them would report chance as though it were something worth building for.
+   */
+  it('knows the hands but not the shuffle, in hands mode', () => {
+    const oracle = new OracleAgent({ knows: 'hands', determinizations: 2 });
+    let checked = 0;
+    playGame({
+      p1: oracle,
+      p2: new HeuristicAgent(),
+      seed: 61003,
+      budgetMs: 60_000,
+      onDecision: (game, seat, kind) => {
+        if (kind !== 'priority' || seat !== 'p1' || checked > 40) return;
+        checked++;
+        // Whatever board it plays forward from, the hands are the real ones.
+        const before = game.state.zones.p2.hand.map((i) => game.state.cards[i].oracleId);
+        oracle.observeTruth(game.state);
+        const after = game.state.zones.p2.hand.map((i) => game.state.cards[i].oracleId);
+        expect(after).toEqual(before);
+      },
+    });
+    expect(checked).toBeGreaterThan(10);
+    // And it never mutated the real game while reshuffling its own copy of it.
+    expect(oracle.stats.blind).toBe(0);
+  }, 60_000);
 
   it('is actually handed the truth, and uses it', () => {
     const oracle = new OracleAgent();
