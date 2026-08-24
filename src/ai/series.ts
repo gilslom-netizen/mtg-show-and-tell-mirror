@@ -51,6 +51,8 @@ export interface SeriesResult {
   summary: SeriesSummary;
   /** Games, not matches — a best-of-three counts as up to three. */
   totalGames: number;
+  /** Of those, the ones this run played rather than read out of a checkpoint. */
+  gamesPlayed: number;
   averageTurns: number;
   averageDecisions: number;
   byReason: Record<string, number>;
@@ -114,6 +116,8 @@ function aggregate(
   outcomes: MatchOutcome[],
   elapsedMs: number,
   workers: number,
+  /** Games that came out of a checkpoint rather than out of this run's clock. */
+  resumedGames = 0,
 ): SeriesResult {
   const byPair = new Map<number, number[]>();
   let wins = 0;
@@ -153,7 +157,17 @@ function aggregate(
     averageDecisions: totalGames > 0 ? totalDecisions / totalGames : 0,
     byReason,
     elapsedMs,
-    gamesPerSecond: elapsedMs > 0 ? (totalGames * 1000) / elapsedMs : 0,
+    /*
+     * Over the games this run actually played, not over the ones it inherited.
+     *
+     * A resumed run has a clock that started when it did and a game count that did
+     * not, so dividing one by the other reports a machine faster than any machine —
+     * and the more often a long run is interrupted, the better it appears to have
+     * gone. The figure is only a throughput measurement if both halves cover the
+     * same interval.
+     */
+    gamesPlayed: totalGames - resumedGames,
+    gamesPerSecond: elapsedMs > 0 ? ((totalGames - resumedGames) * 1000) / elapsedMs : 0,
     workers,
   };
 }
@@ -188,6 +202,7 @@ export async function runSeries(opts: RunOptions): Promise<SeriesResult> {
    */
   const finishedPairs = new Set<number>(countCompletePairs(opts.done ?? []));
   const alreadyDone = (opts.done ?? []).filter((o) => finishedPairs.has(o.pair));
+  const resumedGames = alreadyDone.reduce((n, o) => n + o.games, 0);
 
   const todo: number[] = [];
   for (let pair = 0; pair < opts.pairs; pair++) {
@@ -195,7 +210,7 @@ export async function runSeries(opts: RunOptions): Promise<SeriesResult> {
   }
   if (todo.length === 0) {
     opts.onProgress?.(opts.pairs, opts.pairs);
-    return aggregate(opts, alreadyDone, Date.now() - started, 0);
+    return aggregate(opts, alreadyDone, Date.now() - started, 0, resumedGames);
   }
 
   const threads = Math.max(1, Math.min(opts.workers ?? 1, todo.length));
@@ -208,7 +223,7 @@ export async function runSeries(opts: RunOptions): Promise<SeriesResult> {
       opts.onOutcomes?.(batch);
       opts.onProgress?.(finishedPairs.size + outcomes.length / 2, opts.pairs);
     }
-    return aggregate(opts, [...alreadyDone, ...outcomes], Date.now() - started, 1);
+    return aggregate(opts, [...alreadyDone, ...outcomes], Date.now() - started, 1, resumedGames);
   }
 
   /*
@@ -258,6 +273,7 @@ export async function runSeries(opts: RunOptions): Promise<SeriesResult> {
     [...alreadyDone, ...results.flat()],
     Date.now() - started,
     shards.filter((s) => s.length > 0).length,
+    resumedGames,
   );
 }
 

@@ -146,10 +146,25 @@ console.log(formatSummary(a, b, result.summary));
 console.log('');
 console.log(`  ${result.totalGames} games, ${result.averageTurns.toFixed(1)} turns each on average`);
 console.log(`  ${result.averageDecisions.toFixed(0)} agent decisions per game`);
+/*
+ * A search game takes tens of seconds, so games per second is a number below one and
+ * `toFixed(0)` printed the throughput of a six-hour run as "0 games/s". Seconds per
+ * game is the right way round for anything slower than a game a second.
+ */
+const rate =
+  result.gamesPerSecond >= 1
+    ? `${result.gamesPerSecond.toFixed(1)} games/s`
+    : `${(1 / Math.max(result.gamesPerSecond, 1e-9)).toFixed(1)}s per game`;
+const resumedNote =
+  result.gamesPlayed < result.totalGames
+    ? ` (over the ${result.gamesPlayed} games this run played; ${
+        result.totalGames - result.gamesPlayed
+      } came from the checkpoint)`
+    : '';
 console.log(
-  `  ${(result.elapsedMs / 1000).toFixed(1)}s wall clock — ${result.gamesPerSecond.toFixed(
-    0,
-  )} games/s across ${result.workers} thread${result.workers === 1 ? '' : 's'}`,
+  `  ${(result.elapsedMs / 1000).toFixed(1)}s wall clock — ${rate} across ${result.workers} thread${
+    result.workers === 1 ? '' : 's'
+  }${resumedNote}`,
 );
 console.log('');
 console.log('  how the games ended:');
@@ -174,6 +189,7 @@ if (args.out) {
         reproduce,
         summary: result.summary,
         totalGames: result.totalGames,
+        gamesPlayed: result.gamesPlayed,
         averageTurns: result.averageTurns,
         averageDecisions: result.averageDecisions,
         byReason: result.byReason,

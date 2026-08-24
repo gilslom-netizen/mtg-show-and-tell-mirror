@@ -302,20 +302,25 @@ random-legal-move baseline:
 
 | | |
 |---|---|
-| heuristic vs random | **97.7%** over 2,000 games, ±1% at 95% confidence (about +647 Elo) |
+| heuristic vs random | **98.0%** over 2,000 games, ±1% at 95% confidence (about +681 Elo) |
 | heuristic vs itself | 300–300, which is what a mirror should say |
-| search vs heuristic | **61.0%** over 400 games, 54.1%–67.5% at 95% (about +78 Elo) |
+| search vs heuristic | **62.0%** over 2,000 games, 59.0%–65.0% at 95% (about +85 Elo) |
+| more search vs less | **53.6%** — four times the determinizations buys +25 Elo |
 
-That last row is worth two sentences, because the first attempt at it was 24 games
-and came back 54% — with an interval of 29% to 78%, which is not a result. Same
-agent, same opponent, same seeds; the only difference is that 400 games can see an
-edge that 24 games cannot tell from a coin. It is also the thinnest search setting
-there is, four determinizations, and whether *more* search helps is a separate
-question that has not been answered yet.
+The third row is worth two sentences, because the first attempt at it was 24 games
+and came back 54% — with an interval of 29% to 78%, which is not a result at all.
+Same agent, same opponent, same seeds; the only difference is that a big enough
+sample can see an edge that 24 games cannot tell apart from a coin. The interval
+narrowed from 49 points wide, to 13, to 6.
 
-The price of finding that out: a playout costs about 100ms, a game about forty-five
-seconds of CPU, and games between two competent agents run eighteen turns and end
-with an empty library more often than with an empty life total.
+The fourth row is the more useful finding. Search is what buys the strength — four
+times the determinizations really does win, significantly — but it buys +25 Elo
+where the first step from no search at all bought +85. What is left on the table is
+a better evaluation, not a longer search.
+
+The price: a playout costs about 100ms, a game four to nine seconds across twelve
+threads, and games between two competent agents run eighteen turns and end with an
+empty library nearly half the time — the deck runs out before the life total does.
 
 **Every agent takes a `PlayerView` and nothing else.** That is the same redacted
 object the client gets over the wire, so an agent cannot see your hand even by
