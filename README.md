@@ -304,13 +304,18 @@ random-legal-move baseline:
 |---|---|
 | heuristic vs random | **97.7%** over 2,000 games, ±1% at 95% confidence (about +647 Elo) |
 | heuristic vs itself | 300–300, which is what a mirror should say |
-| search vs heuristic | **not established.** 54% over 24 games, which is 29%–78% at 95% — i.e. nothing |
+| search vs heuristic | **61.0%** over 400 games, 54.1%–67.5% at 95% (about +78 Elo) |
 
-That last row is the honest state of it. A playout costs about 100ms, a game about
-fifty seconds of CPU, and the 2,000 games this deck's variance demands is roughly
-seven hours on a laptop. The search is built, it reconstructs every position it
-searches correctly, and whether it is actually stronger is an open question with a
-price tag on it.
+That last row is worth two sentences, because the first attempt at it was 24 games
+and came back 54% — with an interval of 29% to 78%, which is not a result. Same
+agent, same opponent, same seeds; the only difference is that 400 games can see an
+edge that 24 games cannot tell from a coin. It is also the thinnest search setting
+there is, four determinizations, and whether *more* search helps is a separate
+question that has not been answered yet.
+
+The price of finding that out: a playout costs about 100ms, a game about forty-five
+seconds of CPU, and games between two competent agents run eighteen turns and end
+with an empty library more often than with an empty life total.
 
 **Every agent takes a `PlayerView` and nothing else.** That is the same redacted
 object the client gets over the wire, so an agent cannot see your hand even by
