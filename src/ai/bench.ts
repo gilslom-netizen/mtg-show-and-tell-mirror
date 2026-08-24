@@ -113,6 +113,51 @@ function timeRun(games: number, undoable: boolean, heuristic: boolean): {
 }
 
 /**
+ * What the Esc snapshot costs, measured as a paired comparison.
+ *
+ * Timing forty games with it and then forty games without it is the obvious way and
+ * it does not work: a laptop throttles inside a minute, so the second block is
+ * measured at a lower clock than the first and the answer comes out anywhere between
+ * ×0.98 and ×3.2 depending on which block went first and how warm the room is.
+ *
+ * The same game is therefore played twice back to back, identical in every respect
+ * but the snapshot, with the order swapped on alternate iterations. Adjacent games
+ * see the same clock, and swapping the order cancels whatever the first of a pair
+ * gets from a warm cache.
+ */
+function timeSnapshotCost(games: number): {
+  fast: { ms: number; records: GameRecord[] };
+  slow: { ms: number; records: GameRecord[] };
+} {
+  const fast = { ms: 0, records: [] as GameRecord[] };
+  const slow = { ms: 0, records: [] as GameRecord[] };
+
+  for (let i = 0; i < games; i++) {
+    const options = (undoable: boolean) => ({
+      p1: new RandomAgent(i * 2 + 1),
+      p2: new RandomAgent(i * 2 + 2),
+      seed: 1000 + i,
+      startingPlayer: (i % 2 === 0 ? 'p1' : 'p2') as 'p1' | 'p2',
+      undoable,
+    });
+    const run = (into: typeof fast, undoable: boolean) => {
+      const t = performance.now();
+      into.records.push(playGame(options(undoable)));
+      into.ms += performance.now() - t;
+    };
+
+    if (i % 2 === 0) {
+      run(fast, false);
+      run(slow, true);
+    } else {
+      run(slow, true);
+      run(fast, false);
+    }
+  }
+  return { fast, slow };
+}
+
+/**
  * A state from the middle of a real game, for the micro-benchmarks.
  *
  * Timing them against an opening hand would flatter every one of them: the whole
@@ -184,8 +229,7 @@ export function bench(games = 40): BenchResult {
     });
   }
 
-  const fast = timeRun(games, false, false);
-  const slow = timeRun(games, true, false);
+  const { fast, slow } = timeSnapshotCost(games);
   const heur = timeRun(Math.max(4, Math.floor(games / 2)), false, true);
 
   const fastTotals = totals(fast.records);
@@ -238,6 +282,7 @@ export function bench(games = 40): BenchResult {
 
 export interface ParallelPoint {
   threads: number;
+  /** Wall clock for a fixed amount of work, including getting the workers up. */
   gamesPerSecond: number;
   /** Throughput relative to a single thread. */
   speedup: number;
@@ -255,17 +300,26 @@ export interface ParallelPoint {
  */
 export async function measureParallelism(
   threadCounts: number[],
-  pairs = 24,
+  pairs = 40,
 ): Promise<ParallelPoint[]> {
   /*
-   * Each count is measured twice, once going up the list and once coming back down,
-   * and the better of the two is kept.
+   * Each count is measured twice, once up the list and once back down it, and the
+   * better sample is kept.
+   *
+   * Two things make this harder to measure than it looks, and both of them produce
+   * the same wrong answer — that threads do not help at all.
    *
    * A laptop under sustained load throttles, so a single pass measures the clock
-   * speed sliding downwards as much as it measures parallelism — which produces the
-   * nonsense result that one thread is faster than eight, purely because one thread
-   * went first. Sweeping in both directions gives every count one early sample and
-   * one late one, and taking the best cancels a drift that only ever goes one way.
+   * sliding downwards as much as it measures parallelism, and whichever count went
+   * first wins. Sweeping in both directions gives every count an early sample and a
+   * late one, and the drift only ever goes one way.
+   *
+   * And a worker has to boot: under a TypeScript loader that is most of a second
+   * each, and several at once compete for the same cores. Eighty games is enough
+   * that start-up is a fraction of the sample rather than the whole of it — which is
+   * also the honest reason a short arena run sees less benefit than a long one.
+   *
+   * Treat the shape of the curve as the finding and the exact numbers as weather.
    */
   const best = new Map<number, number>();
   const sweep = [...threadCounts, ...[...threadCounts].reverse()];
@@ -287,18 +341,23 @@ export async function measureParallelism(
   });
 }
 
-export function formatParallelism(points: ParallelPoint[]): string {
+export function formatParallelism(points: ParallelPoint[], pairs: number): string {
   const best = points.reduce((a, b) => (b.gamesPerSecond > a.gamesPerSecond ? b : a));
   return [
-    'Self-play throughput against thread count (measured, not extrapolated)',
+    `Threads, over ${pairs * 2} games each — start-up included, which is the point`,
     ...points.map(
       (p) =>
         `  ${String(p.threads).padStart(2)} thread${p.threads === 1 ? ' ' : 's'}  ` +
         `${p.gamesPerSecond.toFixed(1).padStart(6)} games/s   ×${p.speedup.toFixed(2)}`,
     ),
-    `  best: ${best.threads} threads — ${gamesPerDay(best.gamesPerSecond).toLocaleString(
+    `  best here: ${best.threads} threads — ${gamesPerDay(best.gamesPerSecond).toLocaleString(
       'en-US',
-    )} games/day`,
+    )} games/day sustained`,
+    '',
+    '  A worker costs most of a second to start under a TypeScript loader, and several',
+    '  starting at once compete for the same cores — so a short run barely gains and a',
+    '  long one gains properly. The number to trust for a real run is the one every',
+    '  `npm run ai:arena` prints at the end of itself.',
   ].join('\n');
 }
 

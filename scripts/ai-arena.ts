@@ -41,11 +41,11 @@ const pairs = Math.max(1, Math.ceil(matches / 2));
 const bestOf = intArg(args, 'bo', 1);
 const seed = intArg(args, 'seed', 20260824);
 /*
- * Measured on the machine this was written on: 21 games/s on one thread, 33 on four,
- * 40 on eight, and worse again above that. Games are perfectly independent, so what
- * flattens the curve is memory bandwidth and worker start-up, not contention — which
- * means the ceiling is a property of the machine rather than of the arena. Default to
- * the knee of that curve and leave the flag for anything bigger.
+ * Measured on the machine this was written on, over 1,200 games: 22 games/s on one
+ * thread, 46 on four, 45 on eight, and no better above that. Games are perfectly
+ * independent and share nothing, so what flattens the curve is memory bandwidth and
+ * worker start-up rather than contention — the ceiling belongs to the machine, not to
+ * the arena. Default to the knee and leave the flag for anything bigger.
  */
 const workers = intArg(args, 'workers', Math.max(1, Math.min(8, availableParallelism() - 2)));
 const budgetMs = intArg(args, 'budget', 50);

@@ -32,5 +32,6 @@ if (args.parallel !== 'false') {
   console.log('');
   const max = Math.max(1, availableParallelism() - 2);
   const counts = [1, 2, 4, 8, max].filter((n, i, a) => n <= max && a.indexOf(n) === i);
-  console.log(formatParallelism(await measureParallelism(counts)));
+  const pairs = intArg(args, 'parallel-pairs', 60);
+  console.log(formatParallelism(await measureParallelism(counts, pairs), pairs));
 }
