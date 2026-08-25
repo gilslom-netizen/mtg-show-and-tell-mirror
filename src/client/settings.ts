@@ -68,13 +68,13 @@ export interface Settings {
   stops: StopSettings;
   layout: LayoutSettings;
   triggers: TriggerPolicy;
-  /**
-   * Hold priority automatically while an Omniscience is out.
+  /*
+   * There is deliberately no "hold priority for me" setting of any kind.
    *
-   * Off by default. It sounds helpful and is not: an Omniscience turn is mostly
-   * ordinary spells, and a client that silently stops passing for you turns every
-   * one of them into a click you did not ask for. Hold priority is one keystroke
-   * (H) away when you actually want to chain.
+   * Holding priority is for answering the opponent. A client that does it on your
+   * own spells turns every cast of a combo turn into a click you did not ask for,
+   * and makes the board look like it has stopped. `H` holds priority at the moment
+   * you actually want to chain, and that is the only way it ever happens.
    */
   /** Warn before letting floating mana drain away. */
   warnOnFloatingMana: boolean;

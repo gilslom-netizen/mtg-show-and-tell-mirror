@@ -125,6 +125,17 @@ interface StoreState {
   } | null;
   /** Why the last run ended, shown once and then dismissed. */
   repeatNote: string | null;
+  /**
+   * The signature of the last prompt a trigger policy answered on our behalf.
+   *
+   * A run and the policy bar answer the same questions, and whichever gets there
+   * first is fine — but the run then has a step whose prompt is already gone, and
+   * "gone" is indistinguishable from "not asked yet" unless somebody says so.
+   * Without this the run waited out its full patience on every round of a loop
+   * whose last question the policy always wins, which turned an instant kill into
+   * eight seconds of a bar sitting still.
+   */
+  policyAnswered: string | null;
 
   /**
    * The view each seat last acted from.
@@ -221,6 +232,7 @@ export const useStore = create<StoreState>((set, get) => ({
   historySeat: null,
   repeat: null,
   repeatNote: null,
+  policyAnswered: null,
   actedFrom: { p1: null, p2: null },
   actedFromDraft: null,
   hoveredIid: null,
@@ -244,6 +256,7 @@ export const useStore = create<StoreState>((set, get) => ({
       historySeat: null,
       repeat: null,
       repeatNote: null,
+      policyAnswered: null,
       actedFrom: { p1: null, p2: null },
       error: null,
     });
@@ -377,6 +390,11 @@ export const useStore = create<StoreState>((set, get) => ({
 
     // An answer is part of the process too. A loop is mostly answers — bounce
     // this, ping them — and a recording of only the casts could never replay it.
+    if (view && source === 'policy') {
+      // Not part of the process — the player did not do it — but the run has to be
+      // told, or it waits for a question that has already been answered.
+      set({ policyAnswered: stepForChoice(choice, response, view, s)?.sig ?? null });
+    }
     if (source !== 'policy' && view) {
       const step = stepForChoice(choice, response, view, s);
       if (step) {
@@ -415,6 +433,7 @@ export const useStore = create<StoreState>((set, get) => ({
     set({
       repeat: { steps, index: 0, remaining: Math.min(times, MAX_REPEATS), seat, since: Date.now() },
       repeatNote: null,
+      policyAnswered: null,
       autoPass: 'off',
     });
   },
@@ -458,6 +477,10 @@ export const useStore = create<StoreState>((set, get) => ({
       set({
         repeat:
           remaining <= 0 ? null : { ...run, index: nextIndex, remaining, since: Date.now() },
+        // The policy's answer belongs to the step just finished. A loop asks the
+        // same question every round, so a flag left lying around would be matched
+        // by the next round's step and skip a question that had not been asked.
+        policyAnswered: null,
       });
     };
     const waitedMs = Date.now() - run.since;
@@ -502,6 +525,12 @@ export const useStore = create<StoreState>((set, get) => ({
     if (step.what === 'answer') {
       const choice = view.choice;
       if (!choice) {
+        // The policy bar got there first and said so. Nothing to wait for.
+        if (get().policyAnswered === step.sig) {
+          set({ policyAnswered: null });
+          advance();
+          return;
+        }
         // Wait a beat even when the board is quiet: between two states there is
         // a moment with no prompt on screen, and skipping there would put the
         // whole run out of step.
@@ -538,7 +567,11 @@ export const useStore = create<StoreState>((set, get) => ({
       // Not there yet is not the same as gone: the card you are about to recast
       // is still on the stack for most of every loop.
       if (view.stack.length > 0 && waitedMs < SETTLING_PATIENCE_MS) return;
-      get().stopRepeat(`Stopped — "${step.label}" is not available any more.`);
+      get().stopRepeat(
+        view.stack.length > 0
+          ? 'Stopped — the stack never cleared, so the next round never came round.'
+          : `Stopped — "${step.label}" is not available any more.`,
+      );
       return;
     }
     // One action per view, exactly like a human click; the guard in send()

@@ -91,11 +91,24 @@ describe('the fitted evaluation', () => {
    * badly for reasons nobody could see.
    */
   it('predicts held-out outcomes better than a coin flip', () => {
-    const samples = collectSamples({ games: 60, every: 12, seed: 91000 });
-    expect(samples.length).toBeGreaterThan(1500);
+    /*
+     * Sixty games was not enough to establish anything, and the test only looked
+     * like it was: at 60 it holds out about five hundred samples, and on four of
+     * the first ten sample seeds the fit comes out worse than the coin flip it is
+     * being compared against. It passed because it was written against the one
+     * seed where it passed — so any change that merely moved the sample, however
+     * harmless, would fail it, and a change that genuinely broke the features
+     * would still pass a third of the time.
+     *
+     * Four times the games holds out over two thousand, which is enough for the
+     * claim to be about the fit rather than about the split. Same lesson as the
+     * Wilson interval in the arena: the answer is more games, not a better seed.
+     */
+    const samples = collectSamples({ games: 240, every: 12, seed: 91000 });
+    expect(samples.length).toBeGreaterThan(6000);
 
     const fit = fitLogistic(samples, { steps: 1500 });
-    expect(fit.testSamples).toBeGreaterThan(200);
+    expect(fit.testSamples).toBeGreaterThan(1200);
     expect(fit.testLogLoss).toBeLessThan(fit.baselineLogLoss);
     expect(fit.testAccuracy).toBeGreaterThan(0.6);
   }, 120_000);

@@ -515,17 +515,31 @@ export class HeuristicAgent implements Agent {
     return 0;
   }
 
+  /**
+   * Veil of Summer answers their answer. It is not something to cast into your own
+   * spell, and casting it there is the same mistake as any other self-response.
+   *
+   * The old rule was "one of mine on the stack and one of theirs anywhere on it",
+   * which is not the same question at all. In a real game their Atraxa and their
+   * Horror were sitting at the bottom of a six-deep stack, four of my own spells
+   * were piled on top, and that read as "they have responded" — so the Veil went
+   * off into a stack whose next four objects were all mine. It protected nothing,
+   * it announced the card, and it put yet another of my objects above theirs.
+   *
+   * What matters is what resolves next. If that is mine, the answer has not been
+   * played yet and there is nothing to protect against; wait, let them commit, and
+   * cast the Veil in response to the counter — which is the line the deck is built
+   * on, and the reason it beats a Mana Drain rather than trading with it.
+   */
   private veilScore(r: Read): number {
-    if (r.oppSpells.length === 0) return 0;
-    /*
-     * Their counter, with my spell still underneath it on the stack. Veil resolves
-     * first, my spells become uncounterable for the turn, and their Mana Drain
-     * resolves into nothing — it still gets its mana, but the combo goes through.
-     * This is the deck's main way of forcing a Show and Tell past an answer.
-     */
-    if (r.mySpells.length > 0) return 940;
-    // Otherwise it is a conditional cantrip. Holding it is worth more.
-    return 0;
+    const top = r.stack[r.stack.length - 1];
+    if (!top || top.isAbility || top.controller !== r.opp) return 0;
+    // A Veil beats exactly one card in this pool: it makes my spells uncounterable
+    // for the turn, so their Mana Drain resolves into nothing. Against anything
+    // else of theirs it is a cantrip that would rather be cast later.
+    if (top.oracleId !== 'mana_drain') return 0;
+    if (r.mySpells.length === 0) return 0;
+    return 940;
   }
 
   private brainstormScore(r: Read): number {

@@ -244,6 +244,34 @@ describe('answering the opponent', () => {
     expect(cardOf(t, act(t, 'p1'))).toBe('veil_of_summer');
   });
 
+  /**
+   * The self-response rule, applied to the one card that was exempt from it.
+   *
+   * Reported from a real game: their Atraxa and their Horror were sitting at the
+   * bottom of a six-deep stack with four of my own spells piled on top, and the
+   * agent read "one of theirs is on the stack" as "they have answered me" and fired
+   * the Veil into it. It protected nothing — everything above theirs was mine — and
+   * it announced the card. Veil answers their answer; if what resolves next is
+   * mine, they have not answered yet.
+   */
+  it('does not cast Veil of Summer into its own spell', () => {
+    const t = testGame({ startingPlayer: 'p2' });
+    t.p2.hand('Atraxa, Grand Unifier');
+    t.p2.manaBase(7);
+    t.p1.hand('Veil of Summer', 'Orcish Bowmasters');
+    t.p1.manaBase(4);
+    t.begin();
+
+    t.p2.cast('Atraxa, Grand Unifier');
+    priorityTo(t, 'p1');
+    t.p1.cast('Orcish Bowmasters');
+    priorityTo(t, 'p1');
+
+    // Theirs is on the stack — underneath mine, which is what resolves next.
+    expect(t.state.stack).toHaveLength(2);
+    expect(cardOf(t, act(t, 'p1'))).not.toBe('veil_of_summer');
+  });
+
   it('holds Veil of Summer when there is nothing to protect', () => {
     const t = testGame();
     t.p1.hand('Veil of Summer', 'Brainstorm');

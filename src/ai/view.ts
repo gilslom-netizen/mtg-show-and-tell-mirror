@@ -93,6 +93,14 @@ export interface Read {
   /** My graveyard size — Delve fuel for Dig Through Time. */
   myGraveyard: number;
 
+  /**
+   * The whole stack, bottom first — so the last entry is what resolves next.
+   *
+   * Who is on top is a different question from who is on the stack, and the two
+   * were being confused. A spell of theirs buried under four of mine is not a
+   * decision I am facing; the thing about to resolve is.
+   */
+  stack: StackObject[];
   /** Spells (never abilities) on the stack, split by who cast them. */
   oppSpells: StackObject[];
   mySpells: StackObject[];
@@ -172,6 +180,7 @@ export function read(view: PlayerView): Read {
 
     myGraveyard: view.players[me].graveyardCount,
 
+    stack,
     oppSpells: stack.filter((o) => !o.isAbility && o.controller === opp),
     mySpells: stack.filter((o) => !o.isAbility && o.controller === me),
     myStack: stack.filter((o) => o.controller === me),
