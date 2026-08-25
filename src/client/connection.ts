@@ -168,8 +168,10 @@ export class LocalConnection extends BaseConnection {
   private events: GameEvent[] = [];
   private mySeats: PlayerId[];
   private tracker: MatchTracker | null;
-  /** The opponent's pending move. At most one is ever in flight. */
-  private aiTimer: number | null = null;
+  /** Polls for a move the opponent owes. Runs only while there is an opponent. */
+  private aiTicker: number | null = null;
+  /** When the opponent's next move is due, or 0 when nothing is owed. */
+  private aiNextAt = 0;
   /** Every action of this game, in order — the whole game, in a few KB. */
   private log: RecordedAction[] = [];
   /** Guards against writing the same finished game down twice. */
@@ -197,7 +199,7 @@ export class LocalConnection extends BaseConnection {
     }
     this.game.advance();
     this.collect();
-    this.scheduleOpponent();
+    this.startOpponentLoop();
   }
 
   private collect(): void {
@@ -256,14 +258,55 @@ export class LocalConnection extends BaseConnection {
       : null;
   }
 
-  private scheduleOpponent(): void {
-    if (this.aiTimer !== null) return;
-    if (this.opponentOwes() === null) return;
-    const [lo, hi] = OPPONENT_DELAY_MS;
-    this.aiTimer = setTimeout(() => {
-      this.aiTimer = null;
+  /**
+   * A ticker rather than a timer per move, and the difference matters.
+   *
+   * The first version scheduled one `setTimeout` per action and used "a timer is
+   * already set" as the guard against scheduling two. That makes the timer id a
+   * mutex, and a mutex that is only ever released by its own callback: if the
+   * callback is lost — a hot reload, a disposed instance, anything — the opponent
+   * stops playing for the rest of the game and nothing says so. It happened within
+   * a few minutes of writing it, and from the board it is indistinguishable from an
+   * opponent thinking.
+   *
+   * A poll cannot wedge, because the next tick does not depend on the last one
+   * having run. It also means no call site has to remember to schedule anything:
+   * the loop notices the opponent owes a move, whatever caused that.
+   */
+  private startOpponentLoop(): void {
+    if (!this.opts.opponent || this.aiTicker !== null) return;
+    this.aiTicker = setInterval(() => this.opponentTick(), 100) as unknown as number;
+  }
+
+  private opponentTick(): void {
+    if (this.opponentOwes() === null) {
+      // Nothing owed: forget any countdown so the next move is timed from when it
+      // actually became theirs to make.
+      this.aiNextAt = 0;
+      return;
+    }
+    /*
+     * The pause exists so the opponent is not readable off the clock, which only
+     * means anything to somebody watching it. In a hidden tab there is nobody, and
+     * paying it there is actively bad: a background tab has its timers clamped to
+     * roughly one a second and eventually far less, so a delay spread over several
+     * ticks can leave someone who switched away mid-turn coming back to an opponent
+     * that appears to have stopped playing.
+     */
+    if (document.hidden) {
+      this.aiNextAt = 0;
       this.runOpponent();
-    }, lo + Math.random() * (hi - lo)) as unknown as number;
+      return;
+    }
+    const now = Date.now();
+    if (this.aiNextAt === 0) {
+      const [lo, hi] = OPPONENT_DELAY_MS;
+      this.aiNextAt = now + lo + Math.random() * (hi - lo);
+      return;
+    }
+    if (now < this.aiNextAt) return;
+    this.aiNextAt = 0;
+    this.runOpponent();
   }
 
   private runOpponent(): void {
@@ -290,9 +333,8 @@ export class LocalConnection extends BaseConnection {
     }
     this.collect();
     this.notify();
-    // One action rarely finishes a turn: it may hold priority, answer a trigger,
-    // or simply have another decision waiting behind this one.
-    this.scheduleOpponent();
+    // Anything still owed is picked up by the next tick, including a whole chain of
+    // triggers answered one after another.
   }
 
   match(): MatchState | null {
@@ -318,7 +360,6 @@ export class LocalConnection extends BaseConnection {
     this.saved = false;
     this.collect();
     this.notify();
-    this.scheduleOpponent();
   }
 
   seats(): PlayerId[] {
@@ -345,7 +386,6 @@ export class LocalConnection extends BaseConnection {
     }
     this.collect();
     this.notify();
-    this.scheduleOpponent();
   }
 
   submitChoice(seat: PlayerId, choiceId: string, response: ChoiceResponse): void {
@@ -358,7 +398,6 @@ export class LocalConnection extends BaseConnection {
     }
     this.collect();
     this.notify();
-    this.scheduleOpponent();
   }
 
   cancel(seat: PlayerId): boolean {
@@ -379,7 +418,6 @@ export class LocalConnection extends BaseConnection {
     }
     this.collect();
     this.notify();
-    this.scheduleOpponent();
     return ok;
   }
 
@@ -393,13 +431,14 @@ export class LocalConnection extends BaseConnection {
     this.log = [];
     this.saved = false;
     this.notify();
-    this.scheduleOpponent();
+    this.startOpponentLoop();
   }
 
   private clearOpponentTimer(): void {
-    if (this.aiTimer === null) return;
-    clearTimeout(this.aiTimer);
-    this.aiTimer = null;
+    if (this.aiTicker === null) return;
+    clearInterval(this.aiTicker);
+    this.aiTicker = null;
+    this.aiNextAt = 0;
   }
 
   dispose(): void {
