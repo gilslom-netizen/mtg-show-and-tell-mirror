@@ -110,6 +110,14 @@ export interface RunToEndOptions {
   /** Appended to as the game goes. Omit when the log is not wanted. */
   actions?: RecordedAction[];
   onDecision?: PlayGameOptions['onDecision'];
+  /**
+   * Stop once this turn is over, leaving the game unfinished on purpose.
+   *
+   * What makes a truncated rollout possible (DESIGN-AI.md 9.3): play far enough to
+   * see the tactics through, then hand the position to an evaluation rather than
+   * grinding out the eighteen turns that follow.
+   */
+  untilTurn?: number;
 }
 
 /**
@@ -133,6 +141,9 @@ export function runToEnd(
   game.advance();
 
   while (game.state.winner === null && steps < maxSteps) {
+    // Checked before acting rather than after, so the horizon is where it says it is
+    // and a rollout cannot spend one more turn than it was given.
+    if (opts.untilTurn !== undefined && game.state.turn > opts.untilTurn) break;
     steps++;
     const pc = game.state.pendingChoice;
 

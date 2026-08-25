@@ -18,6 +18,7 @@ export const AGENT_SPECS = [
   'heuristic',
   'pimc',
   'pimc:<determinizations>',
+  'pimc-eval:<determinizations>/<horizon turns>',
   'oracle (cheats — for measurement only)',
   'oracle-hands:<determinizations> (cheats — for measurement only)',
 ] as const;
@@ -39,6 +40,18 @@ export function makeAgent(spec: string): Agent {
         throw new Error(`pimc needs a positive number of determinizations, got "${arg}"`);
       }
       return new PimcAgent({ determinizations });
+    }
+    /*
+     * §9.3: the same search, but each playout stops after a few turns and asks the
+     * fitted evaluation instead of grinding the game out. `pimc-eval:8/3` is eight
+     * determinizations with a three-turn horizon.
+     */
+    case 'pimc-eval': {
+      const [dets, horizon] = (arg ?? '8/3').split('/').map(Number);
+      if (!Number.isFinite(dets) || dets < 1 || !Number.isFinite(horizon) || horizon < 0) {
+        throw new Error(`pimc-eval wants <determinizations>/<turns>, got "${arg}"`);
+      }
+      return new PimcAgent({ determinizations: dets, horizonTurns: horizon });
     }
     /*
      * A measuring instrument rather than an opponent: it is shown the opponent's

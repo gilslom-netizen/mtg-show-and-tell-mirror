@@ -20,7 +20,8 @@
     "set:art": "tsx scripts/set-art.ts",
     "ai:arena": "tsx scripts/ai-arena.ts",
     "ai:bench": "tsx scripts/ai-bench.ts",
-    "ai:compare": "tsx scripts/ai-compare.ts"
+    "ai:compare": "tsx scripts/ai-compare.ts",
+    "ai:fit-eval": "tsx scripts/ai-fit-eval.ts"
   },
   "dependencies": {
     "react": "^18.3.1",

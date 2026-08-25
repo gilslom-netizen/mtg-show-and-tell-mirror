@@ -6,6 +6,7 @@ import type { ChoiceResponse, GameState, PlayerId } from '../engine/types.js';
 import type { Agent } from './agent.js';
 import { runToEnd } from './arena.js';
 import { determinizedGame } from './determinize.js';
+import { winProbability } from './evaluate.js';
 import { HeuristicAgent, type RankedAction } from './heuristic.js';
 import { showAndTellStrategy } from './showandtell.js';
 
@@ -50,6 +51,15 @@ export interface PimcOptions {
   /** Actions to spend playouts on, at most. */
   maxCandidates?: number;
   seed?: number;
+  /**
+   * Turns to play out before handing the position to the evaluation (§9.3).
+   *
+   * Undefined plays to the end of the game, which is what stage 2 measured and costs
+   * about 100ms a playout. A number stops that many turns ahead and asks
+   * `winProbability` instead — far enough to see a combo turn through, and not the
+   * eighteen turns of grinding that follow it.
+   */
+  horizonTurns?: number;
 }
 
 const DEFAULT_DETERMINIZATIONS = 8;
@@ -79,6 +89,7 @@ export class PimcAgent implements Agent {
   private readonly base: Agent & Pick<HeuristicAgent, 'rank'> = new HeuristicAgent();
   private readonly determinizations: number;
   private readonly maxCandidates: number;
+  private readonly horizonTurns: number | undefined;
   private rng: RngState;
 
   /**
@@ -95,7 +106,11 @@ export class PimcAgent implements Agent {
   constructor(opts: PimcOptions = {}) {
     this.determinizations = Math.max(1, opts.determinizations ?? DEFAULT_DETERMINIZATIONS);
     this.maxCandidates = Math.max(2, opts.maxCandidates ?? DEFAULT_MAX_CANDIDATES);
-    this.name = `pimc:${this.determinizations}`;
+    this.horizonTurns = opts.horizonTurns;
+    this.name =
+      this.horizonTurns === undefined
+        ? `pimc:${this.determinizations}`
+        : `pimc-eval:${this.determinizations}/${this.horizonTurns}`;
     this.rng = seedRng(opts.seed ?? 20260824);
   }
 
@@ -164,12 +179,22 @@ export class PimcAgent implements Agent {
       // a bug worth failing on elsewhere; here it simply scores as badly as possible.
       return 0;
     }
-    runToEnd(sim, { p1: this.base, p2: this.base }, { maxSteps: ROLLOUT_MAX_STEPS });
+    runToEnd(
+      sim,
+      { p1: this.base, p2: this.base },
+      {
+        maxSteps: ROLLOUT_MAX_STEPS,
+        untilTurn:
+          this.horizonTurns === undefined ? undefined : sim.state.turn + this.horizonTurns,
+      },
+    );
 
-    const winner = sim.state.winner;
-    if (winner === me) return 1;
-    if (winner === null || winner === 'draw') return 0.5;
-    return 0;
+    /*
+     * `winProbability` reads a finished game rather than estimating it, so a rollout
+     * that reached an ending still scores 1 or 0 — the horizon only decides how long
+     * to look, never how a decided game is counted.
+     */
+    return winProbability(sim.state, me);
   }
 
   respond(view: PlayerView, choice: ChoiceView, budgetMs: number): ChoiceResponse {
