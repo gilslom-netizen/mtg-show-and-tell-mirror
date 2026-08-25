@@ -31,6 +31,7 @@ import { DeckBuilder } from './DeckBuilder';
 // search, the determinizer and the measuring instruments into the app bundle.
 import { HeuristicAgent } from '../ai/heuristic';
 import type { Agent } from '../ai/agent';
+import { clearPlayed, downloadPlayed, summarisePlayed } from './history';
 
 /**
  * Shell: lobby, the two chrome bars and the always-visible state of the comfort
@@ -165,6 +166,39 @@ function NoStoreWarning() {
       make it reliable, add a <b>KV / Upstash Redis</b> integration to the Vercel
       project and redeploy; or run <code>npm run selfhost</code> and use that
       address instead.
+    </p>
+  );
+}
+
+/**
+ * What you have played so far, and a way to take it with you.
+ *
+ * Every finished local game is written down as its seed and its action log, which
+ * is a few kilobytes and is not a summary — replaying it reproduces the game
+ * exactly. That is the difference between "I lost three in a row" and something
+ * anybody can go and look at, which is the whole reason to keep it.
+ */
+function PlayedGames() {
+  const [summary, setSummary] = useState(() => summarisePlayed());
+  if (summary.games === 0) return null;
+  return (
+    <p className="lobby-note" data-testid="played-summary">
+      Saved on this browser: <b>{summary.games}</b>{' '}
+      {summary.games === 1 ? 'game' : 'games'} — {summary.wins}W {summary.losses}L
+      {summary.draws > 0 ? ` ${summary.draws}D` : ''}, {summary.averageTurns} turns on
+      average.{' '}
+      <button className="linkish" onClick={() => downloadPlayed()}>
+        Download them
+      </button>{' '}
+      <button
+        className="linkish"
+        onClick={() => {
+          clearPlayed();
+          setSummary(summarisePlayed());
+        }}
+      >
+        Clear
+      </button>
     </p>
   );
 }
@@ -357,6 +391,7 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
             loop. It cannot see your hand; it is given exactly the view you would send
             an opponent online.
           </p>
+          <PlayedGames />
         </section>
 
         <details className="lobby-fold">

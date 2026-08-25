@@ -8,6 +8,7 @@ import type { DeckEntry } from '@engine/state';
 import type { DraftView } from '../draft/redact';
 import type { DraftAction } from '../draft/types';
 import type { Agent } from '../ai/agent';
+import { recordPlayed, type RecordedAction } from './history';
 
 /** What the lobby and the waiting screen need to show while nothing is playable yet. */
 export interface ConnectionInfo {
@@ -169,6 +170,10 @@ export class LocalConnection extends BaseConnection {
   private tracker: MatchTracker | null;
   /** The opponent's pending move. At most one is ever in flight. */
   private aiTimer: number | null = null;
+  /** Every action of this game, in order — the whole game, in a few KB. */
+  private log: RecordedAction[] = [];
+  /** Guards against writing the same finished game down twice. */
+  private saved = false;
 
   constructor(private opts: LocalOptions) {
     super();
@@ -197,7 +202,35 @@ export class LocalConnection extends BaseConnection {
 
   private collect(): void {
     this.events.push(...this.game.flushEvents());
-    this.tracker?.noteResult(this.game);
+    const recorded = this.tracker?.noteResult(this.game);
+    // `noteResult` is true on the first call that sees this game finished, which is
+    // exactly once — so this is the hook for "a game just ended" without polling.
+    if (recorded) this.savePlayed();
+    // A drill has no tracker and no series, but it is still a game that was played.
+    if (!this.tracker && this.game.state.winner !== null && !this.saved) this.savePlayed();
+  }
+
+  /**
+   * Write the finished game down, as `(seed, starting player, action log)`.
+   *
+   * Not a summary: replaying that log reproduces the game exactly, so a run of
+   * evenings is something that can be examined afterwards rather than remembered.
+   */
+  private savePlayed(): void {
+    if (this.saved) return;
+    this.saved = true;
+    const s = this.game.state;
+    recordPlayed({
+      at: Date.now(),
+      seat: this.mySeats[0] ?? 'p1',
+      opponent: this.opts.opponent?.name ?? (this.mySeats.length > 1 ? 'hotseat' : 'none'),
+      seed: this.opts.seed,
+      startingPlayer: this.opts.scenario?.startingPlayer ?? this.opts.startingPlayer,
+      winner: s.winner,
+      reason: s.endReason,
+      turns: s.turn,
+      actions: this.log,
+    });
   }
 
   // --- the computer's seat --------------------------------------------------
@@ -243,13 +276,13 @@ export class LocalConnection extends BaseConnection {
     const view = redact(this.game.state, seat);
     try {
       if (view.choice) {
-        this.game.submitChoice(
-          seat,
-          view.choice.id,
-          agent.respond(view, view.choice, OPPONENT_BUDGET_MS),
-        );
+        const response = agent.respond(view, view.choice, OPPONENT_BUDGET_MS);
+        this.game.submitChoice(seat, view.choice.id, response);
+        this.log.push({ k: 'choice', seat, choiceId: view.choice.id, response });
       } else {
-        this.game.submitIntent(seat, agent.act(view, OPPONENT_BUDGET_MS));
+        const intent = agent.act(view, OPPONENT_BUDGET_MS);
+        this.game.submitIntent(seat, intent);
+        this.log.push({ k: 'intent', seat, intent });
       }
       this.error = null;
     } catch (e) {
@@ -280,6 +313,9 @@ export class LocalConnection extends BaseConnection {
     });
     this.game.advance();
     this.events = [];
+    // A new game of the series: its own seed, and its own log to be written down.
+    this.log = [];
+    this.saved = false;
     this.collect();
     this.notify();
     this.scheduleOpponent();
@@ -302,6 +338,7 @@ export class LocalConnection extends BaseConnection {
   submitIntent(seat: PlayerId, intent: Intent): void {
     try {
       this.game.submitIntent(seat, intent);
+      this.log.push({ k: 'intent', seat, intent });
       this.error = null;
     } catch (e) {
       this.error = (e as Error).message;
@@ -314,6 +351,7 @@ export class LocalConnection extends BaseConnection {
   submitChoice(seat: PlayerId, choiceId: string, response: ChoiceResponse): void {
     try {
       this.game.submitChoice(seat, choiceId, response);
+      this.log.push({ k: 'choice', seat, choiceId, response });
       this.error = null;
     } catch (e) {
       this.error = (e as Error).message;
@@ -325,6 +363,20 @@ export class LocalConnection extends BaseConnection {
 
   cancel(seat: PlayerId): boolean {
     const ok = this.game.cancelPendingAction(seat);
+    /*
+     * Escape rewinds the engine to the snapshot taken when this seat last had
+     * priority, so the log has to rewind with it or it stops being a replay of the
+     * game that happened. Back out the answers given since, and the action that
+     * asked for them — which is the same rule the online path applies to its log.
+     */
+    if (ok) {
+      for (let i = this.log.length - 1; i >= 0; i--) {
+        const entry = this.log[i];
+        if (entry.seat !== seat) break;
+        this.log.pop();
+        if (entry.k === 'intent') break;
+      }
+    }
     this.collect();
     this.notify();
     this.scheduleOpponent();
@@ -338,6 +390,8 @@ export class LocalConnection extends BaseConnection {
     this.game = next.game;
     this.events = next.drainEvents();
     next.dispose();
+    this.log = [];
+    this.saved = false;
     this.notify();
     this.scheduleOpponent();
   }
