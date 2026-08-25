@@ -1,4 +1,5 @@
 import type { Agent } from './agent.js';
+import { ExploiterAgent } from './exploiter.js';
 import { HeuristicAgent } from './heuristic.js';
 import { OracleAgent } from './oracle-agent.js';
 import { PimcAgent } from './pimc.js';
@@ -16,6 +17,7 @@ export const AGENT_SPECS = [
   'random',
   'random:<seed>',
   'heuristic',
+  'exploiter (a hand-built best response — measures how easily a person finds a hole)',
   'pimc',
   'pimc:<determinizations>',
   'pimc-eval:<determinizations>/<horizon turns>',
@@ -33,6 +35,14 @@ export function makeAgent(spec: string): Agent {
     }
     case 'heuristic':
       return new HeuristicAgent();
+    /*
+     * Not a rung on the ladder: a hand-built best response, used to ask how much of
+     * an agent's rating survives an opponent who is looking for its blind spot
+     * rather than playing its own game (§14). Perfectly legal — it reads only the
+     * public board — which is what makes the answer uncomfortable.
+     */
+    case 'exploiter':
+      return new ExploiterAgent();
     case 'pimc': {
       if (arg === undefined) return new PimcAgent();
       const determinizations = Number(arg);
