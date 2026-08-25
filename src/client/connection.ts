@@ -7,6 +7,7 @@ import type { ChoiceResponse, GameEvent, PlayerId } from '@engine/types';
 import type { DeckEntry } from '@engine/state';
 import type { DraftView } from '../draft/redact';
 import type { DraftAction } from '../draft/types';
+import type { Agent } from '../ai/agent';
 
 /** What the lobby and the waiting screen need to show while nothing is playable yet. */
 export interface ConnectionInfo {
@@ -134,7 +135,31 @@ export interface LocalOptions {
   skipMulligans?: boolean;
   /** Stage a specific board instead of dealing opening hands. */
   scenario?: ScenarioSpec;
+  /**
+   * Plays any seat the human is not.
+   *
+   * It lives on the connection rather than in a component because that is what it
+   * is: the other player. The store refuses to act for a seat this client does not
+   * own, and rightly — so an opponent driven from the client would either be
+   * ignored or would require handing the human both seats and trusting the UI not
+   * to show them the second one. Here it sits on the far side of the same seam the
+   * server sits behind, is handed `redact(state, seat)` exactly as a remote player
+   * would be, and cannot be acted for from the board at all.
+   */
+  opponent?: Agent;
 }
+
+/** What the opponent is told it has to think in. The heuristic does not need it. */
+const OPPONENT_BUDGET_MS = 250;
+
+/**
+ * How long it waits before answering.
+ *
+ * The same randomised window the auto-pass layer uses, for the same reason pointed
+ * the other way: an opponent that replied instantly when it had nothing and paused
+ * when it was thinking would be readable off the clock.
+ */
+const OPPONENT_DELAY_MS: [number, number] = [220, 600];
 
 export class LocalConnection extends BaseConnection {
   readonly kind = 'local';
@@ -142,6 +167,8 @@ export class LocalConnection extends BaseConnection {
   private events: GameEvent[] = [];
   private mySeats: PlayerId[];
   private tracker: MatchTracker | null;
+  /** The opponent's pending move. At most one is ever in flight. */
+  private aiTimer: number | null = null;
 
   constructor(private opts: LocalOptions) {
     super();
@@ -165,11 +192,74 @@ export class LocalConnection extends BaseConnection {
     }
     this.game.advance();
     this.collect();
+    this.scheduleOpponent();
   }
 
   private collect(): void {
     this.events.push(...this.game.flushEvents());
     this.tracker?.noteResult(this.game);
+  }
+
+  // --- the computer's seat --------------------------------------------------
+
+  /** Which seat, if any, the opponent currently owes an action for. */
+  private opponentOwes(): PlayerId | null {
+    if (!this.opts.opponent) return null;
+    const s = this.game.state;
+    if (s.winner !== null) return null;
+    const theirs = (['p1', 'p2'] as PlayerId[]).filter((p) => !this.mySeats.includes(p));
+
+    const pc = s.pendingChoice;
+    if (pc) {
+      // Mulligan and Show and Tell are asked of both players at once, and either
+      // may still owe an answer.
+      if (pc.kind === 'mulligan' || pc.kind === 'simultaneousSecret') {
+        return theirs.find((p) => pc.awaiting.includes(p)) ?? null;
+      }
+      return theirs.includes(pc.player) ? pc.player : null;
+    }
+    return s.priorityPlayer !== null && theirs.includes(s.priorityPlayer)
+      ? s.priorityPlayer
+      : null;
+  }
+
+  private scheduleOpponent(): void {
+    if (this.aiTimer !== null) return;
+    if (this.opponentOwes() === null) return;
+    const [lo, hi] = OPPONENT_DELAY_MS;
+    this.aiTimer = setTimeout(() => {
+      this.aiTimer = null;
+      this.runOpponent();
+    }, lo + Math.random() * (hi - lo)) as unknown as number;
+  }
+
+  private runOpponent(): void {
+    const agent = this.opts.opponent;
+    // Re-derived rather than captured: a shared choice can resolve between the
+    // timer being set and it firing.
+    const seat = this.opponentOwes();
+    if (!agent || !seat) return;
+
+    const view = redact(this.game.state, seat);
+    try {
+      if (view.choice) {
+        this.game.submitChoice(
+          seat,
+          view.choice.id,
+          agent.respond(view, view.choice, OPPONENT_BUDGET_MS),
+        );
+      } else {
+        this.game.submitIntent(seat, agent.act(view, OPPONENT_BUDGET_MS));
+      }
+      this.error = null;
+    } catch (e) {
+      this.error = (e as Error).message;
+    }
+    this.collect();
+    this.notify();
+    // One action rarely finishes a turn: it may hold priority, answer a trigger,
+    // or simply have another decision waiting behind this one.
+    this.scheduleOpponent();
   }
 
   match(): MatchState | null {
@@ -192,6 +282,7 @@ export class LocalConnection extends BaseConnection {
     this.events = [];
     this.collect();
     this.notify();
+    this.scheduleOpponent();
   }
 
   seats(): PlayerId[] {
@@ -217,6 +308,7 @@ export class LocalConnection extends BaseConnection {
     }
     this.collect();
     this.notify();
+    this.scheduleOpponent();
   }
 
   submitChoice(seat: PlayerId, choiceId: string, response: ChoiceResponse): void {
@@ -228,21 +320,37 @@ export class LocalConnection extends BaseConnection {
     }
     this.collect();
     this.notify();
+    this.scheduleOpponent();
   }
 
   cancel(seat: PlayerId): boolean {
     const ok = this.game.cancelPendingAction(seat);
     this.collect();
     this.notify();
+    this.scheduleOpponent();
     return ok;
   }
 
   restart(seed = this.opts.seed + 1): void {
+    this.clearOpponentTimer();
     this.opts = { ...this.opts, seed };
     const next = new LocalConnection(this.opts);
     this.game = next.game;
     this.events = next.drainEvents();
+    next.dispose();
     this.notify();
+    this.scheduleOpponent();
+  }
+
+  private clearOpponentTimer(): void {
+    if (this.aiTimer === null) return;
+    clearTimeout(this.aiTimer);
+    this.aiTimer = null;
+  }
+
+  dispose(): void {
+    this.clearOpponentTimer();
+    super.dispose();
   }
 }
 

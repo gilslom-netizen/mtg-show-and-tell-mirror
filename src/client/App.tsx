@@ -42,13 +42,6 @@ type Mode = 'lab' | 'goldfish' | 'ai' | 'online';
 /** One instance for the tab: the heuristic is stateless, so there is nothing to reset. */
 const AI_OPPONENT: Agent = new HeuristicAgent();
 
-/**
- * Time the opponent is allowed to think. The heuristic ignores it — it has nothing
- * to spend it on — but it is part of the interface a search agent would use, and
- * passing a real number keeps this honest if one ever sits here.
- */
-const AI_BUDGET_MS = 250;
-
 export function App() {
   const connection = useStore((s) => s.connection);
   const viewSeat = useStore((s) => s.viewSeat);
@@ -211,6 +204,7 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
       // Against the computer you hold one seat, exactly as you do online. Lab and
       // goldfish hand you both, which is what makes them practice rather than a game.
       seats: mode === 'ai' ? ['p1'] : ['p1', 'p2'],
+      opponent: mode === 'ai' ? AI_OPPONENT : undefined,
       scenario,
     });
     onStart(mode);
@@ -435,7 +429,6 @@ function Game({ viewer, mode }: { viewer: PlayerId; mode: Mode }) {
   useOmniscienceHold(viewer);
   useRepeatRunner();
   useGoldfishOpponent(mode === 'goldfish' ? (viewer === 'p1' ? 'p2' : 'p1') : null);
-  useAgentOpponent(mode === 'ai' ? (viewer === 'p1' ? 'p2' : 'p1') : null);
 
   // Online, the server hands out a view as soon as this client has a seat — but a
   // game of one is not a game, so the wait is over readiness, not over the view.
@@ -1120,53 +1113,3 @@ function useGoldfishOpponent(seat: PlayerId | null) {
   });
 }
 
-/**
- * The computer's seat, played by the stage 1 heuristic.
- *
- * It runs here in the tab, on the main thread, because it can afford to: a decision
- * costs a few microseconds, so there is nothing to move to a worker and nothing to
- * wait for. The search agents of stage 2 would not be — they are budgeted in
- * hundreds of milliseconds and would need a worker before they could sit here — and
- * they are also not measurably stronger at a budget a browser would give them, which
- * is why this is the one that ships.
- *
- * It is handed `views[seat]`, the same redacted view a second player would get over
- * the wire. So it genuinely cannot see your hand, and that is a property of the
- * interface rather than a promise: `Agent.act` takes a `PlayerView` and there is no
- * other argument.
- */
-function useAgentOpponent(seat: PlayerId | null) {
-  const views = useStore((s) => s.views);
-  const send = useStore((s) => s.send);
-  const respond = useStore((s) => s.respond);
-
-  const view = seat ? views[seat] : null;
-  useEffect(() => {
-    if (!seat || !view || view.winner !== null) return;
-    const choice = view.choice;
-
-    /*
-     * Both players answer a mulligan and a Show and Tell at once, and a locked-in
-     * answer leaves the question on screen so each side can see the other has
-     * decided. Answering it again is an error, not a no-op.
-     */
-    if (choice?.kind === 'mulligan' && choice.iHaveDecided) return;
-    if (choice?.kind === 'simultaneousSecret' && choice.iHaveLockedIn) return;
-    if (!choice && view.priorityPlayer !== seat) return;
-
-    /*
-     * The same randomised window the auto-pass layer uses, for the same reason
-     * pointed the other way: an opponent that answered instantly when it had
-     * nothing and paused when it was deciding would be readable off the clock. It
-     * also just looks better than a board that resolves faster than the eye.
-     */
-    const delay = 220 + Math.random() * 380;
-    const t = window.setTimeout(() => {
-      // 'auto' and 'policy' rather than 'user': this is not the player changing
-      // their mind, so it must not cancel a repeat they have running.
-      if (choice) respond(AI_OPPONENT.respond(view, choice, AI_BUDGET_MS), seat, 'policy');
-      else send(AI_OPPONENT.act(view, AI_BUDGET_MS), seat, 'auto');
-    }, delay);
-    return () => window.clearTimeout(t);
-  });
-}
