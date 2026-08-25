@@ -188,6 +188,32 @@ export interface RunOptions extends SeriesOptions {
   done?: MatchOutcome[];
 }
 
+/*
+ * Starting a worker on TypeScript source.
+ *
+ * tsx registers its loader hooks per thread, and a worker started directly on
+ * `worker.ts` inherits none of them. On Node 22 that fails indirectly rather than
+ * obviously: native type stripping loads `worker.ts` quite happily, and then the
+ * `./series.js` it imports resolves against a file that only exists as `series.ts`.
+ * Passing `--import tsx` through `execArgv` does not help — worker threads ignore it.
+ *
+ * So the worker is started on a bootstrap that registers tsx first and imports the
+ * real entry second. The registration is best-effort: where the hooks are already in
+ * place — a compiled build, a future Node that resolves this itself — the import on
+ * the next line is all that was needed anyway.
+ */
+const workerBootstrap = `
+  (async () => {
+    try {
+      const tsx = await import('tsx/esm/api');
+      tsx.register();
+    } catch {
+      // Hooks already present, or no tsx to register: the import below decides.
+    }
+    await import(${JSON.stringify(new URL('./worker.ts', import.meta.url).href)});
+  })();
+`;
+
 export async function runSeries(opts: RunOptions): Promise<SeriesResult> {
   const started = Date.now();
 
@@ -244,7 +270,8 @@ export async function runSeries(opts: RunOptions): Promise<SeriesResult> {
         (pairs) =>
           new Promise<MatchOutcome[]>((resolve, reject) => {
             const collected: MatchOutcome[] = [];
-            const worker = new Worker(new URL('./worker.ts', import.meta.url), {
+            const worker = new Worker(workerBootstrap, {
+              eval: true,
               workerData: { opts: stripCallbacks(opts), pairs },
             });
             worker.on('message', (msg: WorkerMessage) => {
