@@ -367,9 +367,40 @@ export class HeuristicAgent implements Agent {
   private freeCastScore(id: OracleId, r: Read): number {
     switch (id) {
       case 'orcish_bowmasters':
-        // The loop. An Omniscience and a Hullbreaker Horror turn two Bowmasters into
-        // "cast one, bounce the other, ping them for one, repeat until they are
-        // dead". Each cycle costs nothing and takes a life, so it is simply the game.
+        /*
+         * The loop. An Omniscience and a Hullbreaker Horror turn two Bowmasters into
+         * "cast one, bounce the other, ping them for one, repeat until they are
+         * dead". Each cycle costs nothing and takes a life, so it is simply the game.
+         *
+         * The order is the whole trick, and getting it wrong is silent in two
+         * different ways.
+         *
+         * The Horror returns a *permanent*, so the copy being bounced has to have
+         * finished resolving — and priority comes back while the first one is still
+         * on the stack, with the second sitting in hand looking castable. Casting it
+         * there feels like the loop and is the end of it: the battlefield holds no
+         * Bowmasters, the trigger finds nothing to return, and what should have run
+         * until the opponent was dead stops after two pings.
+         *
+         * Waiting only for the *spell* is not enough either. Cast again the moment it
+         * resolves and the ping it just put on the stack is still sitting there
+         * unresolved; do that every cycle and the triggers pile up while the life
+         * total never moves, so the loop never reaches the condition that ends it.
+         * A stack that grows once per iteration is a game that does not finish.
+         *
+         * So: while anything of mine on the stack is a Bowmasters — the spell or the
+         * ping it is about to deal — the play is to wait for it. One cycle, one point
+         * of damage, which is how a person plays it and the only version that
+         * terminates.
+         */
+        if (
+          r.view.stack.some((iid) => {
+            const c = r.view.cards[iid];
+            return c?.oracleId === 'orcish_bowmasters' && c.controller === r.me;
+          })
+        ) {
+          return 0;
+        }
         if (this.bowmastersLoopLive(r)) return 3000;
         return 300;
       case 'atraxa_grand_unifier':

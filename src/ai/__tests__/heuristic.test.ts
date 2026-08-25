@@ -244,6 +244,91 @@ describe('the Orcish Bowmasters loop', () => {
     expect(t.p1.handNames()).toContain('Orcish Bowmasters');
   });
 
+  /**
+   * That it runs the loop, rather than merely starting it.
+   *
+   * The test above only asked whether a life total went down, and that is exactly
+   * how this went unnoticed: the agent was casting both Bowmasters before either
+   * resolved, which lands two pings and looks from the outside like the combo
+   * working. Twenty pings from twenty life is the difference between knowing the
+   * pieces and knowing the loop.
+   */
+  it('runs the loop all the way to lethal, one ping at a time', () => {
+    const t = testGame();
+    t.p1.hand('Orcish Bowmasters');
+    t.p1.battlefield('Omniscience', 'Hullbreaker Horror', 'Orcish Bowmasters', 'Island');
+    t.p2.battlefield('Watery Grave', 'Breeding Pool');
+    t.begin();
+
+    const startTurn = t.state.turn;
+    for (let guard = 0; guard < 8000 && t.state.winner === null; guard++) {
+      const pending = t.state.pendingChoice;
+      if (pending) {
+        const seats: PlayerId[] =
+          pending.kind === 'mulligan' || pending.kind === 'simultaneousSecret'
+            ? [...pending.awaiting]
+            : [pending.player];
+        for (const s of seats) {
+          if (t.state.pendingChoice?.id !== pending.id) break;
+          answer(t, s);
+        }
+        continue;
+      }
+      const holder = t.state.priorityPlayer;
+      if (holder === null) {
+        t.game.advance();
+        continue;
+      }
+      t.game.submitIntent(holder, agent.act(redact(t.state, holder), 50));
+    }
+
+    expect(t.state.winner).toBe('p1');
+    expect(t.state.players.p2.life).toBeLessThanOrEqual(0);
+    // On the same turn it started: this kills without ever attacking.
+    expect(t.state.turn).toBe(startTurn);
+
+    const pings = t.state.log.filter((l) => l.text.includes('deals 1 damage')).length;
+    expect(pings).toBeGreaterThanOrEqual(20);
+  }, 60_000);
+
+  /**
+   * The loop resolves one cycle at a time rather than stacking up its own triggers.
+   * Casting again before the ping resolves piles the stack a little deeper every
+   * iteration while the life total never moves — so the condition that ends the loop
+   * never arrives, and the game simply does not finish.
+   */
+  it('lets each ping resolve instead of piling the stack up', () => {
+    const t = testGame();
+    t.p1.hand('Orcish Bowmasters');
+    t.p1.battlefield('Omniscience', 'Hullbreaker Horror', 'Orcish Bowmasters', 'Island');
+    t.p2.battlefield('Watery Grave');
+    t.begin();
+
+    let deepest = 0;
+    for (let guard = 0; guard < 8000 && t.state.winner === null; guard++) {
+      deepest = Math.max(deepest, t.state.stack.length);
+      const pending = t.state.pendingChoice;
+      if (pending) {
+        const seats: PlayerId[] =
+          pending.kind === 'mulligan' || pending.kind === 'simultaneousSecret'
+            ? [...pending.awaiting]
+            : [pending.player];
+        for (const s of seats) {
+          if (t.state.pendingChoice?.id !== pending.id) break;
+          answer(t, s);
+        }
+        continue;
+      }
+      const holder = t.state.priorityPlayer;
+      if (holder === null) {
+        t.game.advance();
+        continue;
+      }
+      t.game.submitIntent(holder, agent.act(redact(t.state, holder), 50));
+    }
+    expect(deepest).toBeLessThanOrEqual(3);
+  }, 60_000);
+
   it('never points the ping at itself', () => {
     const t = testGame();
     t.p1.hand('Orcish Bowmasters');
