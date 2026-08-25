@@ -195,6 +195,79 @@ describe('the games you have played', () => {
     conn.dispose();
   });
 
+  /**
+   * The case the first version of this test did not cover, and the one that broke
+   * two real games: pressing Escape.
+   *
+   * Esc rewinds the engine to a snapshot it chose. If the log rewinds to a point of
+   * its own choosing instead, the two stop describing the same game and the record
+   * no longer replays — which is worthless exactly when something interesting
+   * happened, since Esc is what you press when you have changed your mind.
+   */
+  it('still replays after a cast is backed out with Escape', () => {
+    const conn = new LocalConnection({
+      seed: 20260825,
+      startingPlayer: 'p1',
+      seats: ['p1', 'p2'],
+    });
+
+    // Open the game.
+    for (let guard = 0; guard < 12; guard++) {
+      const pc = conn.game.state.pendingChoice;
+      if (!pc) break;
+      if (pc.kind === 'mulligan') {
+        for (const seat of [...pc.awaiting]) {
+          conn.submitChoice(seat, pc.id, { kind: 'yesNo', value: true });
+        }
+      } else if (pc.kind === 'chooseCards') {
+        const ok = pc.options.filter((o) => !o.disabledReason).slice(0, pc.min);
+        conn.submitChoice(pc.player, pc.id, { kind: 'cards', iids: ok.map((o) => o.iid) });
+      } else break;
+    }
+
+    /*
+     * Take an action, back out of it, take a different one. Escape restores the
+     * engine's own snapshot whether or not a question is open, so this is the same
+     * rewind the real games performed — and doing it twice, with a pass in between,
+     * moves the snapshot so the log cannot get away with rewinding "to the last
+     * intent" and happening to be right.
+     */
+    const playSomeLand = (): boolean => {
+      const view = conn.view('p1');
+      const land = view?.legalActions.find((a) => a.intent.t === 'playLand');
+      if (!land) return false;
+      conn.submitIntent('p1', land.intent);
+      return true;
+    };
+
+    expect(playSomeLand()).toBe(true);
+    /*
+     * Escape does not necessarily undo the land, and that is the point. The engine
+     * re-snapshots the moment a seat is left holding priority, which is immediately
+     * after a land drop — so Esc here restores a state that still has the land, and
+     * the log has to land on exactly that same point rather than on one it worked
+     * out for itself.
+     */
+    expect(conn.cancel('p1')).toBe(true);
+
+    // Carry on: another action, another Esc, so the snapshot has moved in between.
+    playSomeLand();
+    for (let guard = 0; guard < 4; guard++) {
+      const pc = conn.game.state.pendingChoice;
+      if (!pc || pc.kind !== 'yesNo') break;
+      conn.submitChoice(pc.player, pc.id, { kind: 'yesNo', value: false });
+    }
+
+    // Carry on to a finish so the game gets written down.
+    conn.submitIntent('p2', { t: 'concede' });
+
+    const record = allPlayed()[0];
+    expect(record).toBeDefined();
+    // The claim, with an Escape in the middle of it.
+    expect(stateHash(replay(record).state)).toBe(stateHash(conn.game.state));
+    conn.dispose();
+  });
+
   it('survives a corrupt entry rather than taking the app down with it', () => {
     localStorage.setItem('satm:played', '{not json');
     expect(allPlayed()).toEqual([]);

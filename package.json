@@ -21,7 +21,8 @@
     "ai:arena": "tsx scripts/ai-arena.ts",
     "ai:bench": "tsx scripts/ai-bench.ts",
     "ai:compare": "tsx scripts/ai-compare.ts",
-    "ai:fit-eval": "tsx scripts/ai-fit-eval.ts"
+    "ai:fit-eval": "tsx scripts/ai-fit-eval.ts",
+    "ai:review": "tsx scripts/ai-review.ts"
   },
   "dependencies": {
     "react": "^18.3.1",

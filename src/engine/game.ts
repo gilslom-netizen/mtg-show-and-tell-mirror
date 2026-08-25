@@ -120,7 +120,6 @@ export class Game {
   undoable = true;
 
   private current: Eff | null = null;
-  private choiceCounter = 0;
   private sbaDirty = true;
   /** True while the state-based-action pass itself is the running process. */
   private sbaRunning = false;
@@ -392,7 +391,8 @@ export class Game {
   }
 
   private nextChoiceId(): string {
-    return `c${++this.choiceCounter}`;
+    // On the state, so that Esc rewinds it with everything else — see GameState.
+    return `c${++this.state.choiceSeq}`;
   }
 
   private takeRollbackSnapshot(player: PlayerId): void {

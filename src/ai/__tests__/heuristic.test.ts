@@ -173,6 +173,42 @@ describe('answering the opponent', () => {
     expect(cardOf(t, act(t, 'p1'))).toBe('mana_drain');
   });
 
+  /**
+   * From a real game: it cast Show and Tell, watched a Veil of Summer resolve, and
+   * then spent its Mana Drain on the next spell anyway. The counter did nothing.
+   */
+  it('does not spend Mana Drain into a Veil of Summer', () => {
+    const t = testGame({ startingPlayer: 'p2' });
+    t.p2.hand('Atraxa, Grand Unifier', 'Veil of Summer');
+    t.p2.manaBase(8);
+    t.p1.hand('Mana Drain');
+    t.p1.manaBase(2);
+    t.begin();
+
+    // Their Veil resolves first: their spells cannot be countered this turn.
+    t.p2.cast('Veil of Summer');
+    t.resolveStack();
+    priorityTo(t, 'p2');
+    t.p2.cast('Atraxa, Grand Unifier');
+    priorityTo(t, 'p1');
+
+    expect(t.state.effects.some((e) => e.kind === 'cantBeCountered')).toBe(true);
+    expect(cardOf(t, act(t, 'p1'))).not.toBe('mana_drain');
+  });
+
+  it('does not spend Mana Drain on an uncounterable Hullbreaker Horror', () => {
+    const t = testGame({ startingPlayer: 'p2' });
+    t.p2.hand('Hullbreaker Horror');
+    t.p2.manaBase(7);
+    t.p1.hand('Mana Drain');
+    t.p1.manaBase(2);
+    t.begin();
+
+    t.p2.cast('Hullbreaker Horror');
+    priorityTo(t, 'p1');
+    expect(cardOf(t, act(t, 'p1'))).not.toBe('mana_drain');
+  });
+
   it('does not spend Mana Drain on a Brainstorm', () => {
     const t = testGame({ startingPlayer: 'p2' });
     t.p2.hand('Brainstorm');

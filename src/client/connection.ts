@@ -174,6 +174,17 @@ export class LocalConnection extends BaseConnection {
   private aiNextAt = 0;
   /** Every action of this game, in order — the whole game, in a few KB. */
   private log: RecordedAction[] = [];
+  /**
+   * How long the log was when the engine last took its Esc snapshot, and for whom.
+   *
+   * Esc rewinds the engine to a snapshot the engine chose. The log has to rewind to
+   * *that* point and not to one of its own choosing, or the two stop describing the
+   * same game — and a log that no longer replays is not a record, it is a story
+   * about one. The engine snapshots exactly when a seat is left holding priority
+   * with nothing pending, which is a moment this side can see too.
+   */
+  private rollbackLogLength: number | null = null;
+  private rollbackSeat: PlayerId | null = null;
   /** Guards against writing the same finished game down twice. */
   private saved = false;
 
@@ -204,6 +215,16 @@ export class LocalConnection extends BaseConnection {
 
   private collect(): void {
     this.events.push(...this.game.flushEvents());
+    /*
+     * The same condition `advance()` uses before taking its rollback snapshot: a
+     * seat is waiting on priority with nothing pending. Marking the log here is what
+     * keeps the two rewinds identical rather than merely similar.
+     */
+    const s = this.game.state;
+    if (s.winner === null && s.pendingChoice === null && s.priorityPlayer !== null) {
+      this.rollbackLogLength = this.log.length;
+      this.rollbackSeat = s.priorityPlayer;
+    }
     const recorded = this.tracker?.noteResult(this.game);
     // `noteResult` is true on the first call that sees this game finished, which is
     // exactly once — so this is the hook for "a game just ended" without polling.
@@ -425,18 +446,17 @@ export class LocalConnection extends BaseConnection {
   cancel(seat: PlayerId): boolean {
     const ok = this.game.cancelPendingAction(seat);
     /*
-     * Escape rewinds the engine to the snapshot taken when this seat last had
-     * priority, so the log has to rewind with it or it stops being a replay of the
-     * game that happened. Back out the answers given since, and the action that
-     * asked for them — which is the same rule the online path applies to its log.
+     * Rewind the log to exactly where the engine rewound.
+     *
+     * The first version of this backed out "the answers given since, and the action
+     * that asked for them", which sounds like the same thing and is not: the engine
+     * goes back to a snapshot it took when the seat last held priority, and a cast
+     * that has been passed on has *two* such moments behind it. Two games played
+     * here could not be replayed afterwards because of that one word, which makes
+     * the record worthless precisely when something interesting happened.
      */
-    if (ok) {
-      for (let i = this.log.length - 1; i >= 0; i--) {
-        const entry = this.log[i];
-        if (entry.seat !== seat) break;
-        this.log.pop();
-        if (entry.k === 'intent') break;
-      }
+    if (ok && this.rollbackSeat === seat && this.rollbackLogLength !== null) {
+      this.log.length = Math.min(this.log.length, this.rollbackLogLength);
     }
     this.collect();
     this.notify();

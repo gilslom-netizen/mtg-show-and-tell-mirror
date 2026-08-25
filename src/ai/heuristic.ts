@@ -477,8 +477,35 @@ export class HeuristicAgent implements Agent {
     return best;
   }
 
+  /**
+   * Whether a Mana Drain pointed at this spell would actually counter it.
+   *
+   * Everything this needs is public and the agent was ignoring all of it. In a real
+   * game it cast Show and Tell, watched a Veil of Summer resolve — the log even
+   * says "spells you control can't be countered this turn" — and then spent its Mana
+   * Drain on the next spell anyway. The counter did nothing; the ramp it still gets
+   * was worthless, because under an Omniscience every spell already costs nothing.
+   *
+   * Hullbreaker Horror is the same mistake with no effect to read at all: the card
+   * simply cannot be countered, which is a fact about the twenty-five cards.
+   *
+   * The answer to an uncounterable spell is the Horror's bounce, not a counter —
+   * returning it to hand is not countering it, which is the whole reason that half
+   * of the trigger exists.
+   */
+  private counterable(oracleId: OracleId, r: Read): boolean {
+    if (oracleId === 'hullbreaker_horror') return false;
+    return !r.view.effects.some(
+      (e) =>
+        e.kind === 'cantBeCountered' &&
+        e.controller === r.opp &&
+        (e.scope === 'allThisTurn' || !e.consumed),
+    );
+  }
+
   private counterScore(r: Read): number {
-    const best = Math.max(0, ...r.oppSpells.map((s) => threatOf(s.oracleId, r)));
+    const targets = r.oppSpells.filter((s) => this.counterable(s.oracleId, r));
+    const best = Math.max(0, ...targets.map((s) => threatOf(s.oracleId, r)));
     // Above everything: a countered Omniscience is a game won, and the mana it
     // refunds often hard-casts one of my own.
     if (best >= 50) return 950;

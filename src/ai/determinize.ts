@@ -311,6 +311,9 @@ export function determinize(view: PlayerView, rng: RngState): DeterminizeResult 
 
     log: [],
     nextLogSeq: 1,
+    // A rebuilt position starts its own id sequence; nothing outside this search
+    // ever sees the choices it raises, so where it starts does not matter.
+    choiceSeq: 0,
   };
 
   return { state, failure: null };
