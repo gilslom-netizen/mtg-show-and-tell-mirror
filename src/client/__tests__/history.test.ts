@@ -3,6 +3,7 @@ import { Game } from '@engine/game';
 import { MAINDECK } from '@engine/deck';
 import { stateHash } from '../../engine/__tests__/bot';
 import { LocalConnection } from '../connection';
+import { HeuristicAgent } from '../../ai/heuristic';
 import { allPlayed, clearPlayed, recordPlayed, summarisePlayed, type PlayedGame } from '../history';
 
 /**
@@ -142,6 +143,56 @@ describe('the games you have played', () => {
     expect(s.losses).toBe(2);
     expect(s.averageTurns).toBe(8);
     expect(s.byReason['conceded']).toBe(1);
+  });
+
+  /**
+   * A best-of-three stops between games on "who plays first", and that decision is
+   * the loser's. When the computer lost the previous game and nothing answered for
+   * it, the match simply stopped: a screen waiting on somebody who was never asked.
+   * The opponent loop watched the game and not the match, so it saw a finished game
+   * and concluded there was nothing to do.
+   */
+  it('answers play-or-draw for the computer so a series can continue', () => {
+    const conn = new LocalConnection({
+      seed: 4242,
+      startingPlayer: 'p1',
+      seats: ['p1'],
+      opponent: new HeuristicAgent(),
+    });
+    // The ticker is what drives the opponent in the app; step it directly so the
+    // test does not have to wait on a timer.
+    const step = () => (conn as unknown as { runOpponent(): void }).runOpponent();
+
+    // Open the game properly: both sides keep, then the London bottoming.
+    for (let guard = 0; guard < 12; guard++) {
+      const pc = conn.game.state.pendingChoice;
+      if (!pc) break;
+      if (pc.kind === 'mulligan' && pc.awaiting.includes('p1')) {
+        conn.submitChoice('p1', pc.id, { kind: 'yesNo', value: true });
+      } else if (pc.kind === 'chooseCards' && pc.player === 'p1') {
+        const keep = pc.options.filter((o) => !o.disabledReason).slice(0, pc.min);
+        conn.submitChoice('p1', pc.id, { kind: 'cards', iids: keep.map((o) => o.iid) });
+      } else {
+        step();
+      }
+    }
+    expect(conn.game.state.mode).toBe('playing');
+
+    // The *loser* chooses, so the computer has to be the one that lost for this to
+    // be about the computer at all.
+    conn.submitIntent('p2', { t: 'concede' });
+    expect(conn.game.state.winner).toBe('p1');
+    expect(conn.match()?.awaitingFirstChoiceFrom).toBe('p2');
+
+    // This is the step that used to do nothing, because the loop watched the game
+    // and the game was over.
+    step();
+
+    expect(conn.match()?.awaitingFirstChoiceFrom).toBeNull();
+    expect(conn.match()?.gameNumber).toBe(2);
+    // And it took the play, which is what any competent player does with a combo deck.
+    expect(conn.match()?.onPlay).toBe('p2');
+    conn.dispose();
   });
 
   it('survives a corrupt entry rather than taking the app down with it', () => {

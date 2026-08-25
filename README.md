@@ -40,7 +40,7 @@ cannot end up in two different rooms — which is exactly what used to happen wh
 both of them left the box empty.
 
 ```bash
-npm test             # 312 tests, including 150 fuzzed games
+npm test             # 363 tests, including 150 fuzzed games
 npm run typecheck
 npm run check:serverless   # runs the API the way Vercel runs it
 npm run build              # typecheck + that check + the app build
@@ -302,7 +302,7 @@ random-legal-move baseline:
 
 | | |
 |---|---|
-| heuristic vs random | **98.2%** over 2,000 games, ±1% at 95% confidence (about +690 Elo) |
+| heuristic vs random | **98.6%** over 2,000 games, ±1% at 95% confidence (about +733 Elo) |
 | heuristic vs itself | an exact 50/50, which is what a mirror should say |
 | search vs heuristic | **62.0%** over 2,000 games, 59.0%–65.0% at 95% (about +85 Elo) |
 | more search vs less | **53.6%** — four times the determinizations buys +25 Elo |

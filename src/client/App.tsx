@@ -16,7 +16,6 @@ import {
 import {
   useAutoPass,
   useHotkeys,
-  useOmniscienceHold,
   useRepeatRunner,
   useTriggerPolicy,
 } from './hooks';
@@ -461,7 +460,6 @@ function Game({ viewer, mode }: { viewer: PlayerId; mode: Mode }) {
   useAutoPass(viewer);
   useTriggerPolicy(viewer);
   useHotkeys(viewer);
-  useOmniscienceHold(viewer);
   useRepeatRunner();
   useGoldfishOpponent(mode === 'goldfish' ? (viewer === 'p1' ? 'p2' : 'p1') : null);
 

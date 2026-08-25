@@ -427,6 +427,62 @@ describe('two Omnisciences on the table', () => {
   );
 });
 
+/**
+ * You hold priority to answer the opponent. Your own spell is not something to
+ * answer — it is something to let resolve, so that the next decision is made
+ * knowing what it did.
+ *
+ * Paid casts never could do this, because sorcery timing already wants an empty
+ * stack. Free ones could, and did: under an Omniscience the agent cast Brainstorm
+ * and then, before seeing the three cards, cast another spell in response to it.
+ */
+describe('waiting for its own stack', () => {
+  it('does not cast in response to its own spell under Omniscience', () => {
+    const t = testGame();
+    t.p1.battlefield('Omniscience', 'Island');
+    t.p1.hand('Brainstorm', 'Dig Through Time', "Rakshasa's Bargain");
+    t.begin();
+
+    // The first free cast is fine.
+    const first = act(t, 'p1');
+    expect(first.t).toBe('castSpell');
+    t.game.submitIntent('p1', first);
+
+    // Now its own spell is on the stack, and the only right answer is to wait.
+    expect(t.state.stack.length).toBeGreaterThan(0);
+    expect(act(t, 'p1')).toEqual({ t: 'passPriority' });
+  });
+
+  it('does not cast while its own trigger is waiting either', () => {
+    const t = testGame();
+    // Every spell it casts puts a Hullbreaker Horror trigger on the stack.
+    t.p1.battlefield('Omniscience', 'Hullbreaker Horror', 'Island');
+    t.p1.hand('Brainstorm', "Rakshasa's Bargain");
+    t.p2.battlefield('Watery Grave');
+    t.begin();
+
+    t.game.submitIntent('p1', act(t, 'p1'));
+    // Answer the Horror's mode so the trigger settles onto the stack.
+    for (let guard = 0; guard < 6 && t.state.pendingChoice; guard++) {
+      const pending = t.state.pendingChoice;
+      answer(t, pending.player ?? 'p1');
+    }
+    if (t.state.stack.length > 0) {
+      expect(act(t, 'p1')).toEqual({ t: 'passPriority' });
+    }
+  });
+
+  it('casts again once the stack is empty', () => {
+    const t = testGame();
+    t.p1.battlefield('Omniscience', 'Island');
+    t.p1.hand('Brainstorm', 'Dig Through Time');
+    t.begin();
+
+    expect(t.state.stack).toHaveLength(0);
+    expect(act(t, 'p1').t).toBe('castSpell');
+  });
+});
+
 describe('the mulligan', () => {
   const keeps = (hand: string[], mulligansTaken = 0): boolean => {
     const t = testGame();

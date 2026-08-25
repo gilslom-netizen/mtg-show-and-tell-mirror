@@ -501,13 +501,3 @@ export function useHotkeys(viewer: PlayerId) {
   }, [viewer, send, setAutoPass, setForceStop, setHold, toggle, cancel]);
 }
 
-/** Turns Omniscience mode on automatically, so free casts chain without a pass. */
-export function useOmniscienceHold(viewer: PlayerId) {
-  const view = useStore((s) => s.views[viewer]);
-  const enabled = useStore((s) => s.settings.autoHoldUnderOmniscience);
-  const setHold = useStore((s) => s.setHoldPriority);
-  const omni = view?.omniscienceActive ?? false;
-  useEffect(() => {
-    if (enabled) setHold(omni);
-  }, [omni, enabled, setHold]);
-}

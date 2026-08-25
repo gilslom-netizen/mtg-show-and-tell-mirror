@@ -263,12 +263,33 @@ export class HeuristicAgent implements Agent {
     // find, and worth less than nothing near the bottom of the library.
     if (!this.worthDrawing(id, r)) return 0;
 
-    if (free) return this.freeCastScore(id, r);
-
-    // Reactive spells answer whatever is on the stack and are exempt from the window
-    // below: their whole job is to be cast at the wrong time.
+    // Reactive spells answer whatever is on the stack and are exempt from both
+    // windows below: their whole job is to be cast at the wrong time.
     if (id === 'mana_drain') return this.counterScore(r);
     if (id === 'veil_of_summer') return this.veilScore(r);
+
+    /*
+     * Never respond to yourself.
+     *
+     * You hold priority in order to answer the opponent. Your own spell is not
+     * something to answer — it is something to let resolve, and then decide what to
+     * do knowing what it did. Casting into your own stack means choosing the next
+     * spell blind, and resolving everything backwards.
+     *
+     * Paid casts could not do this anyway, because sorcery timing already demands an
+     * empty stack. Free ones could, and did: with an Omniscience out the agent cast
+     * Brainstorm and then, before seeing the three cards, cast Dig Through Time in
+     * response to it. From the other side of the table that is not a difficult
+     * opponent, it is a visibly broken one.
+     *
+     * Triggers count. A Hullbreaker Horror trigger or a Bowmasters ping is not a
+     * spell and is still the thing that has to happen before the next decision means
+     * anything — which is exactly the Bowmasters loop's rule, arrived at once rather
+     * than card by card.
+     */
+    if (r.myStack.length > 0) return 0;
+
+    if (free) return this.freeCastScore(id, r);
 
     /*
      * Everything else waits for a window where spending mana costs nothing.
@@ -375,32 +396,16 @@ export class HeuristicAgent implements Agent {
          * The order is the whole trick, and getting it wrong is silent in two
          * different ways.
          *
-         * The Horror returns a *permanent*, so the copy being bounced has to have
-         * finished resolving — and priority comes back while the first one is still
-         * on the stack, with the second sitting in hand looking castable. Casting it
-         * there feels like the loop and is the end of it: the battlefield holds no
-         * Bowmasters, the trigger finds nothing to return, and what should have run
-         * until the opponent was dead stops after two pings.
+         * The order is the whole trick. The Horror returns a *permanent*, so the copy
+         * being bounced has to have finished resolving; and the ping the new one puts
+         * on the stack has to resolve too, or the triggers pile up one per cycle
+         * while the life total never moves and the loop never reaches the condition
+         * that ends it.
          *
-         * Waiting only for the *spell* is not enough either. Cast again the moment it
-         * resolves and the ping it just put on the stack is still sitting there
-         * unresolved; do that every cycle and the triggers pile up while the life
-         * total never moves, so the loop never reaches the condition that ends it.
-         * A stack that grows once per iteration is a game that does not finish.
-         *
-         * So: while anything of mine on the stack is a Bowmasters — the spell or the
-         * ping it is about to deal — the play is to wait for it. One cycle, one point
-         * of damage, which is how a person plays it and the only version that
-         * terminates.
+         * Both of those are now just the general rule above — nothing of mine on the
+         * stack, spell or trigger — so the loop needs no special case of its own. One
+         * cycle, one point of damage, which is how a person plays it.
          */
-        if (
-          r.view.stack.some((iid) => {
-            const c = r.view.cards[iid];
-            return c?.oracleId === 'orcish_bowmasters' && c.controller === r.me;
-          })
-        ) {
-          return 0;
-        }
         if (this.bowmastersLoopLive(r)) return 3000;
         return 300;
       case 'atraxa_grand_unifier':

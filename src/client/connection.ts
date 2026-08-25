@@ -240,9 +240,22 @@ export class LocalConnection extends BaseConnection {
   /** Which seat, if any, the opponent currently owes an action for. */
   private opponentOwes(): PlayerId | null {
     if (!this.opts.opponent) return null;
+    const theirs = (['p1', 'p2'] as PlayerId[]).filter((p) => !this.mySeats.includes(p));
+
+    /*
+     * Play or draw, after a game of a series.
+     *
+     * Checked before the game-over test below, because that is exactly when it is
+     * asked: the game has a winner and the loser owes a decision. It is a decision
+     * like any other and the match cannot continue without it — so when the computer
+     * lost the previous game and nothing answered for it, a best-of-three simply
+     * stopped, with a screen that was waiting for somebody who was never asked.
+     */
+    const awaiting = this.tracker?.state.awaitingFirstChoiceFrom ?? null;
+    if (awaiting !== null) return theirs.includes(awaiting) ? awaiting : null;
+
     const s = this.game.state;
     if (s.winner !== null) return null;
-    const theirs = (['p1', 'p2'] as PlayerId[]).filter((p) => !this.mySeats.includes(p));
 
     const pc = s.pendingChoice;
     if (pc) {
@@ -315,6 +328,15 @@ export class LocalConnection extends BaseConnection {
     // timer being set and it firing.
     const seat = this.opponentOwes();
     if (!agent || !seat) return;
+
+    // Play or draw comes from the match, not from the game — there is no view to
+    // redact for it and no priority to hold.
+    const awaiting = this.tracker?.state.awaitingFirstChoiceFrom ?? null;
+    if (awaiting === seat) {
+      const onPlay = agent.chooseFirst?.(this.tracker!.state, seat) ?? seat;
+      this.chooseFirst(seat, onPlay);
+      return;
+    }
 
     const view = redact(this.game.state, seat);
     try {

@@ -96,6 +96,14 @@ export interface Read {
   /** Spells (never abilities) on the stack, split by who cast them. */
   oppSpells: StackObject[];
   mySpells: StackObject[];
+  /**
+   * Everything of mine on the stack, triggers included.
+   *
+   * The distinction from `mySpells` matters: a Hullbreaker Horror trigger or an
+   * Orcish Bowmasters ping is not a spell, and it is still something that has to
+   * finish before the next decision is worth making.
+   */
+  myStack: StackObject[];
 
   isMyTurn: boolean;
   sorceryTiming: boolean;
@@ -166,6 +174,7 @@ export function read(view: PlayerView): Read {
 
     oppSpells: stack.filter((o) => !o.isAbility && o.controller === opp),
     mySpells: stack.filter((o) => !o.isAbility && o.controller === me),
+    myStack: stack.filter((o) => o.controller === me),
 
     isMyTurn: view.activePlayer === me,
     sorceryTiming:

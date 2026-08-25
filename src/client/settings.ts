@@ -76,7 +76,6 @@ export interface Settings {
    * one of them into a click you did not ask for. Hold priority is one keystroke
    * (H) away when you actually want to chain.
    */
-  autoHoldUnderOmniscience: boolean;
   /** Warn before letting floating mana drain away. */
   warnOnFloatingMana: boolean;
   /** Ask before paying life below this total. */
@@ -116,7 +115,6 @@ export const DEFAULT_SETTINGS: Settings = {
     bowmasters: 'ifUnambiguous',
     rememberTriggerOrder: true,
   },
-  autoHoldUnderOmniscience: false,
   warnOnFloatingMana: true,
   confirmLifePaymentBelow: 6,
   autoTapMana: true,

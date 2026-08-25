@@ -72,9 +72,15 @@ describe('stopping in combat', () => {
 });
 
 describe('settings defaults', () => {
-  it('does not hold priority under Omniscience unless asked', () => {
-    // Holding for every spell of a combo turn is a click per spell, not a comfort.
-    expect(DEFAULT_SETTINGS.autoHoldUnderOmniscience).toBe(false);
+  it('never holds priority on its own', () => {
+    /*
+     * There used to be a setting that held priority for you whenever an Omniscience
+     * was out. It is gone rather than defaulted off: holding priority is for
+     * responding to the opponent, and doing it for every spell of a combo turn adds
+     * a click to each one while making the board look like it has stopped. `H` holds
+     * priority at the moment you actually want to chain.
+     */
+    expect('autoHoldUnderOmniscience' in DEFAULT_SETTINGS).toBe(false);
   });
 
   it('migrates the old combat checkbox', () => {
