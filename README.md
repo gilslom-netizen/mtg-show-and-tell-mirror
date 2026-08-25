@@ -307,6 +307,7 @@ random-legal-move baseline:
 | search vs heuristic | **62.0%** over 2,000 games, 59.0%–65.0% at 95% (about +85 Elo) |
 | more search vs less | **53.6%** — four times the determinizations buys +25 Elo |
 | search *given* the opponent's hand | **64.3%** vs 61.0% for guessing it — not a significant difference |
+| search with a fitted evaluation | **59.5%** vs 61.0% for playing every rollout out — also not a difference, at a fourteenth of the cost |
 
 The third row is worth two sentences, because the first attempt at it was 24 games
 and came back 54% — with an interval of 29% to 78%, which is not a result at all.
@@ -327,9 +328,19 @@ information anybody is withholding, it is the future, and no amount of belief
 modelling recovers a card's worth of it. So the work left is in evaluating positions
 better, not in guessing hidden cards better.
 
-The price: a playout costs about 100ms, a game four to nine seconds across twelve
-threads, and games between two competent agents run eighteen turns and end with an
-empty library nearly half the time — the deck runs out before the life total does.
+The last row is where the work went next. A playout that plays the game out to the
+end costs about 100ms; one that stops early and asks a fitted evaluation what the
+position is worth costs 11.5ms, and the two are indistinguishable in strength over
+400 games. The weights come from logistic regression against whether the player
+actually went on to win, not from anybody's opinion about what a good board looks
+like — which matters, because the fit says life total is worth less than hand size
+and that holding both halves of the combo is worth nothing measurable. A
+hand-written evaluation would have got both backwards.
+
+Games between two competent agents run eighteen turns and end with an empty library
+nearly half the time: the deck runs out before the life total does. The fitted
+weights agree, and did so independently — the largest of them by a factor of four is
+the difference in library size.
 
 **Every agent takes a `PlayerView` and nothing else.** That is the same redacted
 object the client gets over the wire, so an agent cannot see your hand even by
