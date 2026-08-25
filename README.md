@@ -302,8 +302,8 @@ random-legal-move baseline:
 
 | | |
 |---|---|
-| heuristic vs random | **98.0%** over 2,000 games, ±1% at 95% confidence (about +681 Elo) |
-| heuristic vs itself | 300–300, which is what a mirror should say |
+| heuristic vs random | **98.2%** over 2,000 games, ±1% at 95% confidence (about +690 Elo) |
+| heuristic vs itself | an exact 50/50, which is what a mirror should say |
 | search vs heuristic | **62.0%** over 2,000 games, 59.0%–65.0% at 95% (about +85 Elo) |
 | more search vs less | **53.6%** — four times the determinizations buys +25 Elo |
 | search *given* the opponent's hand | **64.3%** vs 61.0% for guessing it — not a significant difference |
