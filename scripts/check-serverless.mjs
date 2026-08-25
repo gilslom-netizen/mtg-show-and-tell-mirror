@@ -1,8 +1,23 @@
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, cpSync, rmSync, existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+/**
+ * esbuild's own entry point, wherever the installer decided to put it.
+ *
+ * Hard-coding `node_modules/esbuild/bin/esbuild` works on a flat, hoisted tree and
+ * is a guess anywhere else — a different package manager, a workspace, or a version
+ * of npm that nests it. Asking the resolver instead is the same lookup an `import`
+ * would do, and this runs on the deploy path, where a wrong guess is a failed build
+ * rather than a local annoyance.
+ */
+function esbuildBin(root) {
+  const require = createRequire(join(root, 'package.json'));
+  return join(dirname(require.resolve('esbuild/package.json')), 'bin', 'esbuild');
+}
 
 /**
  * Runs the /api handlers the way Vercel actually runs them.
@@ -63,7 +78,7 @@ try {
   execFileSync(
     process.execPath,
     [
-      join(ROOT, 'node_modules', 'esbuild', 'bin', 'esbuild'),
+      esbuildBin(ROOT),
       `${work}/api/*.ts`,
       `${work}/src/**/*.ts`,
       '--outdir=' + work,
