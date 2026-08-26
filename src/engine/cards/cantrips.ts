@@ -163,8 +163,15 @@ export const planarGenesis: CardScript = {
         cards: top,
         min: 0,
         max: 1,
-        // Putting a land onto the battlefield this way does NOT use your land drop.
-        prompt: 'You may put a land onto the battlefield tapped (this does not use your land drop)',
+        /*
+         * The card is two choices wearing one coat, and the second only appears if
+         * you decline the first — so "select nothing and confirm" is a real move
+         * here rather than a way to cancel out of the card. Said plainly, because
+         * from the outside declining looks like throwing the spell away.
+         */
+        prompt:
+          'You may put a land onto the battlefield tapped — this does not use your land drop. ' +
+          'To take a card into your hand instead, select nothing and press Confirm; you will then choose which card.',
         from: 'library',
         disabled: top.filter((i) => !isLand(i)).map((iid) => ({ iid, reason: 'Not a land' })),
       });
@@ -181,7 +188,7 @@ export const planarGenesis: CardScript = {
         cards: top,
         min: 1,
         max: 1,
-        prompt: 'Put a card into your hand',
+        prompt: 'Choose a card to put into your hand',
         from: 'library',
       });
       if (pick.length > 0) yield* ctx.moveTo(pick[0], 'hand');

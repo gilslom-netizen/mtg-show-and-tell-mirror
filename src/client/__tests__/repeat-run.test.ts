@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { oracleByName } from '@engine/oracle';
 import type { ScenarioSpec } from '@engine/scenario';
 import { LocalConnection, type Connection } from '../connection';
-import { DEFAULT_SETTINGS } from '../settings';
+import { DEFAULT_SETTINGS, type Settings } from '../settings';
 import { MAX_REPEATS, detectPattern, repeatNeedsPriority } from '../repeat';
-import { shouldStop } from '../hooks';
+import { bowmastersTarget, shouldStop } from '../hooks';
 import { canAct, useStore } from '../store';
 
 /**
@@ -68,6 +68,35 @@ function answerAnyPrompt(): void {
 const history = () => useStore.getState().actionHistory;
 
 /**
+ * The trigger policy, as the client runs it.
+ *
+ * It answers the same questions a run does and often gets there first, which is
+ * the interesting part: the run has to notice that its question has already been
+ * answered rather than waiting out its patience for a prompt that is not coming.
+ */
+function policyTick(): void {
+  const st = useStore.getState();
+  for (const seat of ['p1', 'p2'] as const) {
+    const view = st.views[seat];
+    const choice = view?.choice;
+    if (!view || !choice) continue;
+    if (choice.kind === 'orderTriggers') {
+      st.respond({ kind: 'order', ids: choice.triggers.map((t) => t.id) }, seat, 'policy');
+      continue;
+    }
+    if (choice.kind !== 'chooseTargets') continue;
+    if (choice.source?.oracleId !== 'orcish_bowmasters') continue;
+    const target = bowmastersTarget(
+      DEFAULT_SETTINGS.triggers.bowmasters,
+      choice.candidates,
+      view,
+      seat,
+    );
+    if (target) st.respond({ kind: 'targets', targets: [target] }, seat, 'policy');
+  }
+}
+
+/**
  * Stands in for the comfort layer's auto-pass, using its real rule.
  *
  * A repeat run does not pass priority for you — most of a loop is the stack
@@ -75,7 +104,7 @@ const history = () => useStore.getState().actionHistory;
  * job. Driving both together here is the only way to prove they do not deadlock
  * each other, which is precisely what they did on the first attempt.
  */
-function autoPassTick(): boolean {
+function autoPassTick(settings: Settings = DEFAULT_SETTINGS): boolean {
   const st = useStore.getState();
   for (const seat of ['p1', 'p2'] as const) {
     const view = st.views[seat];
@@ -83,7 +112,10 @@ function autoPassTick(): boolean {
     if (!canAct(view, seat)) continue;
     const run = st.repeat;
     if (run && run.seat === seat && repeatNeedsPriority(run.steps, run.index, view)) continue;
-    if (shouldStop(view, DEFAULT_SETTINGS, 'off')) continue;
+    // A running repeat overrides the stop settings, exactly as F6 does. Without
+    // this the two layers deadlock: the run waits for a stack that only drains
+    // because this passes, and this will not pass while the run is going.
+    if (run?.seat !== seat && shouldStop(view, settings, 'off')) continue;
     st.send({ t: 'passPriority' }, seat, 'auto');
     return true;
   }
@@ -204,6 +236,95 @@ describe('the Bowmasters loop', () => {
     }
     // Twenty life, one ping a round: the loop is lethal and the run gets there.
     expect(useStore.getState().views.p1!.winner).toBe('p1');
+  });
+
+  /**
+   * The run and the policy bar answer the same questions, and the policy usually
+   * wins the race. The run then has a step whose prompt is already gone — which is
+   * indistinguishable from "not asked yet" unless the policy says so.
+   *
+   * It used to wait out its full patience there, every round: four hundred
+   * milliseconds of a progress bar sitting still on a loop that is otherwise
+   * instant. This runs with no clock at all, so a run that waits cannot finish.
+   */
+  it('does not wait for a question the policy has already answered', () => {
+    attachScenario(BOWMASTER_LOOP);
+    playOneLoop();
+    playOneLoop();
+    const pattern = detectPattern(useStore.getState().actionHistory)!;
+    const before = useStore.getState().views.p1!.players.p2.life;
+
+    useStore.getState().startRepeat(pattern.steps, 4, 'p1');
+    let ticks = 0;
+    for (; ticks < 120 && useStore.getState().repeat; ticks++) {
+      policyTick();
+      useStore.getState().advanceRepeat();
+      autoPassTick();
+    }
+    expect(useStore.getState().repeat).toBeNull();
+    expect(useStore.getState().repeatNote).toBeNull();
+    for (let tick = 0; tick < 200 && useStore.getState().views.p1!.stack.length > 0; tick++) {
+      policyTick();
+      if (!autoPassTick()) break;
+    }
+    expect(before - useStore.getState().views.p1!.players.p2.life).toBe(4);
+  });
+
+  /**
+   * The standoff that killed the feature in a real game.
+   *
+   * A round of the loop only comes back round when the stack drains; the stack
+   * only drains because the auto-pass layer passes; and that layer would not pass,
+   * because there was a spell of theirs on the stack and something castable in
+   * hand. So the run waited for a board that was waiting for the run, and ten
+   * seconds later it stopped and blamed the loop — "Cast Orcish Bowmasters is not
+   * available any more" — about a card sitting right there in hand.
+   *
+   * Asking for twenty rounds is a decision. It outranks a comfort stop, the same
+   * way "pass to end of turn" already does.
+   */
+  it('keeps going when a spell of theirs would have stopped the client', () => {
+    attachScenario({
+      ...BOWMASTER_LOOP,
+      p2: { hand: ['Brainstorm'], battlefield: ['Omniscience'], life: 20 },
+    });
+    playOneLoop();
+    playOneLoop();
+    const pattern = detectPattern(useStore.getState().actionHistory)!;
+
+    // Their spell goes on the stack and stays there: nothing can resolve until
+    // somebody passes, and the stop rule is what decides whether anybody will.
+    const st = () => useStore.getState();
+    // Hand them the window. The stack is empty and it stays p1's main phase: the
+    // step only moves on when both pass in succession.
+    st().send({ t: 'passPriority' }, 'p1');
+    const p2view = st().views.p2!;
+    const brainstorm = p2view.legalActions.find(
+      (a) => a.intent.t === 'castSpell' && p2view.cards[a.intent.iid]?.oracleId === 'brainstorm',
+    )!;
+    st().send(brainstorm.intent, 'p2');
+    st().send({ t: 'passPriority' }, 'p2');
+    expect(st().views.p1!.stack).toHaveLength(1);
+    expect(shouldStop(st().views.p1!, DEFAULT_SETTINGS, 'off')).toBe(true);
+
+    const before = st().views.p1!.players.p2.life;
+    st().startRepeat(pattern.steps, 4, 'p1');
+    for (let tick = 0; tick < 900 && st().repeat; tick++) {
+      policyTick();
+      answerAnyPrompt();
+      st().advanceRepeat();
+      autoPassTick();
+    }
+    // It finished, rather than running out of ticks or stopping with a complaint.
+    expect(st().repeat).toBeNull();
+    expect(st().repeatNote).toBeNull();
+    for (let tick = 0; tick < 300 && st().views.p1!.stack.length > 0; tick++) {
+      policyTick();
+      answerAnyPrompt();
+      if (!autoPassTick()) break;
+    }
+    // Four rounds, four pings — plus whatever their own Brainstorm cost them.
+    expect(before - st().views.p1!.players.p2.life).toBeGreaterThanOrEqual(4);
   });
 
   it('stops rather than guessing when the loop breaks', () => {

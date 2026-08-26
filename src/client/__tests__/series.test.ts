@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PlayerView } from '@engine/redact';
 import type { ScenarioSpec } from '@engine/scenario';
 import { SCENARIOS } from '@engine/scenario';
+import { HeuristicAgent } from '../../ai/heuristic';
 import { LocalConnection } from '../connection';
 import { seatHasSomethingToDo } from '../hooks';
 
@@ -109,6 +110,46 @@ describe('the play-or-draw decision, solo', () => {
     expect(conn.match()!.onPlay).toBe('p2');
     expect(conn.match()!.awaitingFirstChoiceFrom).toBeNull();
   });
+});
+
+/**
+ * Against the computer you hold one seat, so the play-or-draw decision after a game
+ * the computer lost is not yours to make and no screen will ever offer it. The
+ * opponent has to answer it itself, or a best of three stops after game one.
+ */
+describe('a series against the computer', () => {
+  const ai = (bestOf: number) =>
+    new LocalConnection({
+      seed: 11,
+      startingPlayer: 'p1',
+      seats: ['p1'],
+      opponent: new HeuristicAgent(),
+      bestOf,
+    });
+
+  it('runs at the length the lobby chose', () => {
+    expect(ai(5).match()?.bestOf).toBe(5);
+    expect(ai(1).match()?.bestOf).toBe(1);
+  });
+
+  it('answers play or draw for itself when it is the one who lost', async () => {
+    const conn = ai(3);
+    // The computer's seat concedes, so the decision belongs to a seat with no screen.
+    conn.submitIntent('p2', { t: 'concede' });
+    expect(conn.match()!.awaitingFirstChoiceFrom).toBe('p2');
+
+    // It waits a beat before answering, on purpose, so this waits with it.
+    const deadline = Date.now() + 5000;
+    while (conn.match()!.awaitingFirstChoiceFrom !== null && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+
+    const m = conn.match()!;
+    expect(m.awaitingFirstChoiceFrom).toBeNull();
+    expect(m.gameNumber).toBe(2);
+    expect(m.wins).toEqual({ p1: 1, p2: 0 });
+    conn.dispose();
+  }, 10_000);
 });
 
 /**

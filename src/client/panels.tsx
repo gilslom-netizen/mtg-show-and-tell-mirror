@@ -83,21 +83,6 @@ export function SettingsPanel() {
         <h3 style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--text-faint)' }}>COMFORT</h3>
         <div className="setting-row">
           <div>
-            Hold priority automatically under Omniscience
-            <div className="desc">
-              Off by default: an Omniscience turn is mostly ordinary spells, and holding
-              for all of them turns each one into a click. <kbd>H</kbd> holds priority
-              the moment you actually want to chain.
-            </div>
-          </div>
-          <input
-            type="checkbox"
-            checked={settings.autoHoldUnderOmniscience}
-            onChange={(e) => update({ autoHoldUnderOmniscience: e.target.checked })}
-          />
-        </div>
-        <div className="setting-row">
-          <div>
             Warn before losing floating mana
             <div className="desc">Mana Drain mana is usually the whole turn.</div>
           </div>

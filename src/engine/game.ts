@@ -107,9 +107,19 @@ export class Game {
    * off to control priority explicitly.
    */
   autoPass = true;
+  /**
+   * When true (the default), a snapshot is taken every time a player is handed
+   * priority so that Esc can back out of a half-finished cast.
+   *
+   * That snapshot is a `JSON.stringify` of the whole state and it costs 99µs of the
+   * 207µs an engine decision takes — 48% of the budget, spent entirely on a button
+   * that only exists in the UI. Search and self-play have no Esc, so they turn this
+   * off and get the time back. Nothing about the rules changes either way, so a
+   * replay is unaffected: see DESIGN-AI.md 6.1.
+   */
+  undoable = true;
 
   private current: Eff | null = null;
-  private choiceCounter = 0;
   private sbaDirty = true;
   /** True while the state-based-action pass itself is the running process. */
   private sbaRunning = false;
@@ -132,8 +142,12 @@ export class Game {
     decks?: Record<PlayerId, DeckEntry[]>;
     startingPlayer: PlayerId;
     bare?: boolean;
+    /** Off for search and self-play, where there is no Esc to back out with. */
+    undoable?: boolean;
   }): Game {
-    return new Game(createGameState(opts));
+    const game = new Game(createGameState(opts));
+    if (opts.undoable === false) game.undoable = false;
+    return game;
   }
 
   // -------------------------------------------------------------------------
@@ -227,7 +241,7 @@ export class Game {
       }
 
       // Waiting for a player.
-      this.takeRollbackSnapshot(p);
+      if (this.undoable) this.takeRollbackSnapshot(p);
       return;
     }
     throw new Error('advance() did not settle — possible infinite loop');
@@ -388,7 +402,8 @@ export class Game {
   }
 
   private nextChoiceId(): string {
-    return `c${++this.choiceCounter}`;
+    // On the state, so that Esc rewinds it with everything else — see GameState.
+    return `c${++this.state.choiceSeq}`;
   }
 
   private takeRollbackSnapshot(player: PlayerId): void {

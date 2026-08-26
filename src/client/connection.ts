@@ -7,6 +7,8 @@ import type { ChoiceResponse, GameEvent, PlayerId } from '@engine/types';
 import type { DeckEntry } from '@engine/state';
 import type { DraftView } from '../draft/redact';
 import type { DraftAction } from '../draft/types';
+import type { Agent } from '../ai/agent';
+import { recordPlayed, type RecordedAction } from './history';
 
 /** What the lobby and the waiting screen need to show while nothing is playable yet. */
 export interface ConnectionInfo {
@@ -136,7 +138,31 @@ export interface LocalOptions {
   scenario?: ScenarioSpec;
   /** Length of the series: 1, 3 or 5. A drill ignores it — it is one position. */
   bestOf?: number;
+  /**
+   * Plays any seat the human is not.
+   *
+   * It lives on the connection rather than in a component because that is what it
+   * is: the other player. The store refuses to act for a seat this client does not
+   * own, and rightly — so an opponent driven from the client would either be
+   * ignored or would require handing the human both seats and trusting the UI not
+   * to show them the second one. Here it sits on the far side of the same seam the
+   * server sits behind, is handed `redact(state, seat)` exactly as a remote player
+   * would be, and cannot be acted for from the board at all.
+   */
+  opponent?: Agent;
 }
+
+/** What the opponent is told it has to think in. The heuristic does not need it. */
+const OPPONENT_BUDGET_MS = 250;
+
+/**
+ * How long it waits before answering.
+ *
+ * The same randomised window the auto-pass layer uses, for the same reason pointed
+ * the other way: an opponent that replied instantly when it had nothing and paused
+ * when it was thinking would be readable off the clock.
+ */
+const OPPONENT_DELAY_MS: [number, number] = [220, 600];
 
 export class LocalConnection extends BaseConnection {
   readonly kind = 'local';
@@ -144,6 +170,25 @@ export class LocalConnection extends BaseConnection {
   private events: GameEvent[] = [];
   private mySeats: PlayerId[];
   private tracker: MatchTracker | null;
+  /** Polls for a move the opponent owes. Runs only while there is an opponent. */
+  private aiTicker: number | null = null;
+  /** When the opponent's next move is due, or 0 when nothing is owed. */
+  private aiNextAt = 0;
+  /** Every action of this game, in order — the whole game, in a few KB. */
+  private log: RecordedAction[] = [];
+  /**
+   * How long the log was when the engine last took its Esc snapshot, and for whom.
+   *
+   * Esc rewinds the engine to a snapshot the engine chose. The log has to rewind to
+   * *that* point and not to one of its own choosing, or the two stop describing the
+   * same game — and a log that no longer replays is not a record, it is a story
+   * about one. The engine snapshots exactly when a seat is left holding priority
+   * with nothing pending, which is a moment this side can see too.
+   */
+  private rollbackLogLength: number | null = null;
+  private rollbackSeat: PlayerId | null = null;
+  /** Guards against writing the same finished game down twice. */
+  private saved = false;
 
   constructor(private opts: LocalOptions) {
     super();
@@ -169,11 +214,178 @@ export class LocalConnection extends BaseConnection {
     }
     this.game.advance();
     this.collect();
+    this.startOpponentLoop();
   }
 
   private collect(): void {
     this.events.push(...this.game.flushEvents());
-    this.tracker?.noteResult(this.game);
+    /*
+     * The same condition `advance()` uses before taking its rollback snapshot: a
+     * seat is waiting on priority with nothing pending. Marking the log here is what
+     * keeps the two rewinds identical rather than merely similar.
+     */
+    const s = this.game.state;
+    if (s.winner === null && s.pendingChoice === null && s.priorityPlayer !== null) {
+      this.rollbackLogLength = this.log.length;
+      this.rollbackSeat = s.priorityPlayer;
+    }
+    const recorded = this.tracker?.noteResult(this.game);
+    // `noteResult` is true on the first call that sees this game finished, which is
+    // exactly once — so this is the hook for "a game just ended" without polling.
+    if (recorded) this.savePlayed();
+    // A drill has no tracker and no series, but it is still a game that was played.
+    if (!this.tracker && this.game.state.winner !== null && !this.saved) this.savePlayed();
+  }
+
+  /**
+   * Write the finished game down, as `(seed, starting player, action log)`.
+   *
+   * Not a summary: replaying that log reproduces the game exactly, so a run of
+   * evenings is something that can be examined afterwards rather than remembered.
+   */
+  private savePlayed(): void {
+    if (this.saved) return;
+    this.saved = true;
+    const s = this.game.state;
+    recordPlayed({
+      at: Date.now(),
+      seat: this.mySeats[0] ?? 'p1',
+      opponent: this.opts.opponent?.name ?? (this.mySeats.length > 1 ? 'hotseat' : 'none'),
+      seed: this.opts.seed,
+      startingPlayer: this.opts.scenario?.startingPlayer ?? this.opts.startingPlayer,
+      winner: s.winner,
+      reason: s.endReason,
+      turns: s.turn,
+      actions: this.log,
+    });
+  }
+
+  // --- the computer's seat --------------------------------------------------
+
+  /** Which seat, if any, the opponent currently owes an action for. */
+  private opponentOwes(): PlayerId | null {
+    if (!this.opts.opponent) return null;
+    const theirs = (['p1', 'p2'] as PlayerId[]).filter((p) => !this.mySeats.includes(p));
+
+    /*
+     * Play or draw, after a game of a series.
+     *
+     * Checked before the game-over test below, because that is exactly when it is
+     * asked: the game has a winner and the loser owes a decision. It is a decision
+     * like any other and the match cannot continue without it — so when the computer
+     * lost the previous game and nothing answered for it, a best-of-three simply
+     * stopped, with a screen that was waiting for somebody who was never asked.
+     */
+    const awaiting = this.tracker?.state.awaitingFirstChoiceFrom ?? null;
+    if (awaiting !== null) return theirs.includes(awaiting) ? awaiting : null;
+
+    const s = this.game.state;
+    if (s.winner !== null) return null;
+
+    const pc = s.pendingChoice;
+    if (pc) {
+      // Mulligan and Show and Tell are asked of both players at once, and either
+      // may still owe an answer.
+      if (pc.kind === 'mulligan' || pc.kind === 'simultaneousSecret') {
+        return theirs.find((p) => pc.awaiting.includes(p)) ?? null;
+      }
+      return theirs.includes(pc.player) ? pc.player : null;
+    }
+    return s.priorityPlayer !== null && theirs.includes(s.priorityPlayer)
+      ? s.priorityPlayer
+      : null;
+  }
+
+  /**
+   * A ticker rather than a timer per move, and the difference matters.
+   *
+   * The first version scheduled one `setTimeout` per action and used "a timer is
+   * already set" as the guard against scheduling two. That makes the timer id a
+   * mutex, and a mutex that is only ever released by its own callback: if the
+   * callback is lost — a hot reload, a disposed instance, anything — the opponent
+   * stops playing for the rest of the game and nothing says so. It happened within
+   * a few minutes of writing it, and from the board it is indistinguishable from an
+   * opponent thinking.
+   *
+   * A poll cannot wedge, because the next tick does not depend on the last one
+   * having run. It also means no call site has to remember to schedule anything:
+   * the loop notices the opponent owes a move, whatever caused that.
+   */
+  private startOpponentLoop(): void {
+    if (!this.opts.opponent || this.aiTicker !== null) return;
+    this.aiTicker = setInterval(() => this.opponentTick(), 100) as unknown as number;
+  }
+
+  private opponentTick(): void {
+    if (this.opponentOwes() === null) {
+      // Nothing owed: forget any countdown so the next move is timed from when it
+      // actually became theirs to make.
+      this.aiNextAt = 0;
+      return;
+    }
+    /*
+     * The pause exists so the opponent is not readable off the clock, which only
+     * means anything to somebody watching it. In a hidden tab there is nobody, and
+     * paying it there is actively bad: a background tab has its timers clamped to
+     * roughly one a second and eventually far less, so a delay spread over several
+     * ticks can leave someone who switched away mid-turn coming back to an opponent
+     * that appears to have stopped playing.
+     *
+     * No document at all — a test, or anything running this outside a page — counts
+     * as unwatched for the same reason. Reading `document.hidden` unguarded there
+     * threw on every tick, a hundred times a second, and the opponent never moved.
+     */
+    if (typeof document === 'undefined' || document.hidden) {
+      this.aiNextAt = 0;
+      this.runOpponent();
+      return;
+    }
+    const now = Date.now();
+    if (this.aiNextAt === 0) {
+      const [lo, hi] = OPPONENT_DELAY_MS;
+      this.aiNextAt = now + lo + Math.random() * (hi - lo);
+      return;
+    }
+    if (now < this.aiNextAt) return;
+    this.aiNextAt = 0;
+    this.runOpponent();
+  }
+
+  private runOpponent(): void {
+    const agent = this.opts.opponent;
+    // Re-derived rather than captured: a shared choice can resolve between the
+    // timer being set and it firing.
+    const seat = this.opponentOwes();
+    if (!agent || !seat) return;
+
+    // Play or draw comes from the match, not from the game — there is no view to
+    // redact for it and no priority to hold.
+    const awaiting = this.tracker?.state.awaitingFirstChoiceFrom ?? null;
+    if (awaiting === seat) {
+      const onPlay = agent.chooseFirst?.(this.tracker!.state, seat) ?? seat;
+      this.chooseFirst(seat, onPlay);
+      return;
+    }
+
+    const view = redact(this.game.state, seat);
+    try {
+      if (view.choice) {
+        const response = agent.respond(view, view.choice, OPPONENT_BUDGET_MS);
+        this.game.submitChoice(seat, view.choice.id, response);
+        this.log.push({ k: 'choice', seat, choiceId: view.choice.id, response });
+      } else {
+        const intent = agent.act(view, OPPONENT_BUDGET_MS);
+        this.game.submitIntent(seat, intent);
+        this.log.push({ k: 'intent', seat, intent });
+      }
+      this.error = null;
+    } catch (e) {
+      this.error = (e as Error).message;
+    }
+    this.collect();
+    this.notify();
+    // Anything still owed is picked up by the next tick, including a whole chain of
+    // triggers answered one after another.
   }
 
   match(): MatchState | null {
@@ -194,6 +406,9 @@ export class LocalConnection extends BaseConnection {
     });
     this.game.advance();
     this.events = [];
+    // A new game of the series: its own seed, and its own log to be written down.
+    this.log = [];
+    this.saved = false;
     this.collect();
     this.notify();
   }
@@ -215,6 +430,7 @@ export class LocalConnection extends BaseConnection {
   submitIntent(seat: PlayerId, intent: Intent): void {
     try {
       this.game.submitIntent(seat, intent);
+      this.log.push({ k: 'intent', seat, intent });
       this.error = null;
     } catch (e) {
       this.error = (e as Error).message;
@@ -226,6 +442,7 @@ export class LocalConnection extends BaseConnection {
   submitChoice(seat: PlayerId, choiceId: string, response: ChoiceResponse): void {
     try {
       this.game.submitChoice(seat, choiceId, response);
+      this.log.push({ k: 'choice', seat, choiceId, response });
       this.error = null;
     } catch (e) {
       this.error = (e as Error).message;
@@ -236,17 +453,47 @@ export class LocalConnection extends BaseConnection {
 
   cancel(seat: PlayerId): boolean {
     const ok = this.game.cancelPendingAction(seat);
+    /*
+     * Rewind the log to exactly where the engine rewound.
+     *
+     * The first version of this backed out "the answers given since, and the action
+     * that asked for them", which sounds like the same thing and is not: the engine
+     * goes back to a snapshot it took when the seat last held priority, and a cast
+     * that has been passed on has *two* such moments behind it. Two games played
+     * here could not be replayed afterwards because of that one word, which makes
+     * the record worthless precisely when something interesting happened.
+     */
+    if (ok && this.rollbackSeat === seat && this.rollbackLogLength !== null) {
+      this.log.length = Math.min(this.log.length, this.rollbackLogLength);
+    }
     this.collect();
     this.notify();
     return ok;
   }
 
   restart(seed = this.opts.seed + 1): void {
+    this.clearOpponentTimer();
     this.opts = { ...this.opts, seed };
     const next = new LocalConnection(this.opts);
     this.game = next.game;
     this.events = next.drainEvents();
+    next.dispose();
+    this.log = [];
+    this.saved = false;
     this.notify();
+    this.startOpponentLoop();
+  }
+
+  private clearOpponentTimer(): void {
+    if (this.aiTicker === null) return;
+    clearInterval(this.aiTicker);
+    this.aiTicker = null;
+    this.aiNextAt = 0;
+  }
+
+  dispose(): void {
+    this.clearOpponentTimer();
+    super.dispose();
   }
 }
 

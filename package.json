@@ -17,7 +17,12 @@
     "sync:cards": "tsx scripts/sync-cards.ts",
     "gen:data": "node scripts/gen-data.mjs",
     "check:serverless": "node scripts/check-serverless.mjs",
-    "set:art": "tsx scripts/set-art.ts"
+    "set:art": "tsx scripts/set-art.ts",
+    "ai:arena": "tsx scripts/ai-arena.ts",
+    "ai:bench": "tsx scripts/ai-bench.ts",
+    "ai:compare": "tsx scripts/ai-compare.ts",
+    "ai:fit-eval": "tsx scripts/ai-fit-eval.ts",
+    "ai:review": "tsx scripts/ai-review.ts"
   },
   "dependencies": {
     "react": "^18.3.1",

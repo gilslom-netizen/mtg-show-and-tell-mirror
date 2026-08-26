@@ -114,6 +114,7 @@ export function createGameState(opts: {
     endReason: null,
     log: [],
     nextLogSeq: 1,
+    choiceSeq: 0,
   };
 
   const deckFor = (player: PlayerId): DeckEntry[] => {

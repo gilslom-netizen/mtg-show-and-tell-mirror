@@ -598,4 +598,15 @@ export interface GameState {
 
   log: LogEntry[];
   nextLogSeq: number;
+
+  /**
+   * Counter behind the id on each pending choice.
+   *
+   * It lives in the state rather than on the Game because Esc rewinds the state: a
+   * counter kept outside it does not roll back, so the run that cancelled a cast
+   * would go on to issue `c25` where a replay of the same actions issues `c24`, and
+   * the log would no longer rebuild the game it came from. Ids have to be a function
+   * of the state for `(seed, action log)` to mean anything.
+   */
+  choiceSeq: number;
 }

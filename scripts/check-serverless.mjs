@@ -1,8 +1,36 @@
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, cpSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, cpSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+/**
+ * esbuild is called through its JavaScript API rather than as a command.
+ *
+ * Three attempts got this wrong in three different ways, and all three were the
+ * same mistake: guessing how the tool is invoked on a machine that is not this one.
+ * `npx esbuild` cannot be spawned on Windows, where there is no bare `npx` and where
+ * recent Node refuses to run the `.cmd` shim without a shell. Running
+ * `node node_modules/esbuild/bin/esbuild` fixes Windows, where that file is a
+ * JavaScript wrapper, and breaks Linux, where esbuild's installer replaces it with
+ * the native binary — Node then tries to parse an ELF header as a script. Which of
+ * those two a machine has is not something the calling code can see.
+ *
+ * The API is the same code path on every platform, needs no subprocess, no shell,
+ * no quoting and no PATH, and it is what the check should have used to begin with.
+ * It takes explicit entry points rather than glob strings, which is why the walk
+ * below exists.
+ */
+function typescriptFilesUnder(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...typescriptFilesUnder(path));
+    // `.ts` only, deliberately: the client's .tsx is bundled by Vite and never
+    // reaches a serverless function, so it is not what this is checking.
+    else if (entry.name.endsWith('.ts')) out.push(path);
+  }
+  return out;
+}
 
 /**
  * Runs the /api handlers the way Vercel actually runs them.
@@ -52,21 +80,21 @@ try {
   for (const dir of ['api', 'src', 'data']) {
     cpSync(join(ROOT, dir), join(work, dir), { recursive: true });
   }
-  execFileSync(
-    'npx',
-    [
-      'esbuild',
-      `${work}/api/*.ts`,
-      `${work}/src/**/*.ts`,
-      '--outdir=' + work,
-      '--outbase=' + work,
-      '--platform=node',
-      '--format=esm',
-      '--target=node20',
-      // No --bundle, on purpose: one file in, one file out.
+  const { build } = await import('esbuild');
+  await build({
+    entryPoints: [
+      ...typescriptFilesUnder(join(work, 'api')),
+      ...typescriptFilesUnder(join(work, 'src')),
     ],
-    { cwd: ROOT, stdio: ['ignore', 'ignore', 'pipe'] },
-  );
+    outdir: work,
+    outbase: work,
+    platform: 'node',
+    format: 'esm',
+    target: 'node20',
+    logLevel: 'silent',
+    // No bundling, on purpose: one file in, one file out, exactly as Vercel does it.
+    bundle: false,
+  });
 
   const res = () => {
     const out = { code: 0, body: undefined };

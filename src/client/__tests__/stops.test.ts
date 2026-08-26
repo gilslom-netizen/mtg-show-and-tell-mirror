@@ -71,10 +71,66 @@ describe('stopping in combat', () => {
   });
 });
 
+/**
+ * Which spell on the stack is worth being stopped for.
+ *
+ * Reported as "you are holding priority on my own spells by default", and that is
+ * exactly what it looked like: their Atraxa was at the bottom of a six-deep stack
+ * with four of the player's own spells piled on top, so every single one of those
+ * casts stopped on a decision that had been made four spells ago.
+ */
+describe('stopping for the stack', () => {
+  /** Their spell on the stack, then one of mine on top of it. */
+  function stacked() {
+    const t = testGame({ startingPlayer: 'p2' });
+    t.p2.hand('Atraxa, Grand Unifier');
+    t.p2.manaBase(7);
+    // Something castable, or there is nothing to stop for under 'ifIHaveAnswer'.
+    t.p1.hand('Mana Drain', 'Orcish Bowmasters');
+    t.p1.manaBase(4);
+    t.begin();
+    t.p2.cast('Atraxa, Grand Unifier');
+    t.p2.pass();
+    return t;
+  }
+
+  it('stops when the thing about to resolve is theirs', () => {
+    const t = stacked();
+    const view = redact(t.state, 'p1');
+    expect(view.stack).toHaveLength(1);
+    expect(shouldStop(view, DEFAULT_SETTINGS, 'off')).toBe(true);
+  });
+
+  it('does not stop again once your own spell is on top of theirs', () => {
+    const t = stacked();
+    t.p1.cast('Orcish Bowmasters');
+    const view = redact(t.state, 'p1');
+    // Theirs is still on the stack. It is no longer the decision in front of you.
+    expect(view.stack).toHaveLength(2);
+    expect(view.cards[view.stack[0]]?.controller).toBe('p2');
+    expect(shouldStop(view, DEFAULT_SETTINGS, 'off')).toBe(false);
+    // Not even for somebody who asked to be stopped every time.
+    expect(shouldStop(view, withStops({ opponentSpellOnStack: 'always' }), 'off')).toBe(false);
+  });
+
+  it('still honours "always" and "never" for a spell of theirs on top', () => {
+    const t = stacked();
+    const view = redact(t.state, 'p1');
+    expect(shouldStop(view, withStops({ opponentSpellOnStack: 'always' }), 'off')).toBe(true);
+    expect(shouldStop(view, withStops({ opponentSpellOnStack: 'never' }), 'off')).toBe(false);
+  });
+});
+
 describe('settings defaults', () => {
-  it('does not hold priority under Omniscience unless asked', () => {
-    // Holding for every spell of a combo turn is a click per spell, not a comfort.
-    expect(DEFAULT_SETTINGS.autoHoldUnderOmniscience).toBe(false);
+  it('never holds priority on its own', () => {
+    /*
+     * There used to be a setting that held priority for you whenever an Omniscience
+     * was out. It is gone rather than defaulted off: holding priority is for
+     * responding to the opponent, and doing it for every spell of a combo turn adds
+     * a click to each one while making the board look like it has stopped. `H` holds
+     * priority at the moment you actually want to chain.
+     */
+    expect('autoHoldUnderOmniscience' in DEFAULT_SETTINGS).toBe(false);
   });
 
   it('migrates the old combat checkbox', () => {

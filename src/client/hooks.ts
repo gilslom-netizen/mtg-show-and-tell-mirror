@@ -77,11 +77,22 @@ export function shouldStop(view: PlayerView, settings: Settings, autoPass: AutoP
   const stops = settings.stops;
 
   if (view.stack.length > 0) {
-    const opposing = view.stack.some((iid) => {
-      const c = view.cards[iid];
-      return c && c.controller !== me;
-    });
-    if (!opposing) return false;
+    /*
+     * The top of the stack, not anywhere in it.
+     *
+     * "An opposing spell is on the stack" sounds like the same question and is
+     * not. Pile four of your own free spells on top of their Atraxa and their
+     * Atraxa is still on the stack — so every single one of your own casts
+     * stopped, and the client looked like it was holding priority on your own
+     * spells by default. Nobody asked it to.
+     *
+     * What you want to be asked about is the thing that is about to resolve. If
+     * that is yours, there is nothing of theirs to answer yet; when yours has
+     * resolved and theirs is on top again, the stop comes back on its own, which
+     * is the window that actually matters.
+     */
+    const top = view.cards[view.stack[view.stack.length - 1]];
+    if (!top || top.controller === me) return false;
     if (stops.opponentSpellOnStack === 'never') return false;
     if (stops.opponentSpellOnStack === 'always') return true;
     // The setting that matters for this deck: stop only when Mana Drain, Veil,
@@ -153,6 +164,7 @@ export function useAutoPass(viewer: PlayerId) {
    * that cancelled the pending auto-pass timer before it could ever fire, so the
    * stack never drained and the loop sat there for ever waiting for it to.
    */
+  const repeatRunning = useStore((s) => s.repeat?.seat === viewer);
   const repeatHolds = useStore((s) => {
     const run = s.repeat;
     const v = s.views[viewer];
@@ -222,7 +234,22 @@ export function useAutoPass(viewer: PlayerId) {
     // Holding priority is a deliberate "do not pass for me" — chaining spells
     // under an Omniscience is the whole reason it exists.
     if (holdPriority) return;
-    if (shouldStop(view, settings, autoPass)) return;
+    /*
+     * A running repeat overrides the stop settings, for the same reason F6 does.
+     *
+     * The two layers had a standoff and it killed the feature. A round of the
+     * loop only comes back round when the stack drains; the stack only drains
+     * because this layer passes; and this layer would not pass, because there was
+     * an opposing spell somewhere on the stack and something castable in hand. So
+     * the run waited for a board that was waiting for the run, and ten seconds
+     * later it gave up and blamed the loop — "Cast Orcish Bowmasters is not
+     * available any more" — about a card that was sitting right there.
+     *
+     * Asking for N rounds is a decision, the same kind as "pass to end of turn".
+     * Stopping mid-run to point at something is not a safety net: the run stops
+     * on its own, with a real reason, the moment a step does not fit.
+     */
+    if (!repeatRunning && shouldStop(view, settings, autoPass)) return;
 
     /*
      * The randomised window exists for one reason: if the client passed
@@ -247,7 +274,19 @@ export function useAutoPass(viewer: PlayerId) {
     // and passing felt like it randomly stopped working. `view` is a fresh object
     // only when the game state actually changed, which is exactly when the
     // decision is worth taking again.
-  }, [view, viewer, settings, solo, autoPass, forceStop, holdPriority, repeatHolds, send, controls]);
+  }, [
+    view,
+    viewer,
+    settings,
+    solo,
+    autoPass,
+    forceStop,
+    holdPriority,
+    repeatHolds,
+    repeatRunning,
+    send,
+    controls,
+  ]);
 }
 
 /**
@@ -517,13 +556,3 @@ export function useHotkeys(viewer: PlayerId) {
   }, [viewer, send, setAutoPass, setForceStop, setHold, toggle, cancel]);
 }
 
-/** Turns Omniscience mode on automatically, so free casts chain without a pass. */
-export function useOmniscienceHold(viewer: PlayerId) {
-  const view = useStore((s) => s.views[viewer]);
-  const enabled = useStore((s) => s.settings.autoHoldUnderOmniscience);
-  const setHold = useStore((s) => s.setHoldPriority);
-  const omni = view?.omniscienceActive ?? false;
-  useEffect(() => {
-    if (enabled) setHold(omni);
-  }, [omni, enabled, setHold]);
-}

@@ -17,7 +17,6 @@ import {
   seatHasSomethingToDo,
   useAutoPass,
   useHotkeys,
-  useOmniscienceHold,
   useRepeatRunner,
   useTriggerPolicy,
 } from './hooks';
@@ -28,13 +27,21 @@ import { canAct, useStore } from './store';
 import { PhaseTrack } from './ui';
 import { DraftScreen } from './Draft';
 import { DeckBuilder } from './DeckBuilder';
+// Imported directly rather than through the agent registry, which would drag the
+// search, the determinizer and the measuring instruments into the app bundle.
+import { HeuristicAgent } from '../ai/heuristic';
+import type { Agent } from '../ai/agent';
+import { clearPlayed, downloadPlayed, summarisePlayed } from './history';
 
 /**
  * Shell: lobby, the two chrome bars and the always-visible state of the comfort
  * features. Everything the hotkeys do is also a button here, on purpose.
  */
 
-type Mode = 'lab' | 'goldfish' | 'online';
+type Mode = 'lab' | 'goldfish' | 'ai' | 'online';
+
+/** One instance for the tab: the heuristic is stateless, so there is nothing to reset. */
+const AI_OPPONENT: Agent = new HeuristicAgent();
 
 export function App() {
   const connection = useStore((s) => s.connection);
@@ -163,6 +170,39 @@ function NoStoreWarning() {
   );
 }
 
+/**
+ * What you have played so far, and a way to take it with you.
+ *
+ * Every finished local game is written down as its seed and its action log, which
+ * is a few kilobytes and is not a summary — replaying it reproduces the game
+ * exactly. That is the difference between "I lost three in a row" and something
+ * anybody can go and look at, which is the whole reason to keep it.
+ */
+function PlayedGames() {
+  const [summary, setSummary] = useState(() => summarisePlayed());
+  if (summary.games === 0) return null;
+  return (
+    <p className="lobby-note" data-testid="played-summary">
+      Saved on this browser: <b>{summary.games}</b>{' '}
+      {summary.games === 1 ? 'game' : 'games'} — {summary.wins}W {summary.losses}L
+      {summary.draws > 0 ? ` ${summary.draws}D` : ''}, {summary.averageTurns} turns on
+      average.{' '}
+      <button className="linkish" onClick={() => downloadPlayed()}>
+        Download them
+      </button>{' '}
+      <button
+        className="linkish"
+        onClick={() => {
+          clearPlayed();
+          setSummary(summarisePlayed());
+        }}
+      >
+        Clear
+      </button>
+    </p>
+  );
+}
+
 function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
   const attach = useStore((s) => s.attach);
   const setOnlineCapability = useStore((s) => s.setOnlineCapability);
@@ -195,7 +235,10 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
     const conn = new LocalConnection({
       seed,
       startingPlayer: Math.random() < 0.5 ? 'p1' : 'p2',
-      seats: ['p1', 'p2'],
+      // Against the computer you hold one seat, exactly as you do online. Lab and
+      // goldfish hand you both, which is what makes them practice rather than a game.
+      seats: mode === 'ai' ? ['p1'] : ['p1', 'p2'],
+      opponent: mode === 'ai' ? AI_OPPONENT : undefined,
       scenario,
       // The series length is the lobby's, whichever way you start a game. A drill
       // ignores it — it is one staged position, not a series.
@@ -290,8 +333,8 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
         <section className="lobby-section">
           <h2>Length of the series</h2>
           <p className="lobby-note">
-            Applies to every game you start from here — online and the solo modes
-            alike. Online, it is set by whoever opens the room.
+            Applies to every game you start from here — online, the computer and
+            the solo modes alike. Online, it is set by whoever opens the room.
           </p>
           <div className="segmented" data-testid="best-of" role="group">
             {[1, 3, 5].map((n) => (
@@ -338,6 +381,26 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
               : 'Both players must use the same room code. Start here, then send the invite link from the next screen.'}
           </p>
           {unreliable && <NoStoreWarning />}
+        </section>
+
+        <section className="lobby-section">
+          <h2>Play the computer</h2>
+          <button
+            className="primary is-cta"
+            data-testid="play-ai"
+            onClick={() => startLocal('ai')}
+          >
+            Play the computer
+          </button>
+          <p className="lobby-note">
+            Runs entirely in this tab — no room, no second person, works offline. It
+            plays the deck properly: it mulligans, counters what is worth countering,
+            picks its Show and Tell in secret like you do, and knows the Bowmasters
+            loop. It cannot see your hand; it is given exactly the view you would send
+            an opponent online. Plays a best of {bestOf}, and picks play or draw for
+            itself between games.
+          </p>
+          <PlayedGames />
         </section>
 
         <details className="lobby-fold">
@@ -419,7 +482,6 @@ function Game({ viewer, mode }: { viewer: PlayerId; mode: Mode }) {
   useAutoPass(viewer);
   useTriggerPolicy(viewer);
   useHotkeys(viewer);
-  useOmniscienceHold(viewer);
   useRepeatRunner();
   useGoldfishOpponent(mode === 'goldfish' ? (viewer === 'p1' ? 'p2' : 'p1') : null);
 
@@ -1116,3 +1178,4 @@ function useGoldfishOpponent(seat: PlayerId | null) {
     return () => window.clearTimeout(t);
   });
 }
+
