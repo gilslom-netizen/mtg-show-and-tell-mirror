@@ -19,7 +19,7 @@ import {
   solvePayment,
   type ManaSource,
 } from './mana.js';
-import { frontFace, oracle } from './oracle.js';
+import { faceOf, frontFace, oracle } from './oracle.js';
 import { shuffleArray } from './rng.js';
 import {
   battlefield,
@@ -28,8 +28,8 @@ import {
   cardsToBottom,
   createGameState,
   currentFace,
-  getPower,
-  getToughness,
+  powerOf,
+  toughnessOf,
   handSizeAfter,
   hasKeyword,
   isMainPhase,
@@ -78,7 +78,12 @@ import {
 // ---------------------------------------------------------------------------
 
 export type Intent =
-  | { t: 'playLand'; iid: IID; face?: 'front' | 'back' }
+  | {
+      t: 'playLand';
+      iid: IID;
+      face?: 'front' | 'back';
+      from?: 'hand' | 'graveyard' | 'exile' | 'library';
+    }
   | {
       t: 'castSpell';
       iid: IID;
@@ -86,8 +91,17 @@ export type Intent =
       free?: boolean;
       /** The card's own "rather than pay this spell's mana cost". */
       alt?: boolean;
+      /** Pay the kicker too. */
+      kicked?: boolean;
+      /** Where the card is being cast from. Hand when absent. */
+      from?: 'hand' | 'graveyard' | 'exile' | 'library';
+      /** Flashback: the card exiles as it leaves the stack. */
+      flashback?: boolean;
+      /** Escape: flashback's cousin — exiles five others on the way. */
+      escape?: boolean;
       holdPriority?: boolean;
     }
+  | { t: 'turnFaceUp'; iid: IID }
   | { t: 'activateAbility'; iid: IID; index: number }
   | { t: 'tapForMana'; iid: IID; kind: ManaKind }
   | { t: 'passPriority' }
@@ -289,7 +303,7 @@ export class Game {
         this.doPass(player);
         break;
       case 'playLand':
-        this.playLand(player, intent.iid, intent.face ?? 'front');
+        this.playLand(player, intent.iid, intent.face ?? 'front', intent.from ?? 'hand');
         break;
       case 'tapForMana':
         this.tapForMana(player, intent.iid, intent.kind);
@@ -298,8 +312,15 @@ export class Game {
         this.current = this.castSpell(player, intent.iid, {
           free: intent.free ?? false,
           alt: intent.alt ?? false,
+          kicked: intent.kicked ?? false,
+          from: intent.from ?? 'hand',
+          flashback: intent.flashback ?? false,
+          escape: intent.escape ?? false,
           holdPriority: intent.holdPriority ?? false,
         });
+        break;
+      case 'turnFaceUp':
+        this.current = this.turnFaceUp(player, intent.iid);
         break;
       case 'activateAbility':
         this.current = this.activateAbility(player, intent.iid, intent.index);
@@ -502,6 +523,11 @@ export class Game {
   // Events, triggers and state-based actions
   // -------------------------------------------------------------------------
 
+  /** Tests that move cards by hand still need the SBA pass to notice. */
+  sbaDirtyForTests(): void {
+    this.sbaDirty = true;
+  }
+
   emit(events: GameEvent[]): void {
     if (events.length === 0) return;
     this.sbaDirty = true;
@@ -573,7 +599,7 @@ export class Game {
       const dying: CardInstance[] = [];
       for (const c of battlefield(s)) {
         if (!isType(c, 'Creature')) continue;
-        const tou = getToughness(c);
+        const tou = toughnessOf(s, c);
         if (tou <= 0) dying.push(c);
         else if (c.deathtouched && c.damage > 0) dying.push(c);
         else if (c.damage >= tou) dying.push(c);
@@ -581,6 +607,70 @@ export class Game {
       for (const c of dying) {
         logLine(s, `${cardName(c)} dies`, { player: c.controller, iids: [c.iid] });
         this.emit(moveCardRaw(s, c.iid, 'graveyard'));
+        changed = true;
+      }
+
+      /*
+       * 704.5m — an aura attached to something illegal (or to nothing) is put
+       * into its owner's graveyard. This is the only thing keeping attachment
+       * honest: nothing else notices when the enchanted permanent leaves.
+       */
+      for (const c of battlefield(s)) {
+        const script = getScript(c.oracleId);
+        if (!script?.enchant) continue;
+        const host = c.attachedTo === undefined ? undefined : s.cards[c.attachedTo];
+        const legal =
+          host !== undefined &&
+          host.zone === 'battlefield' &&
+          script.enchant
+            .candidates(s, c.controller)
+            .some((t) => t.kind === 'permanent' && t.iid === host.iid);
+        if (legal) continue;
+        logLine(s, `${cardName(c)} falls off`, { player: c.controller, iids: [c.iid] });
+        this.emit(moveCardRaw(s, c.iid, 'graveyard'));
+        changed = true;
+      }
+
+      // 704.5i — a planeswalker with no loyalty counters goes to the graveyard.
+      for (const c of battlefield(s)) {
+        if (!isType(c, 'Planeswalker')) continue;
+        if ((c.counters['loyalty'] ?? 0) > 0) continue;
+        logLine(s, `${cardName(c)} dies (no loyalty)`, { player: c.controller, iids: [c.iid] });
+        this.emit(moveCardRaw(s, c.iid, 'graveyard'));
+        changed = true;
+      }
+
+      // 714.4 — a saga with every chapter done is sacrificed.
+      for (const c of battlefield(s)) {
+        const script = getScript(c.oracleId);
+        if (!script?.saga) continue;
+        if ((c.counters['lore'] ?? 0) < script.saga.chapters) continue;
+        // Only once its chapter abilities have left the stack.
+        if (s.stack.some((iid) => s.cards[iid]?.abilitySource === c.iid)) continue;
+        logLine(s, `${cardName(c)} is sacrificed (final chapter)`, {
+          player: c.controller,
+          iids: [c.iid],
+        });
+        this.emit(moveCardRaw(s, c.iid, 'graveyard'));
+        changed = true;
+      }
+
+      /*
+       * An effect whose enforcing permanent has left stops applying. Ashiok's
+       * Erasure's name-lock is the case that matters; a lingering ban on casting
+       * a card nobody can see the reason for is the worst kind of bug.
+       */
+      const gone = s.effects.filter(
+        (e) =>
+          (e.kind === 'cantCastName' || (e.kind === 'ptBuff' && e.sourceIid !== undefined)) &&
+          (() => {
+            const src = e.kind === 'cantCastName' ? e.sourceIid : e.sourceIid!;
+            const c = s.cards[src];
+            return !c || c.zone !== 'battlefield';
+          })(),
+      );
+      if (gone.length > 0) {
+        s.effects = s.effects.filter((e) => !gone.includes(e));
         changed = true;
       }
 
@@ -672,6 +762,61 @@ export class Game {
     this.resetPriority();
   }
 
+  /**
+   * Sagas march at the beginning of the controller's precombat main (CR 714.3b,
+   * folded to where the engine already fires "beginning of main" business).
+   * The chapter is announced as an event; the saga's own script hears it like
+   * any other trigger. Sacrifice-when-done is a state-based action.
+   */
+  private advanceSagas(): void {
+    const s = this.state;
+    for (const c of battlefield(s, s.activePlayer)) {
+      const script = getScript(c.oracleId);
+      if (!script?.saga) continue;
+      c.counters['lore'] = (c.counters['lore'] ?? 0) + 1;
+      this.events.push({ t: 'counterAdded', iid: c.iid, kind: 'lore', n: 1 });
+      this.emit([{ t: 'sagaChapter', iid: c.iid, chapter: c.counters['lore'] }]);
+    }
+  }
+
+  /**
+   * Cumulative upkeep (CR 702.24): an age counter, then pay per counter or
+   * sacrifice. Mystic Remora is the only card that brings this here, and the
+   * question it creates every upkeep is the card's whole cost.
+   */
+  private *cumulativeUpkeep(): Eff {
+    const s = this.state;
+    const ap = s.activePlayer;
+    for (const c of [...battlefield(s, ap)]) {
+      const script = getScript(c.oracleId);
+      if (!script?.cumulativeUpkeep) continue;
+      c.counters['age'] = (c.counters['age'] ?? 0) + 1;
+      const age = c.counters['age'];
+      const per = parseCost(script.cumulativeUpkeep);
+      const symbols: CostSymbol[] = [];
+      for (let i = 0; i < age; i++) symbols.push(...per);
+      const plan = solvePayment(symbols, s.players[ap].manaPool, this.manaSources(ap), s.players[ap].life);
+      let paid = false;
+      if (plan) {
+        const res = (yield this.request({
+          kind: 'yesNo',
+          player: ap,
+          prompt: `${cardName(c)} — cumulative upkeep: pay ${script.cumulativeUpkeep} × ${age}?`,
+          yesLabel: `Pay for ${age}`,
+          noLabel: 'Sacrifice it',
+        })) as ChoiceResponse;
+        paid = res.kind === 'yesNo' && res.value;
+        if (paid && plan) this.executePayment(ap, plan, symbols);
+      }
+      if (!paid) {
+        logLine(s, `sacrifices ${cardName(c)} (cumulative upkeep)`, { player: ap, iids: [c.iid] });
+        this.emit(moveCardRaw(s, c.iid, 'graveyard'));
+      } else {
+        logLine(s, `pays cumulative upkeep for ${cardName(c)} (${age})`, { player: ap, iids: [c.iid] });
+      }
+    }
+  }
+
   private *pushTriggerObject(trig: PendingTrigger): Eff {
     const s = this.state;
     const source = s.cards[trig.sourceIid];
@@ -748,11 +893,19 @@ export class Game {
   private *castSpell(
     player: PlayerId,
     iid: IID,
-    opts: { free: boolean; alt: boolean; holdPriority: boolean },
+    opts: {
+      free: boolean;
+      alt: boolean;
+      kicked: boolean;
+      from: 'hand' | 'graveyard' | 'exile' | 'library';
+      flashback: boolean;
+      escape: boolean;
+      holdPriority: boolean;
+    },
   ): Eff {
     const s = this.state;
     const card = s.cards[iid];
-    if (!card || card.zone !== 'hand') return;
+    if (!card || card.zone !== opts.from) return;
 
     const script = getScript(card.oracleId);
     const face = frontFace(card.oracleId);
@@ -763,9 +916,42 @@ export class Game {
     card.controller = player;
     card.stackMv = face.mv;
     card.castForFree = opts.free;
+    card.kicked = opts.kicked || undefined;
+    card.flashedBack = opts.flashback || undefined;
+    card.escaped = opts.escape || undefined;
     s.castingIid = iid;
 
-    let symbols: CostSymbol[] = parseCost(face.manaCost);
+    /*
+     * Escape's cost is written on the card, not on the mana line: the escape
+     * mana replaces the printed cost, and five other cards leave the graveyard
+     * on the way. The exile happens now, as a cost — countering the spell does
+     * not give the cards back.
+     */
+    if (opts.escape && script?.escape) {
+      const others = cardsIn(s, player, 'graveyard').filter((c) => c.iid !== iid);
+      const exiled = yield* this.chooseCardsInternal({
+        player,
+        cards: others.map((c) => c.iid),
+        min: script.escape.exile,
+        max: script.escape.exile,
+        prompt: `Escape — exile ${script.escape.exile} other cards from your graveyard`,
+        from: 'graveyard',
+      });
+      if (exiled.length < script.escape.exile) {
+        this.emit(moveCardRaw(s, iid, 'graveyard'));
+        s.castingIid = null;
+        return;
+      }
+      for (const e of exiled) this.emit(moveCardRaw(s, e, 'exile'));
+    }
+
+    let symbols: CostSymbol[] = parseCost(
+      opts.escape && script?.escape ? script.escape.cost : face.manaCost,
+    );
+    // Kicker is an additional cost: the two are one payment (CR 601.2f).
+    if (opts.kicked && script?.kicker) {
+      symbols = [...symbols, ...parseCost(script.kicker.cost)];
+    }
 
     // Delve. Meaningless when casting for free — there is no cost to reduce —
     // so the prompt is skipped entirely rather than shown and ignored.
@@ -789,16 +975,85 @@ export class Game {
       }
     }
 
+    /*
+     * An aura chooses what it will enchant as it is cast — it is a target like
+     * any other, which is why a Utopia Sprawl with no Forest is uncastable
+     * rather than a two-mana way to mill yourself one card.
+     */
+    if (script?.enchant) {
+      const chosen = yield* this.chooseTargetsForDefs(
+        [{ prompt: script.enchant.prompt, candidates: (st, pl) => script.enchant!.candidates(st, pl) }],
+        player,
+        card,
+        iid,
+      );
+      if (chosen === null) {
+        this.emit(moveCardRaw(s, iid, opts.from));
+        s.castingIid = null;
+        return;
+      }
+      card.targets = chosen;
+    }
+
+    /*
+     * Modes first, then the targets those modes ask for (CR 601.2b before
+     * 601.2c). Both happen while the spell is being cast, in the open, so the
+     * opponent decides how to respond knowing what it will do.
+     */
+    if (script?.modes) {
+      const options = script.modes.options.map((m, index) => ({
+        index,
+        text: m.text,
+        enabled: m.enabled ? m.enabled(s, player, card) : true,
+      }));
+      const picked = yield* this.chooseModeInternal({
+        player,
+        modes: options,
+        min: script.modes.min,
+        max: script.modes.max,
+        prompt: script.modes.prompt,
+      });
+      card.chosenModes = picked;
+      const defs = picked.flatMap((i) => script.modes!.options[i]?.targets ?? []);
+      if (defs.length > 0) {
+        const chosen = yield* this.chooseTargetsForDefs(defs, player, card, iid);
+        if (chosen === null) {
+          this.emit(moveCardRaw(s, iid, opts.from));
+          s.castingIid = null;
+          return;
+        }
+        card.targets = chosen;
+      }
+    }
+
     // Targets.
     if (script?.targets && script.targets.length > 0) {
       const chosen = yield* this.chooseTargetsForDefs(script.targets, player, card, iid);
       if (chosen === null) {
         // Should not happen — legality was checked before the intent was accepted.
-        this.emit(moveCardRaw(s, iid, 'hand'));
+        this.emit(moveCardRaw(s, iid, opts.from));
         s.castingIid = null;
         return;
       }
       card.targets = chosen;
+    }
+
+    /*
+     * Non-mana additional costs (Bitter Triumph's discard-or-life, Abhorrent
+     * Oculus's exile-six) are paid with everything else, after targets — you
+     * know what you are buying before you pay for it. They apply however the
+     * mana half is being paid, Omniscience included: "without paying its mana
+     * cost" waives the mana, never the rest (CR 601.2f).
+     */
+    if (script?.additionalCost) {
+      const paid = yield* script.additionalCost.pay(
+        this.makeCtx(card, player, card.targets ?? [], [], {}),
+      );
+      if (!paid) {
+        this.emit(moveCardRaw(s, iid, opts.from));
+        s.castingIid = null;
+        return;
+      }
     }
 
     // Pay.
@@ -815,6 +1070,25 @@ export class Game {
         s.castingIid = null;
         return;
       }
+    } else if (opts.free && opts.kicked && script?.kicker) {
+      /*
+       * Omniscience waives the mana cost, never the kicker: "without paying its
+       * mana cost" and "you may pay an additional" are different sentences
+       * (CR 118.7a). A free kicked spell still pays the kicker.
+       */
+      const kickSymbols = parseCost(script.kicker.cost);
+      const plan = solvePayment(
+        kickSymbols,
+        s.players[player].manaPool,
+        this.manaSources(player),
+        s.players[player].life,
+      );
+      if (!plan) {
+        this.emit(moveCardRaw(s, iid, opts.from));
+        s.castingIid = null;
+        return;
+      }
+      this.executePayment(player, plan, kickSymbols);
     } else if (!opts.free) {
       const plan = solvePayment(
         symbols,
@@ -823,11 +1097,13 @@ export class Game {
         s.players[player].life,
       );
       if (!plan) {
-        this.emit(moveCardRaw(s, iid, 'hand'));
+        this.emit(moveCardRaw(s, iid, opts.from));
         s.castingIid = null;
         return;
       }
       this.executePayment(player, plan, symbols);
+      // Compleated reads how the Phyrexian half was paid (Jace enters weaker).
+      if (plan.life) card.phyrexianLifePaid = plan.life;
     }
 
     s.castingIid = null;
@@ -851,11 +1127,94 @@ export class Game {
     );
     this.emit([{ t: 'spellCast', iid, controller: player, free: opts.free }]);
 
+    /*
+     * Storm (CR 702.40): count every spell cast before this one this turn, by
+     * both players, and put that many copies on top of it. The copies are real
+     * stack objects that cease to exist when they leave the stack.
+     */
+    const stormy =
+      script?.storm ||
+      ((face.types.includes('Instant') || face.types.includes('Sorcery')) &&
+        s.effects.some((e) => e.kind === 'stormEmblem' && e.player === player));
+    if (stormy) {
+      const before =
+        s.players.p1.spellsCastThisTurnCount + s.players.p2.spellsCastThisTurnCount - 1;
+      if (before > 0) {
+        logLine(s, `storm — ${before} ${before === 1 ? 'copy' : 'copies'}`, {
+          player,
+          iids: [iid],
+        });
+        for (let i = 0; i < before; i++) {
+          yield* this.copySpell(iid, player, { mayRetarget: true });
+        }
+      }
+    }
+
     // CR 117.3c — the player who cast it receives priority again. Passing that
     // priority straight to the opponent is a client convenience (auto-pass), not
     // something the rules do, and burying it here made the engine behave
     // differently depending on whose turn it was.
     this.retainPriority(player);
+  }
+
+  /**
+   * Put a copy of a spell on the stack (Narset's Reversal, storm, Founding III).
+   *
+   * A copy is a full stack object with the same choices, and no card behind it:
+   * when it leaves the stack it ceases to exist rather than changing zones.
+   */
+  *copySpell(
+    srcIid: IID,
+    controller: PlayerId,
+    opts: { mayRetarget?: boolean } = {},
+  ): Eff<IID | null> {
+    const s = this.state;
+    const src = s.cards[srcIid];
+    if (!src || src.zone !== 'stack') return null;
+    const iid = s.nextIid++;
+    const copy: CardInstance = {
+      ...makeCard(iid, src.oracleId, controller, 'stack'),
+      controller,
+      isCopy: true,
+      stackMv: src.stackMv,
+      targets: src.targets ? [...src.targets] : undefined,
+      chosenModes: src.chosenModes ? [...src.chosenModes] : undefined,
+      kicked: src.kicked,
+    };
+    s.cards[iid] = copy;
+    s.stack.push(iid);
+    logLine(s, `a copy of ${cardName(src)} is put on the stack`, {
+      player: controller,
+      iids: [iid],
+    });
+    if (opts.mayRetarget && copy.targets && copy.targets.length > 0) {
+      const change = yield* this.makeCtx(copy, controller, [], [], {}).yesNo(
+        controller,
+        `Choose new targets for the copy of ${cardName(src)}?`,
+        { yes: 'New targets', no: 'Keep them' },
+      );
+      if (change) yield* this.makeCtx(copy, controller, [], [], {}).chooseNewTargetsFor(iid, controller);
+    }
+    return iid;
+  }
+
+  /**
+   * Turn a manifested card face up for its mana cost (CR 708.8). Only creature
+   * cards may — the face-down 2/2 that is secretly a sorcery stays a secret.
+   */
+  private *turnFaceUp(player: PlayerId, iid: IID): Eff {
+    const s = this.state;
+    const card = s.cards[iid];
+    if (!card || card.zone !== 'battlefield' || !card.faceDown) return;
+    const face = frontFace(card.oracleId);
+    if (!face.types.includes('Creature')) return;
+    const symbols = parseCost(face.manaCost);
+    const plan = solvePayment(symbols, s.players[player].manaPool, this.manaSources(player), s.players[player].life);
+    if (!plan) return;
+    this.executePayment(player, plan, symbols);
+    card.faceDown = undefined;
+    logLine(s, `turns ${cardName(card)} face up`, { player, iids: [iid] });
+    this.emit([{ t: 'turnedFaceUp', iid }]);
   }
 
   private *activateAbility(player: PlayerId, iid: IID, index: number): Eff {
@@ -866,11 +1225,46 @@ export class Game {
     const ability = script?.abilities?.[index];
     if (!ability || ability.kind !== 'activated') return;
 
+    /*
+     * A -X loyalty ability asks for X before anything else is paid: X is part of
+     * the cost, so it is chosen while the ability is being activated (CR 601.2b
+     * as it applies to abilities) rather than on resolution.
+     */
+    let chosenX = 0;
+    if (ability.cost.loyaltyX) {
+      const have = source.counters['loyalty'] ?? 0;
+      if (have <= 0) return;
+      const res = (yield this.request({
+        kind: 'chooseMode',
+        player,
+        modes: Array.from({ length: have }, (_, i) => ({
+          index: i + 1,
+          text: `X = ${i + 1}`,
+          enabled: true,
+        })),
+        min: 1,
+        max: 1,
+        prompt: 'Choose X',
+      })) as ChoiceResponse;
+      chosenX = res.kind === 'modes' ? (res.modes[0] ?? 1) : 1;
+      source.counters['loyalty'] = Math.max(0, have - chosenX);
+      source.loyaltyActivatedTurn = s.turn;
+      this.sbaDirty = true;
+    }
+
     // Pay costs first. Mana abilities and land activations do not use the stack.
     if (!this.payActivationCost(player, source, ability.cost)) return;
 
     if (ability.isManaAbility) {
       const ctx = this.makeCtx(source, player, [], [], {});
+      // A targeted mana ability still needs its target (Deathrite's first mode).
+      if (ability.targets && ability.targets.length > 0) {
+        const chosen = yield* this.chooseTargetsForDefs(ability.targets, player, source, iid);
+        if (chosen === null) return;
+        const targeted = this.makeCtx(source, player, chosen, [], {});
+        yield* ability.resolve(targeted);
+        return;
+      }
       yield* ability.resolve(ctx);
       return;
     }
@@ -881,7 +1275,7 @@ export class Game {
       isAbility: true,
       abilitySource: iid,
       abilityIndex: index,
-      abilityContext: {},
+      abilityContext: ability.cost.loyaltyX ? { x: chosenX } : {},
       abilityLabel: ability.text,
       controller: player,
     };
@@ -909,6 +1303,26 @@ export class Game {
     cost: ActivationCost,
   ): boolean {
     const s = this.state;
+    if (cost.loyaltyX) {
+      // Handled in activateAbility, which can ask a question; payActivationCost
+      // is synchronous by design and must not grow a prompt.
+      return true;
+    }
+    if (cost.loyalty !== undefined) {
+      // CR 606.3 — the counters are the cost, so a minus you cannot afford is
+      // not an ability you may activate.
+      const have = source.counters['loyalty'] ?? 0;
+      if (have + cost.loyalty < 0) return false;
+      source.counters['loyalty'] = have + cost.loyalty;
+      source.loyaltyActivatedTurn = s.turn;
+      this.events.push({
+        t: 'counterAdded',
+        iid: source.iid,
+        kind: 'loyalty',
+        n: cost.loyalty,
+      });
+      this.sbaDirty = true;
+    }
     if (cost.mana) {
       const symbols = parseCost(cost.mana);
       const plan = solvePayment(
@@ -987,8 +1401,30 @@ export class Game {
     }
 
     // moveCardRaw removes it from the stack on the way out.
-    if (isPermanentCard(spell)) {
+    if (spell.isCopy) {
+      // A copy ceases to exist the moment it would leave the stack (CR 707.10a) —
+      // even a copy of a permanent spell never reaches the battlefield here,
+      // because nothing in this pool copies permanent spells.
+      removeFromStack(s, spell.iid);
+      delete s.cards[spell.iid];
+    } else if (isPermanentCard(spell)) {
       yield* this.putOntoBattlefield(spell.iid, { controller: spell.controller });
+      /*
+       * An aura attaches to what it was targeting as it resolves (CR 303.4f).
+       * Animate Dead is the exception that proves it: it enchants nothing on the
+       * way in and attaches to what its own trigger makes.
+       */
+      const script = getScript(spell.oracleId);
+      if (script?.enchant && spell.targets?.[0]?.kind === 'permanent') {
+        spell.attachedTo = spell.targets[0].iid;
+      }
+    } else if (spell.flashedBack) {
+      // CR 702.34a — a flashbacked spell exiles instead of going anywhere else.
+      logLine(s, `${cardName(spell)} is exiled (flashback)`, {
+        player: spell.controller,
+        iids: [spell.iid],
+      });
+      this.emit(moveCardRaw(s, spell.iid, 'exile'));
     } else {
       this.emit(moveCardRaw(s, spell.iid, 'graveyard'));
     }
@@ -1032,11 +1468,23 @@ export class Game {
   }
 
   /** Counter a spell. Respects "can't be countered" from every source. */
-  counterSpell(spellIid: IID, byIid: IID | null, opts: { exile?: boolean } = {}): boolean {
+  counterSpell(
+    spellIid: IID,
+    byIid: IID | null,
+    opts: { exile?: boolean; toLibraryTop?: boolean } = {},
+  ): boolean {
     const s = this.state;
     const spell = s.cards[spellIid];
     if (!spell || spell.zone !== 'stack') return false;
     const script = getScript(spell.oracleId);
+    const lier = spellsUncounterableBy(s)[0];
+    if (lier) {
+      logLine(s, `${cardName(spell)} can't be countered (${cardName(lier)})`, {
+        player: spell.controller,
+        iids: [spellIid, lier.iid],
+      });
+      return false;
+    }
     if (spellCantBeCountered(s, spellIid, Boolean(script?.cantBeCountered))) {
       logLine(s, `${cardName(spell)} can't be countered`, {
         player: spell.controller,
@@ -1050,9 +1498,22 @@ export class Game {
       `${cardName(spell)} is countered${opts.exile ? ' and exiled' : ''}`,
       { player: spell.controller, iids: [spellIid] },
     );
-    // Force of Negation exiles instead — which matters here, because half this
-    // format's graveyard is Dig Through Time fuel and Mystic Sanctuary targets.
-    this.emit(moveCardRaw(s, spellIid, opts.exile ? 'exile' : 'graveyard'));
+    if (spell.isCopy) {
+      removeFromStack(s, spellIid);
+      delete s.cards[spellIid];
+      return true;
+    }
+    /*
+     * Where a countered spell lands is half of what distinguishes these cards:
+     * Force of Negation exiles it (Dig Through Time delves graveyards and Mystic
+     * Sanctuary buys instants back out of them), Memory Lapse puts it on top of
+     * the library, and everything else uses the graveyard.
+     */
+    if (opts.toLibraryTop) {
+      this.emit(moveCardRaw(s, spellIid, 'library', { position: 'top' }));
+    } else {
+      this.emit(moveCardRaw(s, spellIid, opts.exile ? 'exile' : 'graveyard'));
+    }
     return true;
   }
 
@@ -1085,6 +1546,19 @@ export class Game {
     if (!card) return;
     const controller = opts.controller ?? card.controller ?? card.owner;
     const tapped = yield* this.resolveEntersReplacement(iid, controller, opts);
+    /*
+     * Starting loyalty, before the move so the counters are there the instant it
+     * is on the battlefield and no state-based check can see a zero-loyalty
+     * planeswalker. Compleated: a Phyrexian pip paid with life means two fewer.
+     */
+    const face = frontFace(card.oracleId);
+    if (face.types.includes('Planeswalker') && face.loyalty) {
+      const printed = Number(face.loyalty);
+      const compleated = card.phyrexianLifePaid ? Math.floor(card.phyrexianLifePaid / 2) * 2 : 0;
+      if (Number.isFinite(printed)) {
+        card.counters['loyalty'] = Math.max(0, printed - compleated);
+      }
+    }
     this.emit(
       moveCardRaw(s, iid, 'battlefield', { tapped, face: opts.face, controller }),
     );
@@ -1164,13 +1638,18 @@ export class Game {
 
   private *beginStep(): Eff {
     const s = this.state;
-    this.events.push({
-      t: 'stepChange',
-      phase: s.phase,
-      step: s.step,
-      turn: s.turn,
-      activePlayer: s.activePlayer,
-    });
+    // Through emit, not a bare push: Wilderness Reclamation triggers on the end
+    // step beginning, and a trigger cannot hear an event that bypasses the
+    // collector.
+    this.emit([
+      {
+        t: 'stepChange',
+        phase: s.phase,
+        step: s.step,
+        turn: s.turn,
+        activePlayer: s.activePlayer,
+      },
+    ]);
 
     switch (s.step) {
       case 'untap': {
@@ -1179,6 +1658,7 @@ export class Game {
         for (const p of ['p1', 'p2'] as PlayerId[]) {
           s.players[p].spellsCastThisTurn = [];
           s.players[p].spellsCastThisTurnCount = 0;
+          s.players[p].drawsThisTurn = 0;
         }
         for (const c of battlefield(s, ap)) {
           if (c.tapped) {
@@ -1201,10 +1681,16 @@ export class Game {
       }
       case 'upkeep': {
         yield* this.fireDelayedTriggers('upkeep');
+        yield* this.cumulativeUpkeep();
         break;
       }
       case 'main': {
         yield* this.fireDelayedTriggers('main');
+        if (s.phase === 'precombat_main') this.advanceSagas();
+        break;
+      }
+      case 'end_step': {
+        yield* this.fireDelayedTriggers('end');
         break;
       }
       case 'declare_attackers': {
@@ -1283,23 +1769,46 @@ export class Game {
    * for that turn have already gone by, so the next one to arrive is the next one
    * they get.
    */
-  private *fireDelayedTriggers(when: 'upkeep' | 'main'): Eff {
+  private *fireDelayedTriggers(when: 'upkeep' | 'main' | 'end'): Eff {
     const s = this.state;
     const ap = s.activePlayer;
-    const kind = when === 'upkeep' ? 'pact' : 'manaDrain';
-    const ready = s.delayed.filter((d) => d.controller === ap && d.kind === kind);
-    if (ready.length === 0) return;
-    s.delayed = s.delayed.filter((d) => !(d.controller === ap && d.kind === kind));
 
-    for (const d of ready) {
-      if (d.kind === 'manaDrain') {
+    if (when === 'main') {
+      const ready = s.delayed.filter((d) => d.kind === 'manaDrain' && d.controller === ap);
+      s.delayed = s.delayed.filter((d) => !(d.kind === 'manaDrain' && d.controller === ap));
+      for (const d of ready) {
+        if (d.kind !== 'manaDrain') continue;
         // "Add an amount of {C} equal to that spell's mana value."
         s.players[ap].manaPool.C += d.amount;
         this.events.push({ t: 'manaAdded', player: ap, pool: clonePool(s.players[ap].manaPool) });
         logLine(s, `Mana Drain adds ${d.amount} colorless mana`, { player: ap });
-        continue;
       }
+      return;
+    }
 
+    if (when === 'end') {
+      /*
+       * Sneak Attack and Through the Breach: "sacrifice at the beginning of the
+       * next end step" — anyone's, not the controller's, which is why this does
+       * not filter by active player. The creature may already be gone; a promise
+       * about a thing that left is simply kept by doing nothing.
+       */
+      const ready = s.delayed.filter((d) => d.kind === 'sacrifice');
+      s.delayed = s.delayed.filter((d) => d.kind !== 'sacrifice');
+      for (const d of ready) {
+        if (d.kind !== 'sacrifice') continue;
+        const c = s.cards[d.iid];
+        if (!c || c.zone !== 'battlefield') continue;
+        logLine(s, `sacrifices ${cardName(c)}`, { player: d.controller, iids: [d.iid] });
+        this.emit(moveCardRaw(s, d.iid, 'graveyard'));
+      }
+      return;
+    }
+
+    const ready = s.delayed.filter((d) => d.kind === 'pact' && d.controller === ap);
+    s.delayed = s.delayed.filter((d) => !(d.kind === 'pact' && d.controller === ap));
+    for (const d of ready) {
+      if (d.kind !== 'pact') continue;
       /*
        * "Pay {3}{U}{U}. If you don't, you lose the game."
        *
@@ -1384,7 +1893,7 @@ export class Game {
       if (!c) continue;
       c.attacking = true;
       // Vigilance means attacking does not tap.
-      if (!hasKeyword(c, 'Vigilance')) {
+      if (!hasKeywordNow(s, c, 'Vigilance')) {
         c.tapped = true;
         this.events.push({ t: 'tapped', iid });
       }
@@ -1393,7 +1902,8 @@ export class Game {
       player: ap,
       iids: res.iids,
     });
-    this.emit([]);
+    // Uro and Tamiyo both trigger on attacking, so the declaration is an event.
+    this.emit(res.iids.map((iid) => ({ t: 'attacks' as const, iid, controller: ap })));
   }
 
   private *declareBlockers(): Eff {
@@ -1459,7 +1969,7 @@ export class Game {
     for (const atkIid of s.combat.attackers) {
       const atk = s.cards[atkIid];
       if (!atk || atk.zone !== 'battlefield') continue;
-      const power = getPower(atk);
+      const power = powerOf(s, atk);
       if (power <= 0) continue;
       const blockers = (s.combat.damageOrder[atkIid] ?? []).filter(
         (b) => s.cards[b] && s.cards[b].zone === 'battlefield',
@@ -1473,9 +1983,10 @@ export class Game {
           sourceIid: atkIid,
           target: { kind: 'player', id: defender },
           amount: power,
-          deathtouch: hasKeyword(atk, 'Deathtouch'),
-          lifelink: hasKeyword(atk, 'Lifelink'),
+          deathtouch: hasKeywordNow(s, atk, 'Deathtouch'),
+          lifelink: hasKeywordNow(s, atk, 'Lifelink'),
           lifelinkTo: atk.controller,
+          combat: true,
         });
         continue;
       }
@@ -1485,14 +1996,14 @@ export class Game {
       // nothing here has trample, so that is always at least as good for the
       // attacker, and it is what lifelink actually pays out on.
       let remaining = power;
-      const deathtouch = hasKeyword(atk, 'Deathtouch');
+      const deathtouch = hasKeywordNow(s, atk, 'Deathtouch');
       for (let i = 0; i < blockers.length; i++) {
         if (remaining <= 0) break;
         const bIid = blockers[i];
         const b = s.cards[bIid];
         if (!b) continue;
         const isLast = i === blockers.length - 1;
-        const lethal = deathtouch ? 1 : Math.max(1, getToughness(b) - b.damage);
+        const lethal = deathtouch ? 1 : Math.max(1, toughnessOf(s, b) - b.damage);
         const assign = isLast ? remaining : Math.min(remaining, lethal);
         remaining -= assign;
         this.dealDamage({
@@ -1511,7 +2022,7 @@ export class Game {
       const b = s.cards[Number(blockerIid)];
       const a = s.cards[attackerIid];
       if (!b || b.zone !== 'battlefield' || !a || a.zone !== 'battlefield') continue;
-      const power = getPower(b);
+      const power = powerOf(s, b);
       if (power <= 0) continue;
       this.dealDamage({
         sourceIid: b.iid,
@@ -1620,10 +2131,15 @@ export class Game {
   // Player actions that do not use the stack
   // -------------------------------------------------------------------------
 
-  private playLand(player: PlayerId, iid: IID, face: 'front' | 'back'): void {
+  private playLand(
+    player: PlayerId,
+    iid: IID,
+    face: 'front' | 'back',
+    from: 'hand' | 'graveyard' | 'exile' | 'library' = 'hand',
+  ): void {
     const s = this.state;
     const card = s.cards[iid];
-    if (!card || card.zone !== 'hand') return;
+    if (!card || card.zone !== from) return;
     s.players[player].landDropsUsed++;
     logLine(s, `plays ${face === 'back' ? oracle(card.oracleId).faces![1].name : cardName(card)}`, {
       player,
@@ -1638,9 +2154,23 @@ export class Game {
     const s = this.state;
     const card = s.cards[iid];
     if (!card || card.zone !== 'battlefield' || card.tapped) return;
-    if (!producedManaOf(card).includes(kind)) return;
+    if (!producedManaOf(card, s).includes(kind)) return;
     card.tapped = true;
     s.players[player].manaPool[kind]++;
+    /*
+     * Utopia Sprawl: "whenever enchanted Forest is tapped for mana, its
+     * controller adds an additional one mana of the chosen color." A mana
+     * ability's trigger is itself a mana ability (CR 605.1b) — no stack, the
+     * mana just arrives with the land's own.
+     */
+    for (const bfIid of s.zones[player].battlefield) {
+      const aura = s.cards[bfIid];
+      if (!aura || aura.attachedTo !== iid || !aura.namedChoice) continue;
+      if (!getScript(aura.oracleId)?.enchantedTapBonus) continue;
+      const bonus = aura.namedChoice as ManaKind;
+      s.players[player].manaPool[bonus]++;
+      logLine(s, `${cardName(aura)} adds an extra {${bonus}}`, { player, iids: [bfIid] });
+    }
     this.events.push({ t: 'tapped', iid });
     this.events.push({ t: 'manaAdded', player, pool: clonePool(s.players[player].manaPool) });
   }
@@ -1673,6 +2203,27 @@ export class Game {
 
   private request(r: ChoiceRequestDraft): ChoiceRequest {
     return { ...r, id: this.nextChoiceId() } as ChoiceRequest;
+  }
+
+  private *chooseModeInternal(opts: {
+    player: PlayerId;
+    modes: { index: number; text: string; enabled: boolean }[];
+    min: number;
+    max: number;
+    prompt: string;
+  }): Eff<number[]> {
+    const enabled = opts.modes.filter((m) => m.enabled);
+    // One legal mode and no choice about how many: never ask (DESIGN.md 12.1).
+    if (enabled.length <= opts.min) return enabled.slice(0, opts.max).map((m) => m.index);
+    const res = (yield this.request({
+      kind: 'chooseMode',
+      player: opts.player,
+      modes: opts.modes,
+      min: opts.min,
+      max: Math.min(opts.max, enabled.length),
+      prompt: opts.prompt,
+    })) as ChoiceResponse;
+    return res.kind === 'modes' ? res.modes : [];
   }
 
   private *chooseCardsInternal(opts: ChooseCardsOpts): Eff<IID[]> {
@@ -1769,10 +2320,28 @@ export class Game {
   draw(player: PlayerId, n = 1): void {
     const s = this.state;
     for (let i = 0; i < n; i++) {
+      /*
+       * Narset, Parter of Veils: "each opponent can't draw more than one card
+       * each turn." A prevented draw is not a draw — the library is not touched,
+       * nothing triggers, and an empty library does not matter (CR 614.11).
+       */
+      const narsetHolds = ['p1', 'p2'].some(
+        (p) =>
+          p !== player &&
+          battlefield(s, p as PlayerId).some(
+            (c) => c.oracleId === 'narset_parter_of_veils' && !c.faceDown,
+          ),
+      );
+      if (narsetHolds && s.players[player].drawsThisTurn >= 1) {
+        logLine(s, `draw prevented (Narset, Parter of Veils)`, { player });
+        continue;
+      }
+
       const lib = s.zones[player].library;
       const inOwnDrawStep = s.step === 'draw' && s.activePlayer === player;
       const first = inOwnDrawStep && s.players[player].drawsThisDrawStep === 0;
       if (inOwnDrawStep) s.players[player].drawsThisDrawStep++;
+      s.players[player].drawsThisTurn++;
 
       if (lib.length === 0) {
         s.players[player].triedToDrawFromEmpty = true;
@@ -1807,8 +2376,13 @@ export class Game {
     } else if (opts.target.kind === 'permanent') {
       const c = s.cards[opts.target.iid];
       if (!c || c.zone !== 'battlefield') return;
-      c.damage += opts.amount;
-      if (opts.deathtouch) c.deathtouched = true;
+      if (isType(c, 'Planeswalker')) {
+        // CR 120.3c — damage to a planeswalker removes that many loyalty counters.
+        c.counters['loyalty'] = Math.max(0, (c.counters['loyalty'] ?? 0) - opts.amount);
+      } else {
+        c.damage += opts.amount;
+        if (opts.deathtouch) c.deathtouched = true;
+      }
       this.sbaDirty = true;
     }
     this.events.push({
@@ -1817,6 +2391,7 @@ export class Game {
       target: opts.target,
       amount: opts.amount,
       deathtouch: Boolean(opts.deathtouch),
+      combat: Boolean(opts.combat),
     });
     logLine(
       s,
@@ -1954,6 +2529,35 @@ export class Game {
       emit: (evs) => game.emit(evs),
       log: (text, iids) => logLine(s, text, { player: controller, iids }),
       counterSpell: (iid, o) => game.counterSpell(iid, self.iid, o),
+      payOrDecline: function* (player, cost, prompt) {
+        const symbols = parseCost(cost);
+        const plan = solvePayment(
+          symbols,
+          s.players[player].manaPool,
+          game.manaSources(player),
+          s.players[player].life,
+        );
+        if (!plan) return false;
+        const res = (yield game.request({
+          kind: 'yesNo',
+          player,
+          prompt,
+          yesLabel: `Pay ${cost}`,
+          noLabel: 'Decline',
+        })) as ChoiceResponse;
+        if (res.kind !== 'yesNo' || !res.value) return false;
+        // Re-solve: the question took time, and paying for something else in
+        // response would otherwise be paid for twice.
+        const now = solvePayment(
+          symbols,
+          s.players[player].manaPool,
+          game.manaSources(player),
+          s.players[player].life,
+        );
+        if (!now) return false;
+        game.executePayment(player, now, symbols);
+        return true;
+      },
       addDelayedPayment: (p, cost) => {
         s.delayed.push({
           id: s.nextEffectId++,
@@ -1965,6 +2569,101 @@ export class Game {
         });
       },
       gainControlOfSpell: (iid, p) => game.gainControlOfSpell(iid, p),
+      copySpell: (iid, controller, o) => game.copySpell(iid, controller, o),
+      attachTo: (auraIid, hostIid) => {
+        const aura = s.cards[auraIid];
+        const host = s.cards[hostIid];
+        if (!aura || !host) return;
+        aura.attachedTo = hostIid;
+        logLine(s, `${cardName(aura)} is attached to ${cardName(host)}`, {
+          player: aura.controller,
+          iids: [auraIid, hostIid],
+        });
+      },
+      manifest: function* (player, iid) {
+        // CR 701.34 — face down, as a 2/2 with no other characteristics. The
+        // card keeps its identity on the instance; redact() is what hides it.
+        const card = s.cards[iid];
+        if (!card) return;
+        card.faceDown = true;
+        yield* game.putOntoBattlefield(iid, { controller: player });
+        logLine(s, 'manifests a card face down', { player, iids: [iid] });
+      },
+      sacrifice: function* (iid) {
+        const c = s.cards[iid];
+        if (!c || c.zone !== 'battlefield') return;
+        logLine(s, `sacrifices ${cardName(c)}`, { player: c.controller, iids: [iid] });
+        game.emit(moveCardRaw(s, iid, 'graveyard'));
+        yield* noChoices();
+      },
+      mill: function* (player, n) {
+        const top = s.zones[player].library.slice(0, n);
+        if (top.length === 0) return;
+        for (const iid of top) game.emit(moveCardRaw(s, iid, 'graveyard'));
+        logLine(s, `mills ${top.length}`, { player });
+        yield* noChoices();
+      },
+      sacrificeAtNextEndStep: (player, iid) => {
+        s.delayed.push({
+          id: s.nextEffectId++,
+          kind: 'sacrifice',
+          controller: player,
+          iid,
+          armedOnTurn: s.turn,
+        });
+      },
+      chooseColour: function* (player, prompt) {
+        const colours: ManaKind[] = ['W', 'U', 'B', 'R', 'G'];
+        const res = (yield game.request({
+          kind: 'chooseMode',
+          player,
+          modes: colours.map((c, i) => ({ index: i, text: `{${c}}`, enabled: true })),
+          min: 1,
+          max: 1,
+          prompt,
+        })) as ChoiceResponse;
+        if (res.kind !== 'modes' || res.modes.length === 0) return null;
+        return colours[res.modes[0]] ?? null;
+      },
+      setImprint: (auraIid, cardIid) => {
+        const a = s.cards[auraIid];
+        if (a) a.imprinted = cardIid;
+      },
+      setNamedChoice: (iid, choice) => {
+        const c = s.cards[iid];
+        if (c) c.namedChoice = choice;
+      },
+      transform: (iid) => {
+        const c = s.cards[iid];
+        if (!c || !oracle(c.oracleId).faces) return;
+        c.face = c.face === 'front' ? 'back' : 'front';
+        // The back face is a planeswalker: it needs its loyalty on the way over.
+        const back = faceOf(c.oracleId, c.face);
+        if (back.types.includes('Planeswalker') && back.loyalty) {
+          const n = Number(back.loyalty);
+          if (Number.isFinite(n)) c.counters['loyalty'] = n;
+        }
+        game.events.push({ t: 'transformed', iid });
+      },
+      untap: (iid) => {
+        const c = s.cards[iid];
+        if (!c || !c.tapped) return;
+        c.tapped = false;
+        game.events.push({ t: 'untapped', iid });
+      },
+      chooseName: function* (player, names, prompt) {
+        if (names.length === 0) return null;
+        const res = (yield game.request({
+          kind: 'chooseMode',
+          player,
+          modes: names.map((n, i) => ({ index: i, text: n, enabled: true })),
+          min: 1,
+          max: 1,
+          prompt,
+        })) as ChoiceResponse;
+        if (res.kind !== 'modes' || res.modes.length === 0) return null;
+        return names[res.modes[0]] ?? null;
+      },
       chooseNewTargetsFor: function* (iid, chooser) {
         const spell = s.cards[iid];
         if (!spell || spell.zone !== 'stack') return false;
@@ -2003,7 +2702,9 @@ export class Game {
         game.emit(moveCardRaw(s, iid, zone, { position: opts?.position }));
       },
       moveToBattlefield: function* (iid, opts) {
-        yield* game.putOntoBattlefield(iid, opts);
+        // Default to the resolving spell's controller, not the card's owner:
+        // Reanimate is the whole reason this parameter exists.
+        yield* game.putOntoBattlefield(iid, { controller, ...opts });
       },
       moveSimultaneouslyToBattlefield: function* (entries) {
         yield* game.enterSimultaneously(entries);
@@ -2182,17 +2883,24 @@ function sameIntent(a: Intent, b: Intent): boolean {
   switch (a.t) {
     case 'playLand':
       return (
-        b.t === 'playLand' && a.iid === b.iid && (a.face ?? 'front') === (b.face ?? 'front')
+        b.t === 'playLand' &&
+        a.iid === b.iid &&
+        (a.face ?? 'front') === (b.face ?? 'front') &&
+        (a.from ?? 'hand') === (b.from ?? 'hand')
       );
     case 'castSpell':
       return (
         b.t === 'castSpell' &&
         a.iid === b.iid &&
         Boolean(a.free) === Boolean(b.free) &&
-        // The same card is on offer up to three ways under an Omniscience — free,
-        // for its alternative cost, and for mana. They are different actions.
-        Boolean(a.alt) === Boolean(b.alt)
+        // The same card is on offer several ways — free, alternative cost,
+        // kicked, from the graveyard. They are different actions.
+        Boolean(a.alt) === Boolean(b.alt) &&
+        Boolean(a.kicked) === Boolean(b.kicked) &&
+        (a.from ?? 'hand') === (b.from ?? 'hand')
       );
+    case 'turnFaceUp':
+      return b.t === 'turnFaceUp' && a.iid === b.iid;
     case 'activateAbility':
       return b.t === 'activateAbility' && a.iid === b.iid && a.index === b.index;
     case 'tapForMana':
@@ -2215,8 +2923,22 @@ function hasUnusedShieldConsumed(s: GameState, player: PlayerId): boolean {
   );
 }
 
-export function producedManaOf(card: CardInstance): ManaKind[] {
+export function producedManaOf(card: CardInstance, state?: GameState): ManaKind[] {
   if (card.isToken) return [];
+  /*
+   * Chrome Mox: "add one mana of any of the exiled card's colors". With nothing
+   * imprinted that is no colours at all, which is why the automatic derivation
+   * refuses to guess and the card carries a real mana ability instead.
+   */
+  const imprintAbility = getScript(card.oracleId)?.abilities?.find(
+    (a) => a.kind === 'mana' && a.fromImprint,
+  );
+  if (imprintAbility) {
+    if (card.imprinted === undefined || !state) return [];
+    const exiled = state.cards[card.imprinted];
+    if (!exiled) return [];
+    return frontFace(exiled.oracleId).colors as ManaKind[];
+  }
   /*
    * A mana creature cannot tap the turn it lands. CR 302.6 — an ability with {T}
    * in its cost needs the permanent to have been under your control since your
@@ -2250,6 +2972,16 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
   if (state.winner !== null) return out;
   if (state.priorityPlayer !== player) return out;
   if (state.mode !== 'playing') return out;
+  /*
+   * Split second (CR 702.61): while such a spell is on the stack nobody may
+   * cast a spell or activate a non-mana ability. Enumerating nothing but the
+   * mana abilities is exactly that rule, and it is why Krosan Grip is Krosan
+   * Grip rather than a slightly worse Naturalize.
+   */
+  const splitSecond = state.stack.some((iid) => {
+    const c = state.cards[iid];
+    return c && !c.isAbility && getScript(c.oracleId)?.splitSecond;
+  });
 
   const ps = state.players[player];
   const sorceryTiming =
@@ -2274,6 +3006,24 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
         });
       }
     }
+    /*
+     * Lands playable from somewhere other than the hand — Glacierwood Siege on
+     * its Sultai half. Still one land drop, which is why this sits inside the
+     * same land-drop gate rather than beside it.
+     */
+    for (const e of state.effects) {
+      if (e.kind !== 'castFromElsewhere' || e.controller !== player || e.mode !== 'play') continue;
+      for (const iid of e.iids) {
+        const c = state.cards[iid];
+        if (!c || c.zone !== e.zone) continue;
+        if (!frontFace(c.oracleId).types.includes('Land')) continue;
+        if (unimplementedReason(c.oracleId)) continue;
+        out.push({
+          intent: { t: 'playLand', iid, from: e.zone },
+          label: `Play ${cardName(c)} (from your ${e.zone})`,
+        });
+      }
+    }
   }
 
   // Casting.
@@ -2283,7 +3033,79 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
   const flashAll = canCastAsThoughFlash(state, player);
   const sources = untappedManaSources(state, player);
 
-  for (const c of cardsIn(state, player, 'hand')) {
+  const castables: {
+    card: CardInstance;
+    from: 'hand' | 'graveyard' | 'exile' | 'library';
+    extra?: string;
+  }[] =
+    splitSecond ? [] : cardsIn(state, player, 'hand').map((card) => ({ card, from: 'hand' as const }));
+
+  /*
+   * Cards castable from another zone: Snapcaster's flashback grant, Lier's
+   * blanket one, Expressive Iteration's exiled card. Flashback and "you may
+   * play it this turn" differ in what happens afterwards, not in what is
+   * offered — see the flashback flag on the intent.
+   */
+  if (!splitSecond) {
+    // Permissions that come from a permanent being on the battlefield right now,
+    // rather than from a resolved effect. They stop the moment it leaves.
+    for (const c of battlefield(state, player)) {
+      if (c.faceDown) continue;
+      const rules = getScript(c.oracleId)?.staticRules;
+      if (!rules) continue;
+      for (const iid of rules.graveyardFlashbackFor?.(state, c) ?? []) {
+        const card = state.cards[iid];
+        if (card && card.zone === 'graveyard') {
+          castables.push({ card, from: 'graveyard', extra: 'flashback' });
+        }
+      }
+      for (const iid of rules.playFromGraveyard?.(state, c) ?? []) {
+        const card = state.cards[iid];
+        if (!card || card.zone !== 'graveyard') continue;
+        if (!frontFace(card.oracleId).types.includes('Land')) continue;
+        if (sorceryTiming && ps.landDropsUsed < ps.landDropsAllowed) {
+          out.push({
+            intent: { t: 'playLand', iid, from: 'graveyard' },
+            label: `Play ${cardName(card)} (from your graveyard)`,
+          });
+        }
+      }
+      for (const iid of rules.playFromLibraryTop?.(state, c) ?? []) {
+        const card = state.cards[iid];
+        if (!card || card.zone !== 'library') continue;
+        if (frontFace(card.oracleId).types.includes('Land')) {
+          if (sorceryTiming && ps.landDropsUsed < ps.landDropsAllowed) {
+            out.push({
+              intent: { t: 'playLand', iid, from: 'library' },
+              label: `Play ${cardName(card)} (off the top)`,
+            });
+          }
+        } else {
+          castables.push({ card, from: 'library', extra: 'off the top' });
+        }
+      }
+    }
+    for (const e of state.effects) {
+      if (e.kind !== 'castFromElsewhere' || e.controller !== player) continue;
+      for (const iid of e.iids) {
+        const card = state.cards[iid];
+        if (!card || card.zone !== e.zone) continue;
+        if (frontFace(card.oracleId).types.includes('Land')) continue;
+        castables.push({
+          card,
+          from: e.zone,
+          extra:
+            e.mode === 'flashback'
+              ? 'flashback'
+              : e.mode === 'free'
+                ? 'free'
+                : `from your ${e.zone}`,
+        });
+      }
+    }
+  }
+
+  for (const { card: c, from, extra } of castables) {
     const face = frontFace(c.oracleId);
     // Lands are not spells — Omniscience cannot "cast" them and Borne Upon a Wind
     // does not let you play them at instant speed.
@@ -2303,10 +3125,64 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
 
     const script = getScript(c.oracleId);
     if (script?.canCast && !script.canCast(state, player, c)) continue;
-    if (script?.targets && !hasAllRequiredTargets(state, script.targets, player, c)) continue;
+    // An aura's "enchant" line is its target: no legal host, no legal cast.
+    if (script?.enchant && script.enchant.candidates(state, player).length === 0) continue;
+    /*
+     * Targets are checked once per way of casting, not once per card.
+     *
+     * Bloodchief's Thirst is the reason: unkicked it reaches mana value 2 or
+     * less, kicked it reaches anything — and asking the question with `kicked`
+     * unset made a kicked Thirst pointed at a seven-drop look illegal, so the
+     * card vanished from the hand entirely. The kicker changes what is legal,
+     * so the check has to know which cast it is judging.
+     */
+    const targetsOkFor = (kicked: boolean): boolean =>
+      !script?.targets ||
+      hasAllRequiredTargets(state, script.targets, player, { ...c, kicked: kicked || undefined });
+    const plainTargetsOk = targetsOkFor(false);
+    const kickedTargetsOk = script?.kicker ? targetsOkFor(true) : false;
+    if (!plainTargetsOk && !kickedTargetsOk) continue;
+    /*
+     * A modal spell is castable when at least one mode is: Pyroblast with
+     * nothing on the stack can still destroy a permanent, and offering it only
+     * when every mode works would make it uncastable most of the time.
+     */
+    if (script?.modes) {
+      const anyMode = script.modes.options.some((m) => {
+        if (m.enabled && !m.enabled(state, player, c)) return false;
+        return !m.targets || hasAllRequiredTargets(state, m.targets, player, c);
+      });
+      if (!anyMode) continue;
+    }
 
-    if (omniscience) {
-      out.push({ intent: { t: 'castSpell', iid: c.iid, free: true }, label: `Cast ${cardName(c)} (free)` });
+    // A player told they cast nothing this turn casts nothing (Orim's Chant).
+    if (state.effects.some((e) => e.kind === 'cantCastSpells' && e.player === player)) continue;
+    // Ashiok's Erasure: the name itself is banned while the enchantment is out.
+    if (
+      state.effects.some(
+        (e) => e.kind === 'cantCastName' && e.players.includes(player) && e.name === face.name,
+      )
+    ) {
+      continue;
+    }
+
+    const suffix = extra ? ` (${extra})` : '';
+    const flashback = extra === 'flashback';
+    const base = { iid: c.iid, ...(from === 'hand' ? {} : { from }), ...(flashback ? { flashback: true } : {}) };
+
+    if (omniscience && from === 'hand') {
+      if (plainTargetsOk) {
+        out.push({ intent: { t: 'castSpell', ...base, free: true }, label: `Cast ${cardName(c)} (free)` });
+      }
+      if (script?.kicker && kickedTargetsOk) {
+        const kick = parseCost(script.kicker.cost);
+        if (canPay(kick, ps.manaPool, sources, ps.life)) {
+          out.push({
+            intent: { t: 'castSpell', ...base, free: true, kicked: true },
+            label: `Cast ${cardName(c)} (free, ${script.kicker.label})`,
+          });
+        }
+      }
     }
 
     /*
@@ -2317,21 +3193,64 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
      * right depends on what else you were planning to do with either. Offering only
      * one of them would be making that decision for the player.
      */
-    if (script?.altCost?.available(state, player, c)) {
+    if (from === 'hand' && script?.altCost?.available(state, player, c)) {
       out.push({
         intent: { t: 'castSpell', iid: c.iid, alt: true },
         label: `Cast ${cardName(c)} (${script.altCost.label})`,
       });
     }
 
+    // Non-mana additional costs gate the offer: Bitter Triumph with an empty
+    // hand and two life is a card you cannot cast, not one you cast for free.
+    if (script?.additionalCost && !script.additionalCost.canPay(state, player)) continue;
+
     let symbols = parseCost(face.manaCost);
     if (script?.hasDelve) {
       const gy = state.zones[player].graveyard.length;
       symbols = reduceGeneric(symbols, Math.min(gy, genericPortion(symbols)));
     }
+    if (script?.costReduction) symbols = reduceGeneric(symbols, script.costReduction(state, player, c));
     if (canPay(symbols, ps.manaPool, sources, ps.life)) {
-      out.push({ intent: { t: 'castSpell', iid: c.iid }, label: `Cast ${cardName(c)}` });
+      if (plainTargetsOk) {
+        out.push({ intent: { t: 'castSpell', ...base }, label: `Cast ${cardName(c)}${suffix}` });
+      }
+      if (script?.kicker && kickedTargetsOk) {
+        const kicked = [...symbols, ...parseCost(script.kicker.cost)];
+        if (canPay(kicked, ps.manaPool, sources, ps.life)) {
+          out.push({
+            intent: { t: 'castSpell', ...base, kicked: true },
+            label: `Cast ${cardName(c)} (${script.kicker.label})`,
+          });
+        }
+      }
     }
+  }
+
+  // Escape: the card's own way back out of the graveyard.
+  if (!splitSecond) {
+    for (const c of cardsIn(state, player, 'graveyard')) {
+      const script = getScript(c.oracleId);
+      if (!script?.escape) continue;
+      if (unimplementedReason(c.oracleId)) continue;
+      const timing = spellTiming(c.oracleId);
+      if (!(timing === 'instant' || flashAll || sorceryTiming)) continue;
+      if (state.zones[player].graveyard.length - 1 < script.escape.exile) continue;
+      if (!canPay(parseCost(script.escape.cost), ps.manaPool, sources, ps.life)) continue;
+      out.push({
+        intent: { t: 'castSpell', iid: c.iid, from: 'graveyard', escape: true },
+        label: `Cast ${cardName(c)} (escape)`,
+      });
+    }
+  }
+
+  // Turning a manifested creature face up is a special action: no stack, any
+  // time you have priority (CR 116.2g).
+  for (const c of battlefield(state, player)) {
+    if (!c.faceDown) continue;
+    const real = frontFace(c.oracleId);
+    if (!real.types.includes('Creature')) continue;
+    if (!canPay(parseCost(real.manaCost), ps.manaPool, sources, ps.life)) continue;
+    out.push({ intent: { t: 'turnFaceUp', iid: c.iid }, label: `Turn face up (${real.name})` });
   }
 
   // Activated abilities.
@@ -2340,7 +3259,21 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
     if (!script?.abilities) continue;
     script.abilities.forEach((ab, index) => {
       if (ab.kind !== 'activated') return;
+      if (splitSecond && !ab.isManaAbility) return;
       if (ab.timing === 'sorcery' && !sorceryTiming) return;
+      if (ab.cost.loyalty !== undefined) {
+        // CR 606.3 — sorcery timing, and one loyalty ability per walker per turn.
+        if (!sorceryTiming) return;
+        if (c.loyaltyActivatedTurn === state.turn) return;
+        if ((c.counters['loyalty'] ?? 0) + ab.cost.loyalty < 0) return;
+      }
+      if (ab.cost.discard && state.zones[player].hand.length < ab.cost.discard) return;
+      if (
+        ab.cost.exileFromGraveyard &&
+        state.zones[player].graveyard.length < ab.cost.exileFromGraveyard
+      ) {
+        return;
+      }
       if (ab.canActivate && !ab.canActivate(state, c)) return;
       if (ab.cost.tap && c.tapped) return;
       if (ab.cost.life && ps.life <= 0) return;
@@ -2386,13 +3319,41 @@ function hasAllRequiredTargets(
   return true;
 }
 
+/** A generator that asks nothing — lets a non-interactive helper still be an Eff. */
+function* noChoices(): Eff {
+  // nothing
+}
+
+/**
+ * Whether a permanent has a keyword right now.
+ *
+ * Three sources, and all three have to be live rather than snapshotted: what is
+ * printed on it, what its own script grants conditionally (delirium's flying),
+ * and what an effect gave it for the turn (Psychic Frog paying for flight).
+ */
+export function hasKeywordNow(state: GameState, card: CardInstance, kw: string): boolean {
+  if (hasKeyword(card, kw)) return true;
+  const granted = getScript(card.oracleId)?.grantsKeywords?.(state, card) ?? [];
+  if (granted.includes(kw)) return true;
+  return state.effects.some(
+    (e) => e.kind === 'grantKeyword' && e.keyword === kw && e.iids.includes(card.iid),
+  );
+}
+
+/** Whoever is stopping spells being countered right now (Lier). */
+export function spellsUncounterableBy(state: GameState): CardInstance[] {
+  return battlefield(state).filter(
+    (c) => !c.faceDown && getScript(c.oracleId)?.staticRules?.spellsCantBeCountered,
+  );
+}
+
 export function untappedManaSources(state: GameState, player: PlayerId): ManaSource[] {
   const out: ManaSource[] = [];
   for (const c of battlefield(state, player)) {
     if (c.tapped) continue;
     // producedManaOf already answers CR 302.6 — a summoning-sick mana creature
     // reports no mana at all, so nothing here needs to ask again.
-    const produces = producedManaOf(c);
+    const produces = producedManaOf(c, state);
     if (produces.length === 0) continue;
     out.push({ iid: c.iid, produces });
   }

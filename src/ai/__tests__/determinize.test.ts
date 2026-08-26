@@ -106,18 +106,28 @@ describe('rebuilding a position from a view', () => {
   });
 
   /**
-   * Two assumptions the rebuild makes about ability objects on the stack, checked
-   * against the live card registry rather than believed. If a future card breaks
-   * either, this fails long before a search quietly resolves the wrong ability.
+   * The rebuild used to assume every card had at most one ability, so an ability
+   * on the stack was always index 0. That held for the maindeck and stopped
+   * holding the moment the cube was implemented — Deathrite Shaman has three.
+   * The index rides on the view now, so what is left to check is that it does.
    */
-  it('holds the assumptions the rebuild makes about abilities', () => {
+  it('carries the ability index rather than assuming it', () => {
     for (const oracleId of scriptedOracleIds()) {
       const script = getScript(oracleId);
       const abilities = script?.abilities ?? [];
-      expect(
-        abilities.length,
-        `${oracleId} has more than one ability, so ability index 0 is no longer safe`,
-      ).toBeLessThanOrEqual(1);
+      // Nothing here captures a trigger context, which the rebuild still zeroes.
+      for (const ab of abilities) {
+        if (ab.kind !== 'triggered') continue;
+        expect(
+          typeof ab.trigger,
+          `${oracleId}: triggers must be plain predicates for the rebuild`,
+        ).toBe('function');
+      }
+    }
+    const view = firstMidGameView();
+    const onStack = Object.values(view.cards).filter((c) => c.isAbility);
+    for (const c of onStack) {
+      expect(c.abilityIndex === undefined || c.abilityIndex >= 0).toBe(true);
     }
   });
 

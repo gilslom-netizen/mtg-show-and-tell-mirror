@@ -171,6 +171,10 @@ export class HeuristicAgent implements Agent {
         return this.scoreAbility(intent.iid, r);
       case 'castSpell':
         return this.scoreCast(intent.iid, intent.free === true, r);
+      case 'turnFaceUp':
+        // Cube-only (manifest dread); the maindeck agent never sees one. Neutral
+        // rather than never, so a future cube-playing agent at least considers it.
+        return 50;
     }
   }
 

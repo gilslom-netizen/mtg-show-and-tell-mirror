@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { testGame, type TestGame } from './harness.js';
-import { oracleByName } from '../oracle.js';
+import { frontFace, oracleByName } from '../oracle.js';
 import { unimplementedReason } from '../cards/index.js';
 import { untappedManaSources } from '../game.js';
 import { DRAFT_POOL } from '../draft-pool.js';
@@ -28,19 +28,34 @@ function offers(t: TestGame, name: string): boolean {
 
 describe('the unimplemented-card gate', () => {
   it('does not offer a spell that would resolve into nothing', () => {
+    /*
+     * Thoughtseize was the card this whole gate was written for, and it now has
+     * a script — so the test uses whatever is still on the waiting list. The
+     * day that list is empty this test has nothing to prove and should go.
+     */
+    const waiting = DRAFT_POOL.find((name) => {
+      const id = oracleByName(name).oracleId;
+      return unimplementedReason(id) && !frontFace(id).types.includes('Land');
+    });
+    if (!waiting) return;
+
     const t = testGame();
-    t.p1.conjure('Thoughtseize');
-    t.p1.manaBase(3);
+    t.p1.conjure(waiting);
+    t.p1.manaBase(6);
     t.begin();
-    expect(unimplementedReason('thoughtseize')).toMatch(/not implemented/);
-    expect(offers(t, 'Thoughtseize')).toBe(false);
+    expect(offers(t, waiting)).toBe(false);
   });
 
-  it('does not offer a land that would sit there producing nothing', () => {
+  it('offers a land once it can actually do its job', () => {
+    // Cavern of Souls was the example of a land the gate had to refuse: it was
+    // being offered while its "spend only on the chosen type" clause was on the
+    // floor. It has a real script now, so the gate lets it through — and the
+    // point stands either way: what decides is whether the card works.
+    expect(unimplementedReason('cavern_of_souls')).toBeNull();
     const t = testGame();
     t.p1.conjure('Cavern of Souls');
     t.begin();
-    expect(offers(t, 'Cavern of Souls')).toBe(false);
+    expect(offers(t, 'Cavern of Souls')).toBe(true);
   });
 
   /**
@@ -95,8 +110,15 @@ describe('the unimplemented-card gate', () => {
    * zero is the definition of "you can draft and just play" — it is asserted
    * exactly so it can only go down.
    */
-  it('counts the cube cards that still cannot be played', () => {
+  /**
+   * The measure of the whole card-implementation effort, and it has reached
+   * zero: every card in the cube has a script, or is a card whose entire text
+   * the engine already plays generically. Asserted as an equality now rather
+   * than a ceiling — a new cube card without a script should fail here loudly,
+   * on the day it is added rather than the day somebody drafts it.
+   */
+  it('has no cube card left that cannot be played', () => {
     const gaps = DRAFT_POOL.filter((name) => unimplementedReason(oracleByName(name).oracleId));
-    expect(gaps.length).toBeLessThanOrEqual(59);
+    expect(gaps).toEqual([]);
   });
 });

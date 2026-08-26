@@ -1,6 +1,6 @@
 import { MAINDECK } from '../deck.js';
 import { Game, type Intent } from '../game.js';
-import { oracleByName } from '../oracle.js';
+import { frontFace, oracleByName } from '../oracle.js';
 import { cardName, currentFace, makeCard, moveCardRaw, stepAt } from '../state.js';
 import { TURN_SEQUENCE, type ChoiceResponse, type GameEvent, type IID, type PlayerId, type Phase, type Step } from '../types.js';
 
@@ -58,7 +58,7 @@ export class Seat {
     const iids = this.conjure(...names);
     for (const iid of iids) {
       moveCardRaw(this.t.game.state, iid, 'battlefield', { controller: this.id });
-      this.t.game.state.cards[iid].summoningSick = false;
+      this.settleOnBattlefield(iid);
     }
     return iids;
   }
@@ -70,12 +70,31 @@ export class Seat {
     return iids;
   }
 
+  /**
+   * A permanent placed by hand still has to arrive properly formed.
+   *
+   * Planeswalkers are the case that bites: they enter with loyalty counters, and
+   * a walker dropped onto the battlefield without them is killed by the very
+   * next state-based check — which reads as "my card vanished" rather than as a
+   * setup mistake.
+   */
+  private settleOnBattlefield(iid: IID): void {
+    const s = this.t.game.state;
+    const card = s.cards[iid];
+    const face = frontFace(card.oracleId);
+    if (face.types.includes('Planeswalker') && face.loyalty) {
+      const n = Number(face.loyalty);
+      if (Number.isFinite(n)) card.counters['loyalty'] = n;
+    }
+    card.summoningSick = false;
+  }
+
   /** Put these onto the battlefield, untapped and ready to act. */
   battlefield(...names: string[]): IID[] {
     const iids = this.take(names);
     for (const iid of iids) {
       moveCardRaw(this.t.game.state, iid, 'battlefield', { controller: this.id });
-      this.t.game.state.cards[iid].summoningSick = false;
+      this.settleOnBattlefield(iid);
     }
     return iids;
   }
@@ -417,6 +436,15 @@ export class TestGame {
           break;
       }
     }
+  }
+
+  /**
+   * Take a permanent off the battlefield without killing it — for testing what
+   * happens to whatever was attached to it.
+   */
+  exileFromBattlefield(_seat: PlayerId, iid: IID): void {
+    moveCardRaw(this.game.state, iid, 'exile');
+    this.game.sbaDirtyForTests();
   }
 
   /** Both players pass until the stack is empty or a choice interrupts. */

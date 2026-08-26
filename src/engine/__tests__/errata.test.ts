@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ERRATA, errataFor, frontFace, manaValueOf, oracle, oracleByName } from '../oracle.js';
 import { testGame, type TestGame } from './harness.js';
-import { unimplementedReason } from '../cards/index.js';
 import type { PlayerId } from '../types.js';
 import { ORACLE_DATA } from '../generated/oracle-cards.gen.js';
 
@@ -156,28 +155,27 @@ describe('the errata in a game', () => {
       .map((a) => frontFace(t.state.cards[(a.intent as { iid: number }).iid].oracleId).name);
   }
 
-  /*
-   * Ashiok's Erasure and Lier carry errata but also need real scripts (exile a
-   * spell, flashback), so until those land the unimplemented gate keeps them out
-   * of legalActions — a two-mana spell that resolves into nothing would be the
-   * exact bug this round of fixes was about. The cost side of the errata is
-   * asserted above; castability comes back with their scripts.
-   */
-  it("keeps Ashiok's Erasure and Lier gated until their scripts exist", () => {
+  it('makes Lier castable on turn three', () => {
+    const t = testGame();
+    t.p1.conjure('Lier, Disciple of the Drowned');
+    t.p1.manaBase(3);
+    t.begin();
+    // {1}{U}{U} rather than the printed {3}{U}{U}: three lands is enough.
+    expect(castable(t)).toContain('Lier, Disciple of the Drowned');
+  });
+
+  it("makes Ashiok's Erasure castable off two lands", () => {
     const t = testGame({ startingPlayer: 'p2' });
     t.p2.hand('Show and Tell');
     t.p2.manaBase(3);
     t.begin();
     t.p2.cast('Show and Tell');
     t.p2.pass();
-    t.p1.conjure("Ashiok's Erasure", 'Lier, Disciple of the Drowned');
-    t.p1.manaBase(3);
-    for (const name of ["Ashiok's Erasure", 'Lier, Disciple of the Drowned']) {
-      const gated = castable(t).includes(name);
-      const reason = unimplementedReason(oracleByName(name).oracleId);
-      // Either the script exists and the card is castable, or the gate says why not.
-      expect(gated || reason !== null).toBe(true);
-    }
+
+    t.p1.conjure("Ashiok's Erasure");
+    t.p1.manaBase(2);
+    // Flash, and two mana is now the whole cost. At four it would not be here.
+    expect(castable(t)).toContain("Ashiok's Erasure");
   });
 
   it('makes Eternal Witness castable off one green source', () => {

@@ -257,11 +257,11 @@ function Yards({ view, viewer, seat }: { view: PlayerView; viewer: PlayerId; sea
 
   return (
     <div className="row" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-      {gy.length > 0 && (
-        <button className="chip" onClick={() => setOpen('graveyard')}>
-          Graveyard {gy.length}
-        </button>
-      )}
+      {/* The graveyard button is always here, at zero too — see above. Exile is
+          rarer and genuinely uninteresting while empty, so it still waits. */}
+      <button className="chip" disabled={gy.length === 0} onClick={() => setOpen('graveyard')}>
+        Graveyard {gy.length}
+      </button>
       {ex.length > 0 && (
         <button className="chip" onClick={() => setOpen('exile')}>
           Exile {ex.length}

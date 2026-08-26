@@ -1,4 +1,5 @@
 import { frontFace, oracle } from '../oracle.js';
+import { provideScriptLookup } from '../state.js';
 import type { CardScript } from '../script-types.js';
 import type { OracleId } from '../types.js';
 
@@ -30,6 +31,11 @@ import { atraxaGrandUnifier, hullbreakerHorror, orcishBowmasters } from './creat
 import { manaDrain, veilOfSummer } from './interaction.js';
 import { commandeer, forceOfNegation, mindbreakTrap, pactOfNegation } from './free.js';
 import { eternalWitness, gitaxianProbe, jacesErasure, peek } from './cube.js';
+import { COUNTER_SCRIPTS } from './counters.js';
+import { CUBE_INTERACTION } from './interaction-cube.js';
+import { CUBE_CREATURES } from './cube-creatures.js';
+import { CUBE_PERMANENTS } from './cube-permanents.js';
+import { CUBE_WALKERS } from './cube-walkers.js';
 
 /**
  * The script registry.
@@ -81,6 +87,11 @@ const ALL: CardScript[] = [
   peek,
   gitaxianProbe,
   eternalWitness,
+  ...COUNTER_SCRIPTS,
+  ...CUBE_INTERACTION,
+  ...CUBE_CREATURES,
+  ...CUBE_PERMANENTS,
+  ...CUBE_WALKERS,
 ];
 
 const REGISTRY: Record<OracleId, CardScript> = {};
@@ -92,6 +103,9 @@ for (const s of ALL) {
 export function getScript(oracleId: OracleId): CardScript | undefined {
   return REGISTRY[oracleId];
 }
+
+// Give state.ts its window into static P/T without a circular import.
+provideScriptLookup((id) => REGISTRY[id]);
 
 export function scriptedOracleIds(): OracleId[] {
   return Object.keys(REGISTRY).sort();

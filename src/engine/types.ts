@@ -138,6 +138,35 @@ export interface CardInstance {
   /** Token characteristics; only set when isToken is true. */
   token?: TokenSpec;
 
+  /**
+   * What this aura is enchanting. Attachment is a battlefield relationship:
+   * cleared the moment either side leaves, and an aura whose target is gone is
+   * put into the graveyard by state-based actions (CR 704.5m).
+   */
+  attachedTo?: IID;
+  /**
+   * Face down: a 2/2 creature with no name, no types beyond Creature, and no
+   * abilities (CR 708.2). Only manifest dread makes these here. The identity
+   * stays on the instance — redaction is what hides it from the opponent.
+   */
+  faceDown?: boolean;
+  /** Cast with its kicker paid. Scripts read this on resolution. */
+  kicked?: boolean;
+  /** Cast from the graveyard for its escape cost. */
+  escaped?: boolean;
+  /** Cast via flashback: exiles instead of going to the graveyard (CR 702.34a). */
+  flashedBack?: boolean;
+  /** A copy on the stack. Ceases to exist instead of changing zones. */
+  isCopy?: boolean;
+  /** Life paid to Phyrexian symbols while casting this (Compleated reads it). */
+  phyrexianLifePaid?: number;
+  /** A named choice a permanent locked in as it entered (Cavern, Glacierwood). */
+  namedChoice?: string;
+  /** The turn this planeswalker last activated a loyalty ability. */
+  loyaltyActivatedTurn?: number;
+  /** Chrome Mox: the card exiled to imprint, whose colours it taps for. */
+  imprinted?: IID;
+
   // --- stack-object fields (only meaningful while zone === 'stack') ---
   targets?: TargetRef[];
   chosenModes?: number[];
@@ -264,6 +293,72 @@ export type ActiveEffect =
       id: number;
       controller: PlayerId;
       expires: EffectExpiry;
+    }
+  | {
+      /** A temporary power/toughness change (prowess, Animate Dead's -1/-0). */
+      kind: 'ptBuff';
+      id: number;
+      iids: IID[];
+      power: number;
+      toughness: number;
+      /** When set, the buff lives and dies with this permanent (an aura's grant). */
+      sourceIid?: IID;
+      expires: EffectExpiry;
+    }
+  | {
+      /** Orim's Chant: this player casts nothing this turn. */
+      kind: 'cantCastSpells';
+      id: number;
+      player: PlayerId;
+      expires: EffectExpiry;
+    }
+  | {
+      /** Ashiok's Erasure: these players cannot cast spells with this name. */
+      kind: 'cantCastName';
+      id: number;
+      players: PlayerId[];
+      name: string;
+      /** The permanent enforcing it; the effect leaves when it does. */
+      sourceIid: IID;
+      expires: EffectExpiry;
+    }
+  | {
+      /** Orim's Chant, kicked: no attacks this turn. */
+      kind: 'creaturesCantAttack';
+      id: number;
+      expires: EffectExpiry;
+    }
+  | {
+      /**
+       * Cards castable from somewhere other than the hand: Snapcaster's
+       * flashback grant, Expressive Iteration's play-this-turn exile.
+       */
+      kind: 'castFromElsewhere';
+      id: number;
+      controller: PlayerId;
+      iids: IID[];
+      zone: 'graveyard' | 'exile' | 'hand';
+      /**
+       * flashback exiles on resolution; play is an ordinary cast or land drop;
+       * free is "without paying its mana cost" from wherever it already is.
+       */
+      mode: 'flashback' | 'play' | 'free';
+      expires: EffectExpiry;
+    }
+  | {
+      /** Ral's emblem: your instants and sorceries have storm. */
+      kind: 'stormEmblem';
+      id: number;
+      player: PlayerId;
+      expires: EffectExpiry;
+    }
+  | {
+      /** A keyword granted for a while (Psychic Frog's flying). */
+      kind: 'grantKeyword';
+      id: number;
+      iids: IID[];
+      keyword: string;
+      expires: EffectExpiry;
     };
 
 /**
@@ -293,6 +388,14 @@ export type DelayedTrigger =
       /** The card that wrote the cheque, for the log. */
       sourceIid: IID;
       /** Fires at the beginning of this player's next upkeep. */
+      armedOnTurn: number;
+    }
+  | {
+      /** Sneak Attack / Through the Breach: the creature leaves at end of turn. */
+      id: number;
+      kind: 'sacrifice';
+      controller: PlayerId;
+      iid: IID;
       armedOnTurn: number;
     };
 
@@ -341,6 +444,8 @@ export interface PlayerState {
   spellsCastThisTurnCount: number;
   /** Reset when the draw step begins. Drives the Orcish Bowmasters exception. */
   drawsThisDrawStep: number;
+  /** Cards actually drawn this turn — Narset, Parter of Veils reads it. */
+  drawsThisTurn: number;
   /** Set when a draw was attempted from an empty library — SBA turns this into a loss. */
   triedToDrawFromEmpty: boolean;
   hasLost: boolean;
@@ -520,6 +625,12 @@ export type GameEvent =
    * draw steps") has to be evaluated at the moment of the draw.
    */
   | { t: 'draw'; player: PlayerId; iid: IID | null; firstOfDrawStep: boolean }
+  /** A saga chapter fires. Emitted by the engine; the saga's script listens. */
+  | { t: 'sagaChapter'; iid: IID; chapter: number }
+  | { t: 'turnedFaceUp'; iid: IID }
+  | { t: 'transformed'; iid: IID }
+  /** A creature was declared as an attacker. */
+  | { t: 'attacks'; iid: IID; controller: PlayerId }
   /**
    * `position` is carried so the client can maintain an honest "known top of
    * library" tracker from information the player legitimately saw.
@@ -539,7 +650,10 @@ export type GameEvent =
   | { t: 'abilityTriggered'; sourceIid: IID; label: string; controller: PlayerId }
   | { t: 'entersBattlefield'; iid: IID; controller: PlayerId }
   | { t: 'leavesBattlefield'; iid: IID; controller: PlayerId }
-  | { t: 'damage'; sourceIid: IID | null; target: TargetRef; amount: number; deathtouch: boolean }
+  | { t: 'damage'; sourceIid: IID | null; target: TargetRef; amount: number; deathtouch: boolean;
+      /** True when this was combat damage — Psychic Frog only draws off combat. */
+      combat?: boolean;
+    }
   | { t: 'lifeChange'; player: PlayerId; delta: number; total: number }
   | { t: 'shuffle'; player: PlayerId }
   /** Someone locked in half of a shared choice; the other player's view changed. */

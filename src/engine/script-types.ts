@@ -72,6 +72,8 @@ export interface DamageOpts {
   deathtouch?: boolean;
   lifelink?: boolean;
   lifelinkTo?: PlayerId;
+  /** Combat damage, as opposed to a ping. Psychic Frog only draws off combat. */
+  combat?: boolean;
 }
 
 /** Everything a card script can do. Implemented by Game. */
@@ -110,7 +112,14 @@ export interface Ctx {
    * Returns false when the spell could not be countered. `exile` puts it in exile
    * instead of the graveyard, which is Force of Negation's second sentence.
    */
-  counterSpell(iid: IID, opts?: { exile?: boolean }): boolean;
+  counterSpell(iid: IID, opts?: { exile?: boolean; toLibraryTop?: boolean }): boolean;
+  /**
+   * Offer a player the chance to pay a cost, and report whether they did.
+   *
+   * The prompt is skipped when they could not pay it anyway: a question with
+   * one available answer is just a slower way of saying no.
+   */
+  payOrDecline(player: PlayerId, cost: string, prompt: string): Eff<boolean>;
   /** Mana Drain's delayed trigger: mana at the beginning of your next main phase. */
   addDelayedMana(player: PlayerId, amount: number): void;
   /**
@@ -130,12 +139,44 @@ export interface Ctx {
    * spell has no targets to change or none of them could be chosen legally.
    */
   chooseNewTargetsFor(iid: IID, chooser: PlayerId): Eff<boolean>;
+  /** Copy a spell on the stack; the copy ceases to exist when it leaves. */
+  copySpell(iid: IID, controller: PlayerId, opts?: { mayRetarget?: boolean }): Eff<IID | null>;
+  /** Attach an aura to a permanent. */
+  attachTo(auraIid: IID, hostIid: IID): void;
+  /** Put the top card of a library onto the battlefield face down as a 2/2. */
+  manifest(player: PlayerId, iid: IID): Eff;
+  /** A card leaves the battlefield for its owner's graveyard, as a sacrifice. */
+  sacrifice(iid: IID): Eff;
+  /** Mill: N off the top of a library into its graveyard. */
+  mill(player: PlayerId, n: number): Eff;
+  /** Sacrifice this permanent at the beginning of the next end step. */
+  sacrificeAtNextEndStep(player: PlayerId, iid: IID): void;
+  /** Ask a player to name a card from a list of names. */
+  chooseName(player: PlayerId, names: string[], prompt: string): Eff<string | null>;
+  /** Ask a player to choose a colour of mana. */
+  chooseColour(player: PlayerId, prompt: string): Eff<ManaKind | null>;
+  /** Chrome Mox: record which exiled card this artifact taps for. */
+  setImprint(auraIid: IID, cardIid: IID): void;
+  /** Record a choice a permanent locked in as it entered (a colour, a mode). */
+  setNamedChoice(iid: IID, choice: string): void;
+  /** Untap a permanent. */
+  untap(iid: IID): void;
+  /** Turn a transforming permanent over to its other face. */
+  transform(iid: IID): void;
   /** Marks a permanent as entering tapped, from inside an asEnters replacement. */
   enterTapped(): void;
 
   // --- generator actions ---------------------------------------------------
   moveTo(iid: IID, zone: ZoneName, opts?: { position?: 'top' | 'bottom' }): Eff;
-  moveToBattlefield(iid: IID, opts?: { tapped?: boolean; face?: 'front' | 'back' }): Eff;
+  /**
+   * `controller` matters more than it looks: Reanimate puts their creature onto
+   * the battlefield under *your* control, and Stronghold Gambit puts each card
+   * back under its own owner's.
+   */
+  moveToBattlefield(
+    iid: IID,
+    opts?: { tapped?: boolean; face?: 'front' | 'back'; controller?: PlayerId },
+  ): Eff;
   /** Several cards enter at once — required by Show and Tell. */
   moveSimultaneouslyToBattlefield(entries: { iid: IID; tapped?: boolean }[]): Eff;
   /** Bottom several cards in a random order (Atraxa, Planar Genesis). */
@@ -173,6 +214,20 @@ export interface ActivationCost {
   life?: number;
   sacrificeSelf?: boolean;
   mana?: string;
+  /**
+   * A loyalty ability: the signed change to this planeswalker's loyalty.
+   * Implies sorcery timing and once per turn per permanent (CR 606.3, 118.6).
+   */
+  loyalty?: number;
+  /** Discard this many cards as part of the cost (Psychic Frog). */
+  discard?: number;
+  /** Exile this many cards from your graveyard as part of the cost. */
+  exileFromGraveyard?: number;
+  /**
+   * A -X loyalty ability: the player chooses X, up to the loyalty available.
+   * The chosen value reaches the script as `ctx.context.x`.
+   */
+  loyaltyX?: boolean;
 }
 
 export interface TargetDef {
@@ -225,6 +280,8 @@ export interface ActivatedAbility {
 export interface ManaAbility {
   kind: 'mana';
   produces: ManaKind[];
+  /** Chrome Mox: the colours come from the imprinted card, not the printing. */
+  fromImprint?: boolean;
 }
 
 export interface StaticAbility {
@@ -272,6 +329,97 @@ export interface CardScript {
   canCast?: (state: GameState, controller: PlayerId, self: CardInstance) => boolean;
   /** "You may … rather than pay this spell's mana cost." */
   altCost?: AlternativeCost;
+  /**
+   * Kicker: an optional extra cost offered as a second way to cast. The engine
+   * pays base+kicker and sets `kicked` on the instance; the script reads it.
+   */
+  kicker?: { cost: string; label: string };
+  /**
+   * A non-mana additional cost (Bitter Triumph's discard-or-life, Abhorrent
+   * Oculus's exile six). `canPay` gates the cast being offered at all; `pay`
+   * runs after targets, alongside the mana payment. Returning false backs out.
+   */
+  additionalCost?: {
+    label: string;
+    canPay: (state: GameState, controller: PlayerId) => boolean;
+    pay: (ctx: Ctx) => Eff<boolean>;
+  };
+  /**
+   * A modal spell. Modes and their targets are chosen as the spell goes on the
+   * stack (CR 601.2b), so the opponent sees what is coming before deciding how
+   * to respond — the same reason Hullbreaker's trigger has `onStack`.
+   *
+   * `ctx.chosenModes` holds the picks on resolution, and the targets of every
+   * chosen mode are concatenated into `ctx.targets` in mode order.
+   */
+  modes?: {
+    min: number;
+    max: number;
+    prompt: string;
+    options: {
+      text: string;
+      /** Whether this mode can be chosen at all right now. */
+      enabled?: (state: GameState, controller: PlayerId, self: CardInstance) => boolean;
+      targets?: TargetDef[];
+    }[];
+  };
+  /** Split second: while this is on the stack, nobody casts or activates. */
+  splitSecond?: boolean;
+  /**
+   * Generic mana this spell costs less to cast right now (Mystical Dispute's
+   * {2} off against a blue spell). Applied to the generic portion only, which
+   * is what a cost reduction can reach (CR 601.2f).
+   */
+  costReduction?: (state: GameState, controller: PlayerId, self: CardInstance) => number;
+  /** Storm: copy for each spell cast before it this turn. */
+  storm?: boolean;
+  /**
+   * An aura. `enchant` filters legal targets; on resolution the permanent
+   * attaches to its chosen target. SBA kill it when the target is gone.
+   */
+  enchant?: {
+    prompt: string;
+    candidates: (state: GameState, controller: PlayerId) => TargetRef[];
+  };
+  /** A saga: how many chapters before it is sacrificed. Uses 'lore' counters. */
+  saga?: { chapters: number };
+  /** Cumulative upkeep cost per age counter, as a mana string ('{1}'). */
+  cumulativeUpkeep?: string;
+  /**
+   * Static power/toughness contribution, recomputed live. Self-buffs (delirium)
+   * get `self`; an aura's grant to what it enchants uses `enchanted`.
+   */
+  staticPt?: {
+    self?: (state: GameState, card: CardInstance) => { power: number; toughness: number };
+    enchanted?: { power: number; toughness: number };
+  };
+  /** Escape: cast from the graveyard for this cost plus exiling others. */
+  escape?: { cost: string; exile: number };
+  /** Keywords this permanent has right now, beyond the printed ones. */
+  grantsKeywords?: (state: GameState, card: CardInstance) => string[];
+  /**
+   * Continuous rules changes a permanent makes while it is on the battlefield.
+   *
+   * These are re-derived wherever the rule is asked rather than granted once as
+   * an effect, because they have to stop the instant the permanent leaves — a
+   * Lier that dies mid-turn must not still be turning off counterspells.
+   */
+  staticRules?: {
+    /** Lier: nothing can be countered while this is out. */
+    spellsCantBeCountered?: boolean;
+    /** Cards in a graveyard this permanent lets you cast with flashback. */
+    graveyardFlashbackFor?: (state: GameState, card: CardInstance) => IID[];
+    /** Cards on top of a library this permanent lets you play. */
+    playFromLibraryTop?: (state: GameState, card: CardInstance) => IID[];
+    /** Cards in a graveyard this permanent lets you play (Glacierwood Sultai). */
+    playFromGraveyard?: (state: GameState, card: CardInstance) => IID[];
+  };
+  /**
+   * Utopia Sprawl: tapping the enchanted land for mana adds one more of the
+   * colour chosen as this entered. A triggered mana ability, so it never uses
+   * the stack (CR 605.1b) — the engine folds it into tapForMana.
+   */
+  enchantedTapBonus?: boolean;
   resolve?: (ctx: Ctx) => Eff;
   /** Replacement effect applied as the permanent enters (shocklands, conditional tapped). */
   asEnters?: (ctx: Ctx) => Eff;

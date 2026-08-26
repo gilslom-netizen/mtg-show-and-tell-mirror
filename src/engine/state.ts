@@ -61,6 +61,7 @@ export function makePlayerState(id: PlayerId): PlayerState {
     spellsCastThisTurn: [],
     spellsCastThisTurnCount: 0,
     drawsThisDrawStep: 0,
+    drawsThisTurn: 0,
     triedToDrawFromEmpty: false,
     hasLost: false,
     mulligansTaken: 0,
@@ -176,8 +177,18 @@ export function zoneList(state: GameState, player: PlayerId, zone: ZoneName): II
 }
 
 /** The zone array a card currently lives in. Stack objects live in the shared stack. */
+/**
+ * The list this card is actually sitting in.
+ *
+ * Every zone is keyed by owner except the battlefield, which is keyed by
+ * controller — because the battlefield is the one zone where the two come
+ * apart. Reanimate is the plain case: their creature, your side of the table.
+ * Getting this wrong put a reanimated Atraxa into the opponent's row, where it
+ * blocked for them and attacked you.
+ */
 function homeList(state: GameState, card: CardInstance): IID[] {
   if (card.zone === 'stack') return state.stack;
+  if (card.zone === 'battlefield') return state.zones[card.controller].battlefield;
   return state.zones[card.owner][card.zone];
 }
 
@@ -228,6 +239,10 @@ export function moveCardRaw(
 
   // Reset per-object state whenever an object changes zones — it becomes a new object.
   if (to !== 'battlefield') {
+    card.attachedTo = undefined;
+    card.faceDown = undefined;
+    card.namedChoice = undefined;
+    card.loyaltyActivatedTurn = undefined;
     card.tapped = false;
     card.damage = 0;
     card.deathtouched = false;
@@ -256,7 +271,13 @@ export function moveCardRaw(
   if (to === 'stack') {
     state.stack.push(iid);
   } else {
-    const list = state.zones[card.owner][to];
+    // The battlefield belongs to whoever controls the permanent; everywhere
+    // else belongs to its owner — which is why a creature you stole still goes
+    // to their graveyard when it dies. See homeList.
+    const list =
+      to === 'battlefield'
+        ? state.zones[card.controller].battlefield
+        : state.zones[card.owner][to];
     if (to === 'library' && opts.position === 'top') list.unshift(iid);
     else list.push(iid);
   }
@@ -291,7 +312,30 @@ export function shuffleLibrary(state: GameState, player: PlayerId): void {
  * On the battlefield/stack a played back face uses the back face; everywhere else
  * a modal DFC is its front face (CR 712.8a).
  */
+/** What a face-down permanent looks like to the rules: a 2/2 with nothing else. */
+const FACE_DOWN_FACE: OracleFace = {
+  name: 'Face-down creature',
+  manaCost: null,
+  mv: 0,
+  typeLine: 'Creature',
+  types: ['Creature'],
+  subtypes: [],
+  supertypes: [],
+  colors: [],
+  oracleText: '',
+  power: '2',
+  toughness: '2',
+  keywords: [],
+  producedMana: [],
+  imageUri: null,
+  loyalty: null,
+};
+
 export function currentFace(card: CardInstance): OracleFace {
+  // CR 708.2 — face down on the battlefield: a 2/2 creature with no name, no
+  // types beyond Creature, no abilities. The identity is still on the instance;
+  // redaction decides who gets to know it.
+  if (card.faceDown && card.zone === 'battlefield') return FACE_DOWN_FACE;
   if (card.isToken && card.token) {
     return {
       name: card.token.name,
@@ -357,6 +401,61 @@ export function getPower(card: CardInstance): number {
 
 export function getToughness(card: CardInstance): number {
   return baseToughness(card) + (card.counters['+1/+1'] ?? 0);
+}
+
+/**
+ * Power and toughness with the whole board taken into account: counters, the
+ * temporary buffs (prowess, an aura's -1/-0), a script's own static (delirium).
+ *
+ * Two functions on purpose: getPower stays the cheap pure-card read the arena's
+ * feature extractor loops over; these are what combat and state-based actions
+ * use, because a Dragon's Rage Channeler with a full graveyard genuinely is a
+ * 3/3 there.
+ */
+export function powerOf(state: GameState, card: CardInstance): number {
+  return statOf(state, card, 'power');
+}
+
+export function toughnessOf(state: GameState, card: CardInstance): number {
+  return statOf(state, card, 'toughness');
+}
+
+function statOf(state: GameState, card: CardInstance, which: 'power' | 'toughness'): number {
+  let n = which === 'power' ? getPower(card) : getToughness(card);
+  for (const e of state.effects) {
+    if (e.kind === 'ptBuff' && e.iids.includes(card.iid)) {
+      n += which === 'power' ? e.power : e.toughness;
+    }
+  }
+  // The card's own live static (delirium), by way of its script.
+  const script = getScriptRef?.(card.oracleId);
+  const self = script?.staticPt?.self;
+  if (self) n += self(state, card)[which];
+  // Auras attached to this card granting a static change.
+  for (const iid of state.zones[card.controller].battlefield) {
+    const aura = state.cards[iid];
+    if (!aura || aura.attachedTo !== card.iid) continue;
+    const grant = getScriptRef?.(aura.oracleId)?.staticPt?.enchanted;
+    if (grant) n += grant[which];
+  }
+  return n;
+}
+
+/*
+ * state.ts must not import the script registry (the scripts import state), so
+ * the registry hands a reference in during startup. Everything degrades to the
+ * plain counters-based numbers until it does — which is also what keeps the
+ * arena's hot path from paying for a lookup it does not need.
+ */
+type ScriptLike = {
+  staticPt?: {
+    self?: (state: GameState, card: CardInstance) => { power: number; toughness: number };
+    enchanted?: { power: number; toughness: number };
+  };
+};
+let getScriptRef: ((id: OracleId) => ScriptLike | undefined) | null = null;
+export function provideScriptLookup(fn: (id: OracleId) => ScriptLike | undefined): void {
+  getScriptRef = fn;
 }
 
 export function hasKeyword(card: CardInstance, kw: string): boolean {

@@ -48,6 +48,14 @@ export interface CardView {
   isAbility?: boolean;
   abilityLabel?: string;
   abilitySource?: IID;
+  /**
+   * Which of the source's abilities this stack object is.
+   *
+   * Public: the ability is on the stack with its text showing, so nothing is
+   * being leaked — and the search's rebuild needs it, because a card with three
+   * activated abilities cannot be reconstructed from the label alone.
+   */
+  abilityIndex?: number;
   /** The source's name, so the stack reads right even when the card is hidden. */
   abilitySourceName?: string;
   targets?: TargetRef[];
@@ -171,6 +179,7 @@ function viewCard(state: GameState, c: CardInstance): CardView {
     out.isAbility = true;
     out.abilityLabel = c.abilityLabel;
     out.abilitySource = c.abilitySource;
+    out.abilityIndex = c.abilityIndex;
     /*
      * The name of whatever put this on the stack, carried on the ability itself.
      *

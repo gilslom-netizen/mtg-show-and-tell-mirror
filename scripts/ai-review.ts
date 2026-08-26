@@ -60,6 +60,7 @@ function describe(game: Game, intent: Intent): string {
       return 'pass';
     case 'concede':
       return 'concede';
+    case 'turnFaceUp':
     case 'playLand':
     case 'castSpell':
     case 'activateAbility':
@@ -69,6 +70,7 @@ function describe(game: Game, intent: Intent): string {
       if (intent.t === 'castSpell') return `cast ${name}${intent.free ? ' (free)' : ''}`;
       if (intent.t === 'playLand') return `play ${name}`;
       if (intent.t === 'tapForMana') return `tap ${name}`;
+      if (intent.t === 'turnFaceUp') return `turn ${name} face up`;
       return `activate ${name}`;
     }
   }

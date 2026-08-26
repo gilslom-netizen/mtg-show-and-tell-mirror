@@ -126,12 +126,13 @@ function rebuildCard(view: CardView): CardInstance {
       card.abilitySource = view.abilitySource;
       card.abilityLabel = view.abilityLabel;
       /*
-       * No card in this pool has more than one ability, and none of their triggers
-       * returns a context object — so the index is always zero and the context is
-       * always empty. `determinize.test.ts` asserts both against the live registry
-       * rather than trusting this comment.
+       * Carried on the view rather than assumed to be zero. It used to be
+       * assumed, guarded by a test asserting no card had two abilities — true of
+       * the maindeck, and false the moment the cube arrived (Deathrite Shaman
+       * has three). The index is public anyway: the ability is on the stack with
+       * its text showing.
        */
-      card.abilityIndex = 0;
+      card.abilityIndex = view.abilityIndex ?? 0;
       card.abilityContext = {};
       /*
        * Hullbreaker Horror is the only modal ability here, and its mode is written
