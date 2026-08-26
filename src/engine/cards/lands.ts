@@ -1,5 +1,5 @@
 import { frontFace } from '../oracle.js';
-import { battlefield, cardsIn, countLandSubtype, hasCardSubtype, isType } from '../state.js';
+import { battlefield, cardsIn, countLandSubtype, currentFace, hasCardSubtype, isType } from '../state.js';
 import type { CardScript } from '../script-types.js';
 import type { GameState, PlayerId, TargetRef } from '../types.js';
 
@@ -43,7 +43,7 @@ function fetchland(oracleId: string, subtypes: string[]): CardScript {
             player: ctx.controller,
             cards: ctx.library(ctx.controller).map((c) => c.iid),
             filter: (c) => {
-              const f = frontFace(c.oracleId);
+              const f = currentFace(c);
               return f.types.includes('Land') && subtypes.some((s) => f.subtypes.includes(s));
             },
             prompt: `Search your library for a ${subtypes.join(' or ')} card`,
@@ -138,7 +138,7 @@ export const mysticSanctuary: CardScript = {
         // "you may" — offer the choice rather than forcing it.
         const doIt = yield* ctx.yesNo(
           ctx.controller,
-          `Put ${frontFace(card.oracleId).name} on top of your library?`,
+          `Put ${currentFace(card).name} on top of your library?`,
         );
         if (doIt) yield* ctx.moveTo(t.iid, 'library', { position: 'top' });
       },
@@ -185,7 +185,7 @@ export const mistriseVillage: CardScript = {
 /** Helper used by the client and by tests to explain the manabase. */
 export function fetchableBy(state: GameState, player: PlayerId, subtypes: string[]): number {
   return cardsIn(state, player, 'library').filter((c) => {
-    const f = frontFace(c.oracleId);
+    const f = currentFace(c);
     return f.types.includes('Land') && subtypes.some((s) => f.subtypes.includes(s));
   }).length;
 }

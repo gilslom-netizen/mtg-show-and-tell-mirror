@@ -1,4 +1,4 @@
-import { frontFace } from '../oracle.js';
+import { currentFace } from '../state.js';
 import type { CardScript, Ctx, Eff } from '../script-types.js';
 import type { CardInstance, GameState, PlayerId, TargetRef } from '../types.js';
 
@@ -23,12 +23,12 @@ function theirSpells(
     .map((c): TargetRef => ({ kind: 'spell', iid: c.iid }));
 }
 
-const isNoncreature = (c: CardInstance) => !frontFace(c.oracleId).types.includes('Creature');
+const isNoncreature = (c: CardInstance) => !currentFace(c).types.includes('Creature');
 const isInstantOrSorcery = (c: CardInstance) => {
-  const t = frontFace(c.oracleId).types;
+  const t = currentFace(c).types;
   return t.includes('Instant') || t.includes('Sorcery');
 };
-const isBlue = (c: CardInstance) => frontFace(c.oracleId).colors.includes('U');
+const isBlue = (c: CardInstance) => currentFace(c).colors.includes('U');
 
 /**
  * "Counter unless its controller pays {N}."
@@ -43,9 +43,9 @@ function* counterUnlessPaid(ctx: Ctx, amount: number): Eff {
   const spell = ctx.card(t.iid);
   if (!spell || spell.zone !== 'stack') return;
   const owner = spell.controller;
-  const paid = yield* ctx.payOrDecline(owner, `{${amount}}`, `Pay {${amount}} to save ${frontFace(spell.oracleId).name}?`);
+  const paid = yield* ctx.payOrDecline(owner, `{${amount}}`, `Pay {${amount}} to save ${currentFace(spell).name}?`);
   if (paid) {
-    ctx.log(`${frontFace(spell.oracleId).name} is paid for`);
+    ctx.log(`${currentFace(spell).name} is paid for`);
     return;
   }
   ctx.counterSpell(t.iid);
@@ -129,7 +129,7 @@ export const memoryLapse: CardScript = {
     const spell = ctx.card(t.iid);
     if (!spell || spell.zone !== 'stack') return;
     if (!ctx.counterSpell(t.iid, { toLibraryTop: true })) return;
-    ctx.log(`${frontFace(spell.oracleId).name} goes on top of its owner's library`);
+    ctx.log(`${currentFace(spell).name} goes on top of its owner's library`);
     yield* nothing();
   },
 };
@@ -177,8 +177,8 @@ export const pyroblast: CardScript = {
     if (!card) return;
     // "if it's blue" is a condition on the effect, checked on resolution: a
     // Pyroblast pointed at a red spell resolves and does precisely nothing.
-    if (!frontFace(card.oracleId).colors.includes('U')) {
-      ctx.log(`${frontFace(card.oracleId).name} is not blue — nothing happens`);
+    if (!currentFace(card).colors.includes('U')) {
+      ctx.log(`${currentFace(card).name} is not blue — nothing happens`);
       return;
     }
     if (t.kind === 'spell') ctx.counterSpell(t.iid);
@@ -209,7 +209,7 @@ export const narsetsReversal: CardScript = {
     const spell = ctx.card(t.iid);
     if (!spell || spell.zone !== 'stack') return;
     yield* ctx.copySpell(t.iid, ctx.controller, { mayRetarget: true });
-    ctx.log(`returns ${frontFace(spell.oracleId).name} to its owner's hand`);
+    ctx.log(`returns ${currentFace(spell).name} to its owner's hand`);
     yield* ctx.moveTo(t.iid, 'hand');
   },
 };
@@ -226,7 +226,7 @@ export const reprieve: CardScript = {
     if (t && t.kind === 'spell') {
       const spell = ctx.card(t.iid);
       if (spell && spell.zone === 'stack') {
-        ctx.log(`returns ${frontFace(spell.oracleId).name} to its owner's hand`);
+        ctx.log(`returns ${currentFace(spell).name} to its owner's hand`);
         yield* ctx.moveTo(t.iid, 'hand');
       }
     }

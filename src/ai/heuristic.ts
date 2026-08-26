@@ -703,6 +703,18 @@ export class HeuristicAgent implements Agent {
    * and then bin it.
    */
   private pickCards(r: Read, choice: ChoiceOf<'chooseCards'>): IID[] {
+    /*
+     * A prompt that permits nothing wants nothing.
+     *
+     * Gitaxian Probe shows you their hand through a chooseCards with min and max
+     * both zero — the cards are there to be read, not picked, and Confirm is the
+     * only answer. Worth guarding on its own, but it also stops a `-0` trap
+     * further down: `slice(-max)` with a max of zero is `slice(0)`, the whole
+     * list, so the agent answered "select nothing" with every card in the hand
+     * and the engine threw. That crashed any game in which the AI cast Probe.
+     */
+    if (choice.max === 0) return [];
+
     const selectable = choice.options
       .filter((o) => !o.disabledReason)
       .map((o) => ({ iid: o.iid, oracleId: r.view.cards[o.iid]?.oracleId }))

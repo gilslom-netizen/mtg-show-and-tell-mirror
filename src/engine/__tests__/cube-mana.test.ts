@@ -51,10 +51,10 @@ describe('a mana creature the turn it arrives', () => {
     const [birds] = t.p1.conjureOntoBattlefield('Birds of Paradise');
 
     // conjureOntoBattlefield clears the sickness, which is the settled case.
-    expect(producedManaOf(t.state.cards[birds]).length).toBe(5);
+    expect(producedManaOf(t.state.cards[birds], t.state).length).toBe(5);
 
     t.state.cards[birds].summoningSick = true;
-    expect(producedManaOf(t.state.cards[birds])).toEqual([]);
+    expect(producedManaOf(t.state.cards[birds], t.state)).toEqual([]);
     // And so the engine does not offer it as a source or as an action.
     const offered = t.game
       .legalActions('p1')
@@ -68,7 +68,7 @@ describe('a mana creature the turn it arrives', () => {
     const [mox] = t.p1.conjureOntoBattlefield('Mox Emerald');
     t.state.cards[mox].summoningSick = true;
     // Summoning sickness is a creature rule; a Mox taps the turn it lands.
-    expect(producedManaOf(t.state.cards[mox])).toEqual(['G']);
+    expect(producedManaOf(t.state.cards[mox], t.state)).toEqual(['G']);
   });
 });
 

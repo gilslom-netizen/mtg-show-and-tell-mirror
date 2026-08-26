@@ -1,4 +1,4 @@
-import { frontFace } from '../oracle.js';
+import { currentFace } from '../state.js';
 import type { CardScript } from '../script-types.js';
 
 /** Search effects. All of them shuffle afterwards, which resets any known top of library. */
@@ -38,7 +38,7 @@ export const waterloggedTeachings: CardScript = {
       player: ctx.controller,
       cards: ctx.library(ctx.controller).map((c) => c.iid),
       filter: (c) => {
-        const f = frontFace(c.oracleId);
+        const f = currentFace(c);
         return f.types.includes('Instant') || f.keywords.includes('Flash');
       },
       prompt: 'Search for an instant card or a card with flash',
@@ -47,7 +47,7 @@ export const waterloggedTeachings: CardScript = {
     if (found !== null) {
       const card = ctx.card(found);
       // "reveal it" — this is public information.
-      if (card) ctx.log(`reveals ${frontFace(card.oracleId).name}`, [found]);
+      if (card) ctx.log(`reveals ${currentFace(card).name}`, [found]);
       yield* ctx.moveTo(found, 'hand');
     }
     ctx.shuffleLibrary(ctx.controller);

@@ -465,6 +465,11 @@ export function hasKeyword(card: CardInstance, kw: string): boolean {
 /** Mana value as seen on the stack, used by Mana Drain (LKI). */
 export function manaValueOfCard(card: CardInstance): number {
   if (card.stackMv !== undefined) return card.stackMv;
+  // CR 202.3b — a token has no mana cost, so its mana value is 0. It also has no
+  // oracle entry to look one up in: asking for one used to throw, and any card
+  // that measured the mana value of a permanent (Abrupt Decay, Council's Judgment)
+  // crashed the game the moment a token was on the battlefield.
+  if (card.isToken) return 0;
   return oracle(card.oracleId).mv;
 }
 

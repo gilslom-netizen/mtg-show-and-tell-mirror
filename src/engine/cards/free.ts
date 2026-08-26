@@ -1,5 +1,4 @@
-import { frontFace } from '../oracle.js';
-import { cardsIn } from '../state.js';
+import { cardsIn, currentFace } from '../state.js';
 import type { CardScript, Ctx, Eff } from '../script-types.js';
 import type { CardInstance, GameState, PlayerId, TargetRef } from '../types.js';
 
@@ -21,14 +20,14 @@ import type { CardInstance, GameState, PlayerId, TargetRef } from '../types.js';
 /** Blue cards in hand, never counting the spell being cast — it is on the stack. */
 function blueInHand(state: GameState, player: PlayerId, self: CardInstance): CardInstance[] {
   return cardsIn(state, player, 'hand').filter(
-    (c) => c.iid !== self.iid && frontFace(c.oracleId).colors.includes('U'),
+    (c) => c.iid !== self.iid && currentFace(c).colors.includes('U'),
   );
 }
 
 function noncreatureSpells(state: GameState): TargetRef[] {
   return state.stack
     .map((iid) => state.cards[iid])
-    .filter((c) => c && !c.isAbility && !frontFace(c.oracleId).types.includes('Creature'))
+    .filter((c) => c && !c.isAbility && !currentFace(c).types.includes('Creature'))
     .map((c): TargetRef => ({ kind: 'spell', iid: c.iid }));
 }
 
@@ -84,7 +83,7 @@ export const commandeer: CardScript = {
     if (!spell?.targets?.length) return;
     const change = yield* ctx.yesNo(
       ctx.controller,
-      `Choose new targets for ${frontFace(spell.oracleId).name}?`,
+      `Choose new targets for ${currentFace(spell).name}?`,
       { yes: 'Choose new targets', no: 'Leave them' },
     );
     if (change) yield* ctx.chooseNewTargetsFor(t.iid, ctx.controller);
@@ -162,7 +161,7 @@ export const mindbreakTrap: CardScript = {
       if (!spell || spell.zone !== 'stack') continue;
       // Exiling is not countering, so "can't be countered" does not stop it — which
       // is exactly why this card sits in a cube alongside Veil of Summer.
-      ctx.log(`exiles ${frontFace(spell.oracleId).name}`);
+      ctx.log(`exiles ${currentFace(spell).name}`);
       yield* ctx.moveTo(t.iid, 'exile');
     }
   },

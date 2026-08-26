@@ -1,6 +1,5 @@
 import { isProtectedFrom } from '../effects.js';
-import { frontFace } from '../oracle.js';
-import { battlefield, cardName, isType } from '../state.js';
+import { battlefield, cardName, currentFace, isType } from '../state.js';
 import type { CardScript } from '../script-types.js';
 import { ATRAXA_TYPES, type IID, type PlayerId, type TargetRef } from '../types.js';
 
@@ -28,7 +27,7 @@ export const atraxaGrandUnifier: CardScript = {
             const c = ctx.card(iid);
             // Cards in the library show only their front face, so an MDFC like
             // Waterlogged Teachings is available as an instant and never as a land.
-            return c ? frontFace(c.oracleId).types.includes(type) : false;
+            return c ? currentFace(c).types.includes(type) : false;
           });
 
         /*

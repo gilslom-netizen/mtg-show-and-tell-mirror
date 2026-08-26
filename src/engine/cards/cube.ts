@@ -1,4 +1,5 @@
 import { frontFace } from '../oracle.js';
+import { currentFace } from '../state.js';
 import type { CardScript, Ctx, Eff } from '../script-types.js';
 import type { PlayerId, TargetRef } from '../types.js';
 
@@ -105,7 +106,7 @@ export const eternalWitness: CardScript = {
         if (!t || t.kind !== 'card') return;
         const card = ctx.card(t.iid);
         if (!card || card.zone !== 'graveyard') return;
-        ctx.log(`returns ${frontFace(card.oracleId).name} to hand`);
+        ctx.log(`returns ${currentFace(card).name} to hand`);
         yield* ctx.moveTo(t.iid, 'hand');
       },
     },

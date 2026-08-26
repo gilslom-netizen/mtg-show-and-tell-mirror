@@ -1,5 +1,4 @@
-import { frontFace } from '../oracle.js';
-import { battlefield, isType, manaValueOfCard } from '../state.js';
+import { battlefield, currentFace, isType, manaValueOfCard } from '../state.js';
 import type { CardScript, Ctx, Eff } from '../script-types.js';
 import type { CardInstance, GameState, IID, PlayerId, TargetRef } from '../types.js';
 
@@ -62,13 +61,13 @@ function* revealAndDiscard(
   });
   if (picked.length === 0) return;
   const card = ctx.card(picked[0]);
-  ctx.log(`${victim} discards ${card ? frontFace(card.oracleId).name : 'a card'}`);
+  ctx.log(`${victim} discards ${card ? currentFace(card).name : 'a card'}`);
   yield* ctx.moveTo(picked[0], 'graveyard');
 }
 
-const nonland = (c: CardInstance) => !frontFace(c.oracleId).types.includes('Land');
+const nonland = (c: CardInstance) => !currentFace(c).types.includes('Land');
 const noncreatureNonland = (c: CardInstance) => {
-  const t = frontFace(c.oracleId).types;
+  const t = currentFace(c).types;
   return !t.includes('Land') && !t.includes('Creature');
 };
 
@@ -117,9 +116,9 @@ export const swordsToPlowshares: CardScript = {
     const c = ctx.card(t.iid);
     if (!c || c.zone !== 'battlefield') return;
     // Life equal to its power, to its controller — not to you.
-    const power = Number(frontFace(c.oracleId).power ?? '0') + (c.counters['+1/+1'] ?? 0);
+    const power = Number(currentFace(c).power ?? '0') + (c.counters['+1/+1'] ?? 0);
     const owner = c.controller;
-    ctx.log(`exiles ${frontFace(c.oracleId).name}`);
+    ctx.log(`exiles ${currentFace(c).name}`);
     yield* ctx.moveTo(t.iid, 'exile');
     if (power > 0) ctx.gainLife(owner, power);
   },
@@ -134,7 +133,7 @@ export const abruptDecay: CardScript = {
       candidates: (state) =>
         permanents(
           state,
-          (c) => !frontFace(c.oracleId).types.includes('Land') && manaValueOfCard(c) <= 3,
+          (c) => !currentFace(c).types.includes('Land') && manaValueOfCard(c) <= 3,
         ),
     },
   ],
@@ -305,7 +304,7 @@ export const surgicalExtraction: CardScript = {
         (['p1', 'p2'] as PlayerId[]).flatMap((p) =>
           state.zones[p].graveyard
             .map((iid) => state.cards[iid])
-            .filter((c) => c && !frontFace(c.oracleId).supertypes.includes('Basic'))
+            .filter((c) => c && !currentFace(c).supertypes.includes('Basic'))
             .map((c): TargetRef => ({ kind: 'card', iid: c.iid, zone: 'graveyard' })),
         ),
     },
@@ -316,8 +315,8 @@ export const surgicalExtraction: CardScript = {
     const card = ctx.card(t.iid);
     if (!card) return;
     const owner = card.owner;
-    const name = frontFace(card.oracleId).name;
-    const same = (c: CardInstance) => frontFace(c.oracleId).name === name;
+    const name = currentFace(card).name;
+    const same = (c: CardInstance) => currentFace(c).name === name;
 
     const found: IID[] = [
       ...ctx.graveyard(owner).filter(same),
@@ -340,7 +339,7 @@ export const reanimate: CardScript = {
         (['p1', 'p2'] as PlayerId[]).flatMap((p) =>
           state.zones[p].graveyard
             .map((iid) => state.cards[iid])
-            .filter((c) => c && frontFace(c.oracleId).types.includes('Creature'))
+            .filter((c) => c && currentFace(c).types.includes('Creature'))
             .map((c): TargetRef => ({ kind: 'card', iid: c.iid, zone: 'graveyard' })),
         ),
     },
@@ -391,7 +390,7 @@ export const growthSpiral: CardScript = {
 
 /** Shared by Growth Spiral and Uro: an extra land, straight from hand. */
 export function* playALandFromHand(ctx: Ctx, prompt: string): Eff {
-  const lands = ctx.hand(ctx.controller).filter((c) => frontFace(c.oracleId).types.includes('Land'));
+  const lands = ctx.hand(ctx.controller).filter((c) => currentFace(c).types.includes('Land'));
   if (lands.length === 0) return;
   const picked = yield* ctx.chooseCards({
     player: ctx.controller,
@@ -487,11 +486,11 @@ export const strongholdGambit: CardScript = {
       .filter((x): x is { p: PlayerId; iid: IID } => x.iid !== null);
     for (const { p, iid } of revealed) {
       const c = ctx.card(iid);
-      ctx.log(`${p} reveals ${c ? frontFace(c.oracleId).name : 'a card'}`);
+      ctx.log(`${p} reveals ${c ? currentFace(c).name : 'a card'}`);
     }
     const creatures = revealed.filter(({ iid }) => {
       const c = ctx.card(iid);
-      return c && frontFace(c.oracleId).types.includes('Creature');
+      return c && currentFace(c).types.includes('Creature');
     });
     if (creatures.length === 0) return;
     const lowest = Math.min(

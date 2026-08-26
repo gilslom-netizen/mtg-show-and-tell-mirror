@@ -63,6 +63,13 @@ export class Seat {
     return iids;
   }
 
+  /** As `conjure`, but the card starts in the graveyard. */
+  conjureIntoGraveyard(...names: string[]): IID[] {
+    const iids = this.conjure(...names);
+    for (const iid of iids) moveCardRaw(this.t.game.state, iid, 'graveyard');
+    return iids;
+  }
+
   /** Move these cards from library to hand. */
   hand(...names: string[]): IID[] {
     const iids = this.take(names);

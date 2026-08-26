@@ -724,3 +724,39 @@ describe('against the ladder', () => {
     60_000,
   );
 });
+
+describe('a prompt that permits nothing', () => {
+  /**
+   * Gitaxian Probe shows you their hand through a chooseCards with min and max
+   * both zero: the cards are there to be read, and Confirm is the only answer.
+   *
+   * The agent answered it with every card in the hand. `slice(-max)` reads as
+   * "the last max of them" until max is zero, when `slice(-0)` is `slice(0)` and
+   * hands back the whole list — so the engine rejected the answer and the game
+   * died on the spot. Any game in which the AI cast Probe, which is most of them
+   * once Probe is drafted.
+   */
+  it('is answered by looking, not by picking', () => {
+    const t = testGame();
+    t.p1.conjure('Gitaxian Probe');
+    t.p1.manaBase(1);
+    t.p2.hand('Brainstorm', 'Show and Tell', 'Omniscience');
+    t.begin();
+
+    t.p1.cast('Gitaxian Probe');
+    t.targetPlayer('p2'); // "look at target player's hand"
+    t.resolveStack();
+
+    const choice = choiceFor(t, 'p1');
+    expect(choice.kind).toBe('chooseCards');
+    if (choice.kind !== 'chooseCards') return;
+    expect(choice.max).toBe(0);
+    // Their hand is genuinely on show — the prompt has options, it just takes none.
+    expect(choice.options.length).toBeGreaterThan(0);
+
+    const response = agent.respond(redact(t.state, 'p1'), choice, 50);
+    expect(response).toEqual({ kind: 'cards', iids: [] });
+    // And the engine accepts it, which is the half that used to end the game.
+    expect(() => t.game.submitChoice('p1', choice.id, response)).not.toThrow();
+  });
+});

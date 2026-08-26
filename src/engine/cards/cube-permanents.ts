@@ -1,5 +1,4 @@
-import { frontFace } from '../oracle.js';
-import { isType } from '../state.js';
+import { currentFace, isType } from '../state.js';
 import type { CardScript, Eff } from '../script-types.js';
 import type { CardInstance, GameState, PlayerId, TargetRef } from '../types.js';
 import { lookAtFourTakeOne, manifestDread } from './cube-creatures.js';
@@ -45,7 +44,7 @@ export const utopiaSprawl: CardScript = {
         (c) =>
           c.controller === controller &&
           isType(c, 'Land') &&
-          frontFace(c.oracleId).subtypes.includes('Forest'),
+          currentFace(c).subtypes.includes('Forest'),
       ),
   },
   *asEnters(ctx) {
@@ -81,7 +80,7 @@ export const animateDead: CardScript = {
             (['p1', 'p2'] as PlayerId[]).flatMap((p) =>
               state.zones[p].graveyard
                 .map((iid) => state.cards[iid])
-                .filter((c) => c && frontFace(c.oracleId).types.includes('Creature'))
+                .filter((c) => c && currentFace(c).types.includes('Creature'))
                 .map((c): TargetRef => ({ kind: 'card', iid: c.iid, zone: 'graveyard' })),
             ),
         },
@@ -125,7 +124,7 @@ export const drownedSecrets: CardScript = {
       trigger: (ev, self, state) => {
         if (ev.t !== 'spellCast' || ev.controller !== self.controller) return false;
         const spell = state.cards[ev.iid];
-        return Boolean(spell) && frontFace(spell.oracleId).colors.includes('U');
+        return Boolean(spell) && currentFace(spell).colors.includes('U');
       },
       targets: [{ prompt: 'Target player mills two cards', candidates: players }],
       *resolve(ctx) {
@@ -146,7 +145,7 @@ export const upTheBeanstalk: CardScript = {
         if (ev.t === 'entersBattlefield' && ev.iid === self.iid) return true;
         if (ev.t !== 'spellCast' || ev.controller !== self.controller) return false;
         const spell = state.cards[ev.iid];
-        return Boolean(spell) && frontFace(spell.oracleId).mv >= 5;
+        return Boolean(spell) && currentFace(spell).mv >= 5;
       },
       *resolve(ctx) {
         ctx.draw(ctx.controller, 1);
@@ -188,7 +187,7 @@ export const mysticRemora: CardScript = {
       trigger: (ev, self, state) => {
         if (ev.t !== 'spellCast' || ev.controller === self.controller) return false;
         const spell = state.cards[ev.iid];
-        return Boolean(spell) && !frontFace(spell.oracleId).types.includes('Creature');
+        return Boolean(spell) && !currentFace(spell).types.includes('Creature');
       },
       *resolve(ctx) {
         const paid = yield* ctx.payOrDecline(
@@ -231,7 +230,7 @@ export const throughTheBreach: CardScript = {
 function* sneakACreatureIn(ctx: Parameters<NonNullable<CardScript['resolve']>>[0]): Eff {
   const creatures = ctx
     .hand(ctx.controller)
-    .filter((c) => frontFace(c.oracleId).types.includes('Creature'));
+    .filter((c) => currentFace(c).types.includes('Creature'));
   if (creatures.length === 0) {
     ctx.log('no creature in hand');
     return;
@@ -255,7 +254,7 @@ function* sneakACreatureIn(ctx: Parameters<NonNullable<CardScript['resolve']>>[0
   // The bill: it leaves at the beginning of the next end step, whoever's it is.
   ctx.sacrificeAtNextEndStep(ctx.controller, picked[0]);
   const c = ctx.card(picked[0]);
-  ctx.log(`sneaks ${c ? frontFace(c.oracleId).name : 'a creature'} in with haste`);
+  ctx.log(`sneaks ${c ? currentFace(c).name : 'a creature'} in with haste`);
 }
 
 /**
@@ -285,7 +284,7 @@ export const ashioksErasure: CardScript = {
         if (!t || t.kind !== 'spell') return;
         const spell = ctx.card(t.iid);
         if (!spell || spell.zone !== 'stack') return;
-        const name = frontFace(spell.oracleId).name;
+        const name = currentFace(spell).name;
         ctx.log(`exiles ${name} — opponents cannot cast that name`);
         yield* ctx.moveTo(t.iid, 'exile');
         ctx.addEffect({
@@ -307,7 +306,7 @@ export const ashioksErasure: CardScript = {
         if (!Number.isFinite(exiled)) return;
         const card = ctx.card(exiled);
         if (card && card.zone === 'exile') {
-          ctx.log(`returns ${frontFace(card.oracleId).name} to its owner's hand`);
+          ctx.log(`returns ${currentFace(card).name} to its owner's hand`);
           yield* ctx.moveTo(exiled, 'hand');
         }
       },
@@ -337,7 +336,7 @@ export const glacierwoodSiege: CardScript = {
       card.namedChoice === 'Sultai'
         ? state.zones[card.controller].graveyard.filter((iid) => {
             const c = state.cards[iid];
-            return Boolean(c) && frontFace(c.oracleId).types.includes('Land');
+            return Boolean(c) && currentFace(c).types.includes('Land');
           })
         : [],
   },
@@ -350,7 +349,7 @@ export const glacierwoodSiege: CardScript = {
         if (ev.t !== 'spellCast' || ev.controller !== self.controller) return false;
         const spell = state.cards[ev.iid];
         if (!spell) return false;
-        const t = frontFace(spell.oracleId).types;
+        const t = currentFace(spell).types;
         return t.includes('Instant') || t.includes('Sorcery');
       },
       targets: [{ prompt: 'Target player mills four cards', candidates: players }],
@@ -380,7 +379,7 @@ export const foundingTheThirdPath: CardScript = {
         if (chapter === 1) {
           // I — cast a cheap instant or sorcery from hand for free.
           const legal = ctx.hand(ctx.controller).filter((c) => {
-            const f = frontFace(c.oracleId);
+            const f = currentFace(c);
             const t = f.types;
             return (t.includes('Instant') || t.includes('Sorcery')) && f.mv >= 1 && f.mv <= 2;
           });
@@ -405,7 +404,7 @@ export const foundingTheThirdPath: CardScript = {
         }
         // III — exile an instant or sorcery from your graveyard and copy it.
         const gy = ctx.graveyard(ctx.controller).filter((c) => {
-          const t = frontFace(c.oracleId).types;
+          const t = currentFace(c).types;
           return t.includes('Instant') || t.includes('Sorcery');
         });
         if (gy.length === 0) return;
@@ -428,7 +427,7 @@ export const foundingTheThirdPath: CardScript = {
           expires: 'endOfTurn',
         });
         const c = ctx.card(picked[0]);
-        ctx.log(`may cast a copy of ${c ? frontFace(c.oracleId).name : 'it'}`);
+        ctx.log(`may cast a copy of ${c ? currentFace(c).name : 'it'}`);
       },
     },
   ],

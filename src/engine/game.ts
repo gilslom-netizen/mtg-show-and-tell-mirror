@@ -1004,7 +1004,8 @@ export class Game {
       const options = script.modes.options.map((m, index) => ({
         index,
         text: m.text,
-        enabled: m.enabled ? m.enabled(s, player, card) : true,
+        // Same question the cast-legality check asked, so the two cannot drift.
+        enabled: modeUsable(s, player, card, m),
       }));
       const picked = yield* this.chooseModeInternal({
         player,
@@ -2410,20 +2411,7 @@ export class Game {
   // -------------------------------------------------------------------------
 
   manaSources(player: PlayerId, excludeIid?: IID): ManaSource[] {
-    const s = this.state;
-    const out: ManaSource[] = [];
-    for (const c of battlefield(s, player)) {
-      if (c.tapped || c.iid === excludeIid) continue;
-      const produces = producedManaOf(c);
-      if (produces.length === 0) continue;
-      out.push({
-        iid: c.iid,
-        produces,
-        // Keep Mistrise Village free while its uncounterable ability is unused.
-        reserved: c.oracleId === 'mistrise_village' && !hasUnusedShieldConsumed(s, player),
-      });
-    }
-    return out;
+    return untappedManaSources(this.state, player, excludeIid);
   }
 
   private executePayment(
@@ -2923,7 +2911,18 @@ function hasUnusedShieldConsumed(s: GameState, player: PlayerId): boolean {
   );
 }
 
-export function producedManaOf(card: CardInstance, state?: GameState): ManaKind[] {
+/**
+ * What this permanent can add to a pool right now.
+ *
+ * `state` is required, and that is the whole point. It used to be optional, and
+ * two of the three callers left it out — including the one that pays for a
+ * spell. Chrome Mox looks up its imprinted card in the state, so without it the
+ * Mox produced nothing: the game *offered* "Cast Narset", took the intent, found
+ * it could not pay after all, and put the card back with no message and no mana
+ * spent. The AI re-cast it forever and a drafted game hung on turn seven; a
+ * human would have clicked a card that simply refused to do anything.
+ */
+export function producedManaOf(card: CardInstance, state: GameState): ManaKind[] {
   if (card.isToken) return [];
   /*
    * Chrome Mox: "add one mana of any of the exiled card's colors". With nothing
@@ -2934,7 +2933,7 @@ export function producedManaOf(card: CardInstance, state?: GameState): ManaKind[
     (a) => a.kind === 'mana' && a.fromImprint,
   );
   if (imprintAbility) {
-    if (card.imprinted === undefined || !state) return [];
+    if (card.imprinted === undefined) return [];
     const exiled = state.cards[card.imprinted];
     if (!exiled) return [];
     return frontFace(exiled.oracleId).colors as ManaKind[];
@@ -3138,7 +3137,7 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
      */
     const targetsOkFor = (kicked: boolean): boolean =>
       !script?.targets ||
-      hasAllRequiredTargets(state, script.targets, player, { ...c, kicked: kicked || undefined });
+      hasAllRequiredTargets(state, script.targets, player, { ...c, kicked: kicked || undefined }, true);
     const plainTargetsOk = targetsOkFor(false);
     const kickedTargetsOk = script?.kicker ? targetsOkFor(true) : false;
     if (!plainTargetsOk && !kickedTargetsOk) continue;
@@ -3148,10 +3147,7 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
      * when every mode works would make it uncastable most of the time.
      */
     if (script?.modes) {
-      const anyMode = script.modes.options.some((m) => {
-        if (m.enabled && !m.enabled(state, player, c)) return false;
-        return !m.targets || hasAllRequiredTargets(state, m.targets, player, c);
-      });
+      const anyMode = script.modes.options.some((m) => modeUsable(state, player, c, m, true));
       if (!anyMode) continue;
     }
 
@@ -3291,7 +3287,7 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
   // spend it on later in the step; the auto-tapper covers the normal case.
   for (const c of battlefield(state, player)) {
     if (c.tapped) continue;
-    for (const kind of producedManaOf(c)) {
+    for (const kind of producedManaOf(c, state)) {
       out.push({
         intent: { t: 'tapForMana', iid: c.iid, kind },
         label: `Tap ${cardName(c)} for {${kind}}`,
@@ -3303,17 +3299,56 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
   return out;
 }
 
+/**
+ * Whether a mode can actually be chosen right now.
+ *
+ * Its own `enabled` line and its targets, asked as one question — because they
+ * have to agree and once did not. Casting checked both, so Pyroblast was offered
+ * whenever *either* mode worked; the mode prompt then checked only `enabled`, so
+ * it offered "counter target spell" with an empty stack. Targeting found nothing,
+ * the whole cast rewound to hand, and the AI simply cast it again: a real drafted
+ * game hung on turn two, 12,000 decisions deep. A human would have watched the
+ * card snap back with the mana unspent and no explanation.
+ */
+function modeUsable(
+  state: GameState,
+  player: PlayerId,
+  self: CardInstance,
+  m: { enabled?: (s: GameState, c: PlayerId, self: CardInstance) => boolean; targets?: TargetDef[] },
+  asSpellOnStack = false,
+): boolean {
+  if (m.enabled && !m.enabled(state, player, self)) return false;
+  return !m.targets || hasAllRequiredTargets(state, m.targets, player, self, asSpellOnStack);
+}
+
 function hasAllRequiredTargets(
   state: GameState,
   defs: TargetDef[],
   player: PlayerId,
   self: CardInstance,
+  /**
+   * Set while judging a *cast*, where the card has not moved yet but will have.
+   *
+   * CR 601.2c — targets are chosen with the spell already on the stack, so it has
+   * left the zone it was cast from and cannot be a target there. Auroral
+   * Procession returns a card from your graveyard, and Lier lets you cast it out
+   * of your graveyard: counting itself made the cast look legal, and it rewound
+   * the instant targeting found the graveyard empty. The game offered the cast,
+   * accepted it, and did nothing — forever, in one drafted game out of 150.
+   *
+   * Only for casts. An activated ability is judged where its source already is,
+   * and a permanent targeting itself is ordinary.
+   */
+  asSpellOnStack = false,
 ): boolean {
   for (const def of defs) {
     if (def.optional) continue;
     const candidates = def
       .candidates(state, player, self)
-      .filter((t) => targetExists(state, t) && !isProtectedFrom(state, t, self.iid, player));
+      .filter((t) => targetExists(state, t) && !isProtectedFrom(state, t, self.iid, player))
+      // A spell may still be targeted as a spell — Narset's Reversal copying
+      // itself is legal — so only the other zones drop it.
+      .filter((t) => !asSpellOnStack || t.kind === 'spell' || !('iid' in t) || t.iid !== self.iid);
     if (candidates.length === 0) return false;
   }
   return true;
@@ -3347,15 +3382,32 @@ export function spellsUncounterableBy(state: GameState): CardInstance[] {
   );
 }
 
-export function untappedManaSources(state: GameState, player: PlayerId): ManaSource[] {
+/**
+ * The sources that could pay for something right now.
+ *
+ * Used both to decide what to offer and to pay for what was chosen — one
+ * function, because when there were two they drifted: the offer counted an
+ * imprinted Chrome Mox and the payment did not, so a castable spell was not
+ * castable.
+ */
+export function untappedManaSources(
+  state: GameState,
+  player: PlayerId,
+  excludeIid?: IID,
+): ManaSource[] {
   const out: ManaSource[] = [];
   for (const c of battlefield(state, player)) {
-    if (c.tapped) continue;
+    if (c.tapped || c.iid === excludeIid) continue;
     // producedManaOf already answers CR 302.6 — a summoning-sick mana creature
     // reports no mana at all, so nothing here needs to ask again.
     const produces = producedManaOf(c, state);
     if (produces.length === 0) continue;
-    out.push({ iid: c.iid, produces });
+    out.push({
+      iid: c.iid,
+      produces,
+      // Keep Mistrise Village free while its uncounterable ability is unused.
+      reserved: c.oracleId === 'mistrise_village' && !hasUnusedShieldConsumed(state, player),
+    });
   }
   return out;
 }

@@ -1,5 +1,4 @@
-import { frontFace } from '../oracle.js';
-import { isType, manaValueOfCard } from '../state.js';
+import { currentFace, isType, manaValueOfCard } from '../state.js';
 import type { CardScript, Ctx, Eff } from '../script-types.js';
 import type { CardInstance, GameState, PlayerId, TargetRef } from '../types.js';
 import { playALandFromHand } from './interaction-cube.js';
@@ -14,7 +13,7 @@ function typesInGraveyard(state: GameState, player: PlayerId): number {
   for (const iid of state.zones[player].graveyard) {
     const c = state.cards[iid];
     if (!c) continue;
-    for (const t of frontFace(c.oracleId).types) {
+    for (const t of currentFace(c).types) {
       if ((CARD_TYPES as readonly string[]).includes(t)) seen.add(t);
     }
   }
@@ -37,7 +36,7 @@ export const chromeMox: CardScript = {
         const legal = ctx
           .hand(ctx.controller)
           .filter((c) => {
-            const t = frontFace(c.oracleId).types;
+            const t = currentFace(c).types;
             return !t.includes('Artifact') && !t.includes('Land');
           });
         if (legal.length === 0) return;
@@ -57,7 +56,7 @@ export const chromeMox: CardScript = {
         if (!card) return;
         // The colours live on the Mox: producedMana is derived from this.
         ctx.setImprint(ctx.self.iid, picked[0]);
-        ctx.log(`imprints ${frontFace(card.oracleId).name}`);
+        ctx.log(`imprints ${currentFace(card).name}`);
         yield* ctx.moveTo(picked[0], 'exile');
       },
     },
@@ -85,7 +84,7 @@ export const deathriteShaman: CardScript = {
             (['p1', 'p2'] as PlayerId[]).flatMap((p) =>
               state.zones[p].graveyard
                 .map((iid) => state.cards[iid])
-                .filter((c) => c && frontFace(c.oracleId).types.includes('Land'))
+                .filter((c) => c && currentFace(c).types.includes('Land'))
                 .map((c): TargetRef => ({ kind: 'card', iid: c.iid, zone: 'graveyard' })),
             ),
         },
@@ -110,7 +109,7 @@ export const deathriteShaman: CardScript = {
               state.zones[p].graveyard
                 .map((iid) => state.cards[iid])
                 .filter((c) => {
-                  const types = c ? frontFace(c.oracleId).types : [];
+                  const types = c ? currentFace(c).types : [];
                   return types.includes('Instant') || types.includes('Sorcery');
                 })
                 .map((c): TargetRef => ({ kind: 'card', iid: c.iid, zone: 'graveyard' })),
@@ -134,7 +133,7 @@ export const deathriteShaman: CardScript = {
             (['p1', 'p2'] as PlayerId[]).flatMap((p) =>
               state.zones[p].graveyard
                 .map((iid) => state.cards[iid])
-                .filter((c) => c && frontFace(c.oracleId).types.includes('Creature'))
+                .filter((c) => c && currentFace(c).types.includes('Creature'))
                 .map((c): TargetRef => ({ kind: 'card', iid: c.iid, zone: 'graveyard' })),
             ),
         },
@@ -171,7 +170,7 @@ export const dragonsRageChanneler: CardScript = {
         if (ev.t !== 'spellCast') return false;
         if (ev.controller !== self.controller) return false;
         const spell = state.cards[ev.iid];
-        return Boolean(spell) && !frontFace(spell.oracleId).types.includes('Creature');
+        return Boolean(spell) && !currentFace(spell).types.includes('Creature');
       },
       *resolve(ctx) {
         yield* ctx.surveil(ctx.controller, 1);
@@ -238,7 +237,7 @@ export const snapcasterMage: CardScript = {
             state.zones[controller].graveyard
               .map((iid) => state.cards[iid])
               .filter((c) => {
-                const t = c ? frontFace(c.oracleId).types : [];
+                const t = c ? currentFace(c).types : [];
                 return t.includes('Instant') || t.includes('Sorcery');
               })
               .map((c): TargetRef => ({ kind: 'card', iid: c.iid, zone: 'graveyard' })),
@@ -256,7 +255,7 @@ export const snapcasterMage: CardScript = {
           expires: 'endOfTurn',
         });
         const c = ctx.card(t.iid);
-        ctx.log(`${c ? frontFace(c.oracleId).name : 'a card'} gains flashback until end of turn`);
+        ctx.log(`${c ? currentFace(c).name : 'a card'} gains flashback until end of turn`);
         yield* nothing();
       },
     },
@@ -277,7 +276,7 @@ export const lier: CardScript = {
       for (const iid of state.zones[card.controller].graveyard) {
         const c = state.cards[iid];
         if (!c) continue;
-        const t = frontFace(c.oracleId).types;
+        const t = currentFace(c).types;
         if (t.includes('Instant') || t.includes('Sorcery')) out.push(iid);
       }
       return out;
@@ -294,7 +293,7 @@ export const glarb: CardScript = {
       if (top === undefined) return [];
       const c = state.cards[top];
       if (!c) return [];
-      const face = frontFace(c.oracleId);
+      const face = currentFace(c);
       return face.types.includes('Land') || face.mv >= 4 ? [top] : [];
     },
   },
@@ -373,7 +372,7 @@ export function* lookAtFourTakeOne(ctx: Ctx): Eff {
   const eligible = top.filter((iid) => {
     const c = ctx.card(iid);
     if (!c) return false;
-    const t = frontFace(c.oracleId).types;
+    const t = currentFace(c).types;
     return !t.includes('Creature') && !t.includes('Land');
   });
   if (eligible.length > 0) {
@@ -390,7 +389,7 @@ export function* lookAtFourTakeOne(ctx: Ctx): Eff {
     });
     if (picked.length > 0) {
       const c = ctx.card(picked[0]);
-      ctx.log(`reveals ${c ? frontFace(c.oracleId).name : 'a card'} and takes it`);
+      ctx.log(`reveals ${c ? currentFace(c).name : 'a card'} and takes it`);
       yield* ctx.moveTo(picked[0], 'hand');
       ctx.bottomInRandomOrder(top.filter((i) => i !== picked[0]));
       return;

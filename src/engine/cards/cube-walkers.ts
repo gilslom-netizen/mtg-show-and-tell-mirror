@@ -1,4 +1,4 @@
-import { frontFace } from '../oracle.js';
+import { currentFace } from '../state.js';
 import type { CardScript, Eff } from '../script-types.js';
 import type { CardInstance, GameState, PlayerId, TargetRef } from '../types.js';
 import { lookAtFourTakeOne } from './cube-creatures.js';
@@ -20,7 +20,7 @@ const players = (): TargetRef[] => [
 function creatures(state: GameState): TargetRef[] {
   return [...state.zones.p1.battlefield, ...state.zones.p2.battlefield]
     .map((iid) => state.cards[iid])
-    .filter((c): c is CardInstance => Boolean(c) && frontFace(c.oracleId).types.includes('Creature'))
+    .filter((c): c is CardInstance => Boolean(c) && currentFace(c).types.includes('Creature'))
     .map((c): TargetRef => ({ kind: 'permanent', iid: c.iid }));
 }
 
@@ -119,7 +119,7 @@ export const ralCracklingWit: CardScript = {
       trigger: (ev, self, state) => {
         if (ev.t !== 'spellCast' || ev.controller !== self.controller) return false;
         const spell = state.cards[ev.iid];
-        return Boolean(spell) && !frontFace(spell.oracleId).types.includes('Creature');
+        return Boolean(spell) && !currentFace(spell).types.includes('Creature');
       },
       *resolve(ctx) {
         ctx.addCounters(ctx.self.iid, 'loyalty', 1);
@@ -197,14 +197,14 @@ export const tamiyoCollectorOfTales: CardScript = {
         // useful set is what could actually be in the library, which is what a
         // player naming a card is choosing between anyway.
         const names = [
-          ...new Set(ctx.library(ctx.controller).map((c) => frontFace(c.oracleId).name)),
+          ...new Set(ctx.library(ctx.controller).map((c) => currentFace(c).name)),
         ].sort();
         const chosen = yield* ctx.chooseName(ctx.controller, names, 'Choose a nonland card name');
         if (!chosen) return;
         const top = ctx.library(ctx.controller).slice(0, 4);
         ctx.log(`names ${chosen} and reveals four`);
         for (const c of top) {
-          const match = frontFace(c.oracleId).name === chosen;
+          const match = currentFace(c).name === chosen;
           yield* ctx.moveTo(c.iid, match ? 'hand' : 'graveyard');
         }
       },
@@ -285,7 +285,7 @@ export const tamiyoInquisitiveStudent: CardScript = {
             state.zones[controller].graveyard
               .map((iid) => state.cards[iid])
               .filter((c) => {
-                const t = c ? frontFace(c.oracleId).types : [];
+                const t = c ? currentFace(c).types : [];
                 return t.includes('Instant') || t.includes('Sorcery');
               })
               .map((c): TargetRef => ({ kind: 'card', iid: c.iid, zone: 'graveyard' })),

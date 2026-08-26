@@ -1,4 +1,5 @@
-import { frontFace, oracle } from '../oracle.js';
+import { oracle } from '../oracle.js';
+import { currentFace } from '../state.js';
 import type { CardScript } from '../script-types.js';
 import type { CardInstance, IID, PlayerId } from '../types.js';
 
@@ -9,7 +10,7 @@ import type { CardInstance, IID, PlayerId } from '../types.js';
 const SHOW_AND_TELL_TYPES = ['Artifact', 'Creature', 'Enchantment', 'Land'] as const;
 
 function showAndTellLegality(card: CardInstance): string | undefined {
-  const f = frontFace(card.oracleId);
+  const f = currentFace(card);
   if (SHOW_AND_TELL_TYPES.some((t) => f.types.includes(t))) return undefined;
 
   const full = oracle(card.oracleId);
