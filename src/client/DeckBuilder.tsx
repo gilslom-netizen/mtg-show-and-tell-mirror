@@ -245,9 +245,18 @@ export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
     return m;
   }, [pool]);
 
+  /*
+   * Game two starts from the deck you just played, not from the shared sixty.
+   *
+   * Sideboarding is adjusting a list, and resetting to the mirror between games
+   * threw away every drafted card the moment the second game began — you had to
+   * rebuild the whole thing from scratch, and it was easy not to notice until
+   * you were already playing. The mirror is still one button away.
+   */
+  const lastDeck = useStore((s) => s.lastDeck);
   const [deck, setDeck] = useState<Map<OracleId, number>>(() => {
     const m = new Map<OracleId, number>();
-    for (const e of pool?.base ?? []) m.set(e.oracleId, e.count);
+    for (const e of lastDeck ?? pool?.base ?? []) m.set(e.oracleId, e.count);
     return m;
   });
 

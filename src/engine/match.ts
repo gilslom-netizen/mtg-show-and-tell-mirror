@@ -1,6 +1,10 @@
 import type { Game } from './game.js';
 import type { PlayerId } from './types.js';
 
+function otherPlayer(p: PlayerId): PlayerId {
+  return p === 'p1' ? 'p2' : 'p1';
+}
+
 /**
  * Best-of-three bookkeeping, shared by the local and the online path so both
  * behave identically.
@@ -44,10 +48,28 @@ export interface MatchState {
    * Absent on rooms stored before this field existed.
    */
   lastRecordedGameId?: string | null;
+  /**
+   * A standing offer to play two more games, and who made it.
+   *
+   * The offer lives on the match rather than in either client because the other
+   * player has to see it — and because a match that has been extended is a fact
+   * about the series, not about whoever happened to click first.
+   */
+  extendOfferFrom?: PlayerId | null;
 }
 
-/** The series lengths this format offers. */
+/** The series lengths a room can be *opened* at. */
 export const SERIES_LENGTHS = [1, 3, 5] as const;
+
+/**
+ * A series can be extended past the lengths you can open one at.
+ *
+ * Two more games at a time, for as long as both players keep agreeing: 3 -> 5 ->
+ * 7 -> 9 and onwards. The cap is not a rule about Magic, it is a guard against a
+ * number that has stopped meaning anything - and it is high enough that nobody
+ * playing a real evening will meet it.
+ */
+export const MAX_SERIES_LENGTH = 99;
 
 /**
  * The one place a series length is validated.
@@ -57,7 +79,33 @@ export const SERIES_LENGTHS = [1, 3, 5] as const;
  * best of three rather than something the rest of the code has no rule for.
  */
 export function seriesLength(bestOf: number | undefined): number {
-  return SERIES_LENGTHS.includes(bestOf as (typeof SERIES_LENGTHS)[number]) ? bestOf! : 3;
+  if (SERIES_LENGTHS.includes(bestOf as (typeof SERIES_LENGTHS)[number])) return bestOf!;
+  /*
+   * Extensions are accepted too: any odd number up to the cap is a series
+   * somebody agreed to, and refusing to load a room because it reached best of
+   * eleven would be a strange way to reward a good evening.
+   */
+  if (
+    typeof bestOf === 'number' &&
+    Number.isInteger(bestOf) &&
+    bestOf >= 1 &&
+    bestOf <= MAX_SERIES_LENGTH &&
+    bestOf % 2 === 1
+  ) {
+    return bestOf;
+  }
+  return 3;
+}
+
+/**
+ * Whether this series could be extended by two more games right now.
+ *
+ * Only a decided match can be: extending one still in progress would move the
+ * finish line mid-race, and "best of five" while somebody is 2-0 up means
+ * something quite different from what it meant when the match started.
+ */
+export function canExtend(state: MatchState): boolean {
+  return state.matchWinner !== null && state.bestOf + 2 <= MAX_SERIES_LENGTH;
 }
 
 export function newMatchState(onPlay: PlayerId, bestOf = 3): MatchState {
@@ -128,6 +176,41 @@ export class MatchTracker {
 
   isOver(): boolean {
     return this.state.matchWinner !== null;
+  }
+
+  /** Offer two more games. Only the end of a decided match is a place to ask. */
+  offerExtend(player: PlayerId): boolean {
+    if (!canExtend(this.state)) return false;
+    if (this.state.extendOfferFrom) return false;
+    this.state.extendOfferFrom = player;
+    return true;
+  }
+
+  /**
+   * Answer the standing offer. Accepting lengthens the series by two and hands
+   * the next game's play/draw choice to whoever just lost - the same rule as
+   * between any two games, so an extension is not a fresh start with the winner
+   * on the play.
+   */
+  answerExtend(player: PlayerId, accept: boolean): boolean {
+    const offer = this.state.extendOfferFrom;
+    if (!offer || offer === player) return false;
+    this.state.extendOfferFrom = null;
+    if (!accept) return false;
+    if (!canExtend(this.state)) return false;
+
+    this.state.bestOf += 2;
+    this.state.matchWinner = null;
+    const last = this.state.history[this.state.history.length - 1];
+    this.state.awaitingFirstChoiceFrom = last ? last.loser : otherPlayer(player);
+    return true;
+  }
+
+  /** Withdraw an offer nobody has answered. */
+  cancelExtend(player: PlayerId): boolean {
+    if (this.state.extendOfferFrom !== player) return false;
+    this.state.extendOfferFrom = null;
+    return true;
   }
 }
 

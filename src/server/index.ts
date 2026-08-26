@@ -30,6 +30,8 @@ type ClientMsg =
   | { t: 'choice'; choiceId: string; response: ChoiceResponse }
   | { t: 'cancel' }
   | { t: 'chooseFirst'; onPlay: PlayerId }
+  | { t: 'offerExtend' }
+  | { t: 'answerExtend'; accept: boolean }
   | { t: 'rematch' };
 
 type LoggedAction =
@@ -343,6 +345,25 @@ wss.on('connection', (socket) => {
             }
           }
           break;
+        case 'offerExtend': {
+          room.match.offerExtend(seat);
+          break;
+        }
+        case 'answerExtend': {
+          const before = room.match.state.bestOf;
+          room.match.answerExtend(seat, msg.accept);
+          /*
+           * An accepted extension starts a game, so it needs everything a new
+           * game needs: a fresh shuffle and an empty log. The play/draw choice
+           * is already pending on the loser, exactly as between any two games.
+           */
+          if (room.match.state.bestOf > before) {
+            room.seed = Math.floor(Math.random() * 2 ** 31);
+            room.game = newGame(room.seed, room.startingPlayer);
+            room.log = [];
+          }
+          break;
+        }
         case 'chooseFirst': {
           // Only the loser of the previous game gets to make this call.
           const chosen = room.match.chooseFirst(seat, msg.onPlay);

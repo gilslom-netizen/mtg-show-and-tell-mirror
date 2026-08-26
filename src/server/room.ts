@@ -28,6 +28,14 @@ export interface Snapshot {
   draft?: DraftView;
   /** Present while deckbuilding: what this seat may put in a deck. */
   pool?: { base: DeckEntry[]; drafted: DeckEntry[]; lands: DeckEntry[] };
+  /**
+   * The list this seat locked in last time, if there was one.
+   *
+   * Sideboarding between games of a series means adjusting the deck you just
+   * played, not building it again from the shared sixty — starting from the
+   * mirror threw away every drafted card the moment game two began.
+   */
+  lastDeck?: DeckEntry[];
   /** Who has locked in a deck for the game about to start. */
   deckReady?: PlayerId[];
   version: number;
@@ -37,6 +45,24 @@ export interface Snapshot {
   events: GameEvent[];
   players: { seat: PlayerId; name: string }[];
   ready: boolean;
+  /**
+   * The whole game, once it is over: seed, who was on the play, every action.
+   *
+   * Sent only when there is a winner, and that timing is the whole point.
+   * During the game a player sees a redacted view and must not see more; when
+   * it is finished there is nothing left to protect, and the log replays into
+   * every hidden card and every decision both players made. That is what lets a
+   * client keep an online game as completely as a local one.
+   */
+  finished?: {
+    gameId: string;
+    seed: number;
+    startingPlayer: PlayerId;
+    winner: PlayerId | 'draw';
+    reason: string | null;
+    turns: number;
+    actions: LoggedAction[];
+  };
 }
 
 export function normaliseCode(raw: string): string {
@@ -257,6 +283,7 @@ export async function snapshot(
     return {
       ...base,
       pool: { base: mainDeck, drafted, lands },
+      lastDeck: meta.decks?.[seat],
       deckReady: meta.ready ?? [],
     };
   }
@@ -280,6 +307,20 @@ export async function snapshot(
     match: meta.match,
     events: opts.events ? redactEvents(game.state, seat, opts.events) : [],
     ...lobby,
+    // Only once it is over — see Snapshot.finished.
+    ...(game.state.winner !== null && game.state.winner !== 'draw'
+      ? {
+          finished: {
+            gameId: game.state.gameId,
+            seed: meta.seed,
+            startingPlayer: meta.startingPlayer,
+            winner: game.state.winner,
+            reason: game.state.endReason,
+            turns: game.state.turn,
+            actions: log.filter((a) => a.k === 'intent' || a.k === 'choice'),
+          },
+        }
+      : {}),
   };
 }
 
@@ -288,6 +329,9 @@ export type RoomAction =
   | { t: 'choice'; choiceId: string; response: ChoiceResponse }
   | { t: 'cancel' }
   | { t: 'chooseFirst'; onPlay: PlayerId }
+  /** Two more games, please. The other seat answers. */
+  | { t: 'offerExtend' }
+  | { t: 'answerExtend'; accept: boolean }
   /** Draft: a bid (zero withdraws) or the cards kept from a won pile. */
   | { t: 'draft'; action: DraftAction }
   /** Deckbuilding: this seat's finished list. */
@@ -406,6 +450,40 @@ export async function applyAction(
       return { ok: true, events: [] };
     }
 
+    case 'offerExtend': {
+      const tracker = trackerFor(meta, game);
+      if (!tracker.offerExtend(seat)) {
+        return { ok: false, error: 'There is nothing to extend right now' };
+      }
+      meta.match = tracker.state;
+      meta.rev++;
+      await store.setMeta(code, meta);
+      return { ok: true, events: [] };
+    }
+    case 'answerExtend': {
+      const tracker = trackerFor(meta, game);
+      const before = tracker.state.bestOf;
+      if (!tracker.answerExtend(seat, action.accept) && action.accept) {
+        return { ok: false, error: 'There is no offer to accept' };
+      }
+      meta.match = tracker.state;
+      /*
+       * An accepted extension starts a new game, so it needs everything a new
+       * game needs: a fresh shuffle, and — in a drafted room — both players back
+       * in the builder to sideboard. The play/draw choice is already pending on
+       * the loser, exactly as it would be between any two games.
+       */
+      if (tracker.state.bestOf > before) {
+        meta.seed = Math.floor(Math.random() * 2 ** 31);
+        if (meta.format === 'draft') {
+          meta.phase = 'build';
+          meta.ready = [];
+        }
+      }
+      meta.rev++;
+      await store.setMeta(code, meta);
+      return { ok: true, events: [] };
+    }
     case 'chooseFirst': {
       const tracker = trackerFor(meta, game);
       const chosen = tracker.chooseFirst(seat, action.onPlay);

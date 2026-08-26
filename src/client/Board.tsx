@@ -66,7 +66,6 @@ export function Board({ viewer }: { viewer: PlayerId }) {
             <OpponentHand view={view} seat={opponent} />
             <ZoneRow view={view} viewer={viewer} seat={opponent} kind="nonland" />
             <ZoneRow view={view} viewer={viewer} seat={opponent} kind="land" />
-            <Yards view={view} viewer={viewer} seat={opponent} />
           </div>
 
           {/* The line between the two boards is also the handle that moves it. */}
@@ -86,7 +85,6 @@ export function Board({ viewer }: { viewer: PlayerId }) {
           </Splitter>
 
           <div className="half mine" ref={mineRef}>
-            <Yards view={view} viewer={viewer} seat={viewer} />
             <ZoneRow view={view} viewer={viewer} seat={viewer} kind="land" />
             <ZoneRow view={view} viewer={viewer} seat={viewer} kind="nonland" />
             <PlayerBar view={view} seat={viewer} viewer={viewer} />
@@ -239,51 +237,6 @@ function ActionMenu({
           <button onClick={onClose}>Cancel</button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function Yards({ view, viewer, seat }: { view: PlayerView; viewer: PlayerId; seat: PlayerId }) {
-  const [open, setOpen] = useState<'graveyard' | 'exile' | null>(null);
-  const gy = view.graveyard[seat];
-  const ex = view.exile[seat];
-  /*
-   * Always on screen, even at zero. This used to return null for an empty
-   * graveyard - so for the whole early game the button did not exist, and a
-   * playtester asked for "a way to click the yard and see what is in there"
-   * about a feature that was already built. A feature that only appears once
-   * you have needed it is a feature nobody discovers.
-   */
-
-  return (
-    <div className="row" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-      {/* The graveyard button is always here, at zero too — see above. Exile is
-          rarer and genuinely uninteresting while empty, so it still waits. */}
-      <button className="chip" disabled={gy.length === 0} onClick={() => setOpen('graveyard')}>
-        Graveyard {gy.length}
-      </button>
-      {ex.length > 0 && (
-        <button className="chip" onClick={() => setOpen('exile')}>
-          Exile {ex.length}
-        </button>
-      )}
-      {open && (
-        <div className="overlay" onClick={() => setOpen(null)}>
-          <div className="dialog" onClick={(e) => e.stopPropagation()}>
-            <h2>
-              {seat === viewer ? 'Your' : "Opponent's"} {open}
-            </h2>
-            <div className="card-grid">
-              {(open === 'graveyard' ? gy : ex).map((iid) => (
-                <CardFace key={iid} card={view.cards[iid] ?? null} viewer={viewer} size="small" />
-              ))}
-            </div>
-            <div className="actions">
-              <button onClick={() => setOpen(null)}>Close</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

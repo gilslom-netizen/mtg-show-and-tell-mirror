@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { frontFace, oracle } from '@engine/oracle';
 import type { PlayerView } from '@engine/redact';
 import { MANA_KINDS } from '@engine/mana';
 import type { ManaKind, ManaPool, PlayerId, Step } from '@engine/types';
+import { CardFace } from './CardView';
 import { useStore } from './store';
 
 /** Small, shared pieces of chrome. */
@@ -45,6 +46,69 @@ export function ManaWidget({ pool, floating }: { pool: ManaPool; floating: boole
   );
 }
 
+/**
+ * The graveyard, opened from the number that says how big it is.
+ *
+ * There used to be a separate "Graveyard N" chip somewhere else on the board,
+ * which a playtester never found — he asked for a way to click the yard and see
+ * what was in it, about a feature that existed. The count *is* the button now:
+ * the thing you were already looking at is the thing you click.
+ */
+function YardStat({
+  view,
+  seat,
+  viewer,
+}: {
+  view: PlayerView;
+  seat: PlayerId;
+  viewer: PlayerId;
+}) {
+  const [open, setOpen] = useState(false);
+  const gy = view.graveyard[seat];
+  const ex = view.exile[seat];
+  return (
+    <>
+      <button
+        className="stat as-button"
+        disabled={gy.length === 0 && ex.length === 0}
+        title={gy.length === 0 ? 'Nothing in the graveyard yet' : 'Look through the graveyard'}
+        onClick={() => setOpen(true)}
+      >
+        <b>{view.players[seat].graveyardCount}</b> yard
+      </button>
+      {open && (
+        <div className="overlay" onClick={() => setOpen(false)}>
+          <div className="dialog" onClick={(e) => e.stopPropagation()}>
+            <h2>{seat === viewer ? 'Your graveyard' : "Opponent's graveyard"}</h2>
+            {gy.length === 0 ? (
+              <div className="prompt">Nothing there yet.</div>
+            ) : (
+              <div className="card-grid">
+                {gy.map((iid) => (
+                  <CardFace key={iid} card={view.cards[iid] ?? null} viewer={viewer} size="small" />
+                ))}
+              </div>
+            )}
+            {ex.length > 0 && (
+              <>
+                <h2 style={{ marginTop: 12 }}>Exile</h2>
+                <div className="card-grid">
+                  {ex.map((iid) => (
+                    <CardFace key={iid} card={view.cards[iid] ?? null} viewer={viewer} size="small" />
+                  ))}
+                </div>
+              </>
+            )}
+            <div className="actions">
+              <button onClick={() => setOpen(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function PlayerBar({
   view,
   seat,
@@ -75,9 +139,7 @@ export function PlayerBar({
       <span className="stat">
         <b>{p.libraryCount}</b> library
       </span>
-      <span className="stat">
-        <b>{p.graveyardCount}</b> yard
-      </span>
+      <YardStat view={view} seat={seat} viewer={viewer} />
       {p.spellsCastThisTurnCount > 0 && (
         <span className="chip" title="Spells cast this turn — Hullbreaker Horror counts these">
           {p.spellsCastThisTurnCount} cast

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { MANA_KINDS } from '@engine/mana';
-import { summarise, type MatchState } from '@engine/match';
+import { canExtend, summarise, type MatchState } from '@engine/match';
 import { SCENARIOS, type ScenarioSpec } from '@engine/scenario';
 import type { PlayerId } from '@engine/types';
 import { Board } from './Board';
@@ -23,6 +23,7 @@ import {
 import { MAX_REPEATS, describePattern, detectPattern } from './repeat';
 import { SettingsPanel, HelpPanel } from './panels';
 import { inviteLink, normaliseRoomCode, randomRoomCode, roomFromUrl } from './room-code';
+import { forgetRoom, howLongAgo, rememberedRooms, type RememberedRoom } from './rooms';
 import { canAct, useStore } from './store';
 import { PhaseTrack } from './ui';
 import { DraftScreen } from './Draft';
@@ -147,6 +148,52 @@ function CopyButton({ value, label }: { value: string; label: string }) {
  * Shown wherever a player might otherwise wait forever for an opponent who is
  * technically in the same room, on a different instance of it.
  */
+/**
+ * Games waiting for you to come back.
+ *
+ * Everything about resuming already worked — the server keeps a room for three
+ * days, a game rebuilds from its log, and a seat token in this browser puts you
+ * back in your own chair. What was missing was any way to *find* the room again:
+ * close the tab without the invite link and the match was gone as far as you
+ * were concerned, even though it was sitting there the whole time.
+ */
+function ResumeList({ onResume }: { onResume: (code: string) => void }) {
+  const [rooms, setRooms] = useState<RememberedRoom[]>(() => rememberedRooms());
+  if (rooms.length === 0) return null;
+
+  const drop = (code: string) => {
+    forgetRoom(code);
+    setRooms(rememberedRooms());
+  };
+
+  return (
+    <div className="resume-list">
+      <h3>Pick up where you left off</h3>
+      {rooms.map((r) => (
+        <div className="resume-row" key={r.code}>
+          <button className="resume-open" onClick={() => onResume(r.code)}>
+            <b>{r.code}</b>
+            <span className="resume-meta">
+              {r.opponent ? `vs ${r.opponent} · ` : ''}
+              {r.wins ? `${r.wins.mine}–${r.wins.theirs}` : 'not started'}
+              {r.bestOf ? ` of ${r.bestOf}` : ''}
+              {r.done ? ' · finished' : r.phase === 'draft' ? ' · drafting' : r.phase === 'build' ? ' · building' : ''}
+              {` · ${howLongAgo(r.at)}`}
+            </span>
+          </button>
+          <button className="resume-forget" title="Forget this room" onClick={() => drop(r.code)}>
+            ×
+          </button>
+        </div>
+      ))}
+      <p className="lobby-note">
+        Rooms are kept for three days. Both of you can close everything and come
+        back to the same board.
+      </p>
+    </div>
+  );
+}
+
 function NoStoreWarning() {
   return (
     <p
@@ -248,8 +295,8 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
     attach(conn as Connection, 'p1');
   };
 
-  const startOnline = () => {
-    const code = normaliseRoomCode(room) || randomRoomCode();
+  const startOnline = (override?: string) => {
+    const code = normaliseRoomCode(override ?? room) || randomRoomCode();
     // Format and length only take effect for whoever opens the room; the second
     // player joins into whatever is already set up there.
     const conn = online?.http
@@ -369,7 +416,7 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
             <button
               className="primary is-cta"
               data-testid="play-online"
-              onClick={startOnline}
+              onClick={() => startOnline()}
               disabled={online === null}
             >
               {unreliable ? 'Play online anyway' : 'Play online'}
@@ -381,6 +428,7 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
               : 'Both players must use the same room code. Start here, then send the invite link from the next screen.'}
           </p>
           {unreliable && <NoStoreWarning />}
+          <ResumeList onResume={(code) => startOnline(code)} />
         </section>
 
         <section className="lobby-section">
@@ -986,6 +1034,20 @@ function GameOver({ viewer }: { viewer: PlayerId }) {
   const forThem = chooser !== null && chooser !== viewer;
   const chooseFirst = (onPlay: PlayerId) => chooser && connection?.chooseFirst(chooser, onPlay);
 
+  /*
+   * Two more games, as many times as both players want them.
+   *
+   * Asked at the end rather than chosen at the start, which is how people
+   * actually decide: "best of five" is usually something you agree to after
+   * three, not before one. Each acceptance adds two — 3, 5, 7, 9 — and the
+   * other player has to say yes, because a longer match is not one player's
+   * decision to make.
+   */
+  const offer = match.extendOfferFrom ?? null;
+  const iOffered = offer === viewer;
+  const theyOffered = offer !== null && offer !== viewer;
+  const canOffer = matchOver && offer === null && canExtend(match);
+
   return (
     <div className="overlay">
       <div className="dialog gameover" style={{ minWidth: 460 }}>
@@ -1034,11 +1096,43 @@ function GameOver({ viewer }: { viewer: PlayerId }) {
         )}
 
         {matchOver ? (
-          <div className="actions" style={{ justifyContent: 'center' }}>
-            <button className="primary" onClick={() => detach()}>
-              Back to the lobby
-            </button>
-          </div>
+          <>
+            {theyOffered && (
+              <div className="prompt">
+                They would like to play on — two more games, making it best of{' '}
+                {match.bestOf + 2}.
+              </div>
+            )}
+            {iOffered && (
+              <div className="prompt">
+                Waiting for them to answer — best of {match.bestOf + 2} if they agree.
+              </div>
+            )}
+            <div className="actions" style={{ justifyContent: 'center' }}>
+              {theyOffered ? (
+                <>
+                  <button onClick={() => connection?.answerExtend(viewer, false)}>
+                    No, we are done
+                  </button>
+                  <button
+                    className="primary"
+                    onClick={() => connection?.answerExtend(viewer, true)}
+                  >
+                    Play two more
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => detach()}>Back to the lobby</button>
+                  {canOffer && !iOffered && (
+                    <button className="primary" onClick={() => connection?.offerExtend(viewer)}>
+                      Play two more (best of {match.bestOf + 2})
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </>
         ) : myChoice ? (
           <>
             <div className="prompt">

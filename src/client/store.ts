@@ -94,6 +94,8 @@ interface StoreState {
   phase: SessionPhase;
   draft: DraftView | null;
   pool: CardPool | null;
+  /** The list this seat locked in last game, to sideboard out of. */
+  lastDeck: DeckEntry[] | null;
   /** Seats that have locked a decklist in for the game about to start. */
   deckReady: PlayerId[];
   /** Whose side of the table we are looking at. */
@@ -259,6 +261,7 @@ export const useStore = create<StoreState>((set, get) => ({
   phase: 'game',
   draft: null,
   pool: null,
+  lastDeck: null,
   deckReady: [],
   viewSeat: 'p1',
   views: { p1: null, p2: null },
@@ -352,6 +355,7 @@ export const useStore = create<StoreState>((set, get) => ({
       phase: conn.phase(),
       draft: conn.draftView(mySeat),
       pool: conn.cardPool(mySeat),
+      lastDeck: conn.lastDeck(),
       deckReady: conn.deckReady(),
       ...(infoChanged ? { connInfo: nextInfo } : {}),
       ...(reveal ? { revealing: reveal } : {}),

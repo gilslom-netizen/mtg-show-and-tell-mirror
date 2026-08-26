@@ -9,6 +9,7 @@ import type { DraftView } from '../draft/redact';
 import type { DraftAction } from '../draft/types';
 import type { Agent } from '../ai/agent';
 import { recordPlayed, type RecordedAction } from './history';
+import { rememberRoom } from './rooms';
 
 /** What the lobby and the waiting screen need to show while nothing is playable yet. */
 export interface ConnectionInfo {
@@ -44,6 +45,9 @@ export interface Connection {
   match(): MatchState | null;
   /** The loser of the previous game picks who is on the play. */
   chooseFirst(seat: PlayerId, onPlay: PlayerId): void;
+  /** Ask the other player for two more games; answer their asking. */
+  offerExtend(seat: PlayerId): void;
+  answerExtend(seat: PlayerId, accept: boolean): void;
   subscribe(cb: () => void): () => void;
   /** Connection state for the lobby and the waiting screen. */
   info(): ConnectionInfo;
@@ -54,6 +58,14 @@ export interface Connection {
   submitDraftAction(seat: PlayerId, action: DraftAction): void;
   /** What this seat may build with, while deckbuilding. */
   cardPool(seat: PlayerId): CardPool | null;
+  /**
+   * The list this seat locked in for the last game, if there was one.
+   *
+   * Sideboarding is adjusting the deck you just played, not rebuilding it from
+   * the shared sixty — the builder used to reset to the mirror between games,
+   * which quietly threw away every drafted card at the start of game two.
+   */
+  lastDeck(): DeckEntry[] | null;
   /** Who has already locked a list in. */
   deckReady(): PlayerId[];
   submitDeck(seat: PlayerId, deck: DeckEntry[]): void;
@@ -97,6 +109,10 @@ abstract class BaseConnection implements Connection {
 
   submitDraftAction(_seat: PlayerId, _action: DraftAction): void {}
 
+  lastDeck(): DeckEntry[] | null {
+    return null;
+  }
+
   cardPool(_seat: PlayerId): CardPool | null {
     return null;
   }
@@ -122,6 +138,8 @@ abstract class BaseConnection implements Connection {
   abstract cancel(seat: PlayerId): boolean;
   abstract match(): MatchState | null;
   abstract chooseFirst(seat: PlayerId, onPlay: PlayerId): void;
+  abstract offerExtend(seat: PlayerId): void;
+  abstract answerExtend(seat: PlayerId, accept: boolean): void;
   dispose(): void {
     this.listeners.clear();
   }
@@ -392,6 +410,26 @@ export class LocalConnection extends BaseConnection {
     return this.tracker?.state ?? null;
   }
 
+  offerExtend(seat: PlayerId): void {
+    if (!this.tracker) return;
+    if (!this.tracker.offerExtend(seat)) return;
+    /*
+     * Solo and against the computer there is nobody to ask, so the offer is
+     * accepted on the spot by the other seat. The handshake still runs — the
+     * rule about who chooses play or draw lives inside it.
+     */
+    if (this.opts.opponent || this.mySeats.length > 1) {
+      this.tracker.answerExtend(seat === 'p1' ? 'p2' : 'p1', true);
+    }
+    this.notify();
+  }
+
+  answerExtend(seat: PlayerId, accept: boolean): void {
+    if (!this.tracker) return;
+    this.tracker.answerExtend(seat, accept);
+    this.notify();
+  }
+
   chooseFirst(seat: PlayerId, onPlay: PlayerId): void {
     if (!this.tracker) return;
     const chosen = this.tracker.chooseFirst(seat, onPlay);
@@ -567,6 +605,8 @@ interface Snapshot {
   draft?: DraftView;
   pool?: CardPool;
   deckReady?: PlayerId[];
+  /** What this seat played last game, to sideboard out of. */
+  lastDeck?: DeckEntry[];
   version: number;
   rev: number;
   view: PlayerView;
@@ -577,6 +617,15 @@ interface Snapshot {
   token?: string;
   error?: string;
   unchanged?: boolean;
+  finished?: {
+    gameId: string;
+    seed: number;
+    startingPlayer: PlayerId;
+    winner: PlayerId | 'draw';
+    reason: string | null;
+    turns: number;
+    actions: RecordedAction[];
+  };
 }
 
 export interface HttpOptions {
@@ -604,8 +653,11 @@ export class HttpConnection extends BaseConnection {
   /** Consecutive polls that found nothing new. Drives the backoff. */
   private quiet = 0;
   private sessionPhase: SessionPhase = 'game';
+  /** Games already written down, so a poll of a finished game cannot save twice. */
+  private savedGameIds = new Set<string>();
   private draft: DraftView | null = null;
   private pool: CardPool | null = null;
+  private lastDeckList: DeckEntry[] | null = null;
   private ready: PlayerId[] = [];
   lobby: { players: { seat: PlayerId; name: string }[]; ready: boolean } = {
     players: [],
@@ -663,6 +715,7 @@ export class HttpConnection extends BaseConnection {
     this.sessionPhase = snap.phase ?? 'game';
     this.draft = snap.draft ?? null;
     this.pool = snap.pool ?? null;
+    this.lastDeckList = snap.lastDeck ?? null;
     this.ready = snap.deckReady ?? [];
     this.currentView = snap.view;
     this.matchState = snap.match;
@@ -670,9 +723,69 @@ export class HttpConnection extends BaseConnection {
     this.rev = snap.rev;
     this.lobby = { players: snap.players ?? [], ready: Boolean(snap.ready) };
     if (snap.events?.length) this.events.push(...snap.events);
+    this.recordIfFinished(snap);
+    this.rememberThisRoom();
     this.error = snap.error ?? null;
     this.status = 'open';
     this.notify();
+  }
+
+  /**
+   * Write down a finished online game.
+   *
+   * Online games were not being kept at all: `recordPlayed` was only ever called
+   * from the local connection, so an evening against a real opponent left
+   * nothing behind — exactly the gap that recording was built to close in the
+   * first place. The server sends the whole log once the game is over, and the
+   * log is the game: replaying it reproduces every hidden card on both sides.
+   *
+   * Guarded by game id rather than a boolean, because a series plays several
+   * games through one connection and every poll of a finished one sees it again.
+   */
+  private recordIfFinished(snap: Snapshot): void {
+    const f = snap.finished;
+    if (!f || this.savedGameIds.has(f.gameId)) return;
+    this.savedGameIds.add(f.gameId);
+    const me = this.seat ?? snap.seat ?? 'p1';
+    const them = this.lobby.players.find((p) => p.seat !== me)?.name;
+    recordPlayed({
+      at: Date.now(),
+      seat: me,
+      opponent: them ? `online: ${them}` : 'online',
+      seed: f.seed,
+      startingPlayer: f.startingPlayer,
+      winner: f.winner,
+      reason: f.reason,
+      turns: f.turns,
+      actions: f.actions,
+    });
+  }
+
+  /**
+   * Leave a trail back to this room.
+   *
+   * Everything needed to resume already survives — the server keeps the room,
+   * the log rebuilds the game, the seat token holds the chair. What was missing
+   * was any way to find the room again once the tab was gone.
+   */
+  private rememberThisRoom(): void {
+    const me = this.seat;
+    if (!me) return;
+    const match = this.matchState;
+    rememberRoom({
+      code: this.opts.room,
+      at: Date.now(),
+      format: this.opts.format ?? 'classic',
+      phase: this.sessionPhase,
+      opponent: this.lobby.players.find((p) => p.seat !== me)?.name,
+      ...(match
+        ? {
+            wins: { mine: match.wins[me], theirs: match.wins[me === 'p1' ? 'p2' : 'p1'] },
+            bestOf: match.bestOf,
+            done: match.matchWinner !== null,
+          }
+        : {}),
+    });
   }
 
   private onVisibility = (): void => {
@@ -799,6 +912,10 @@ export class HttpConnection extends BaseConnection {
     void this.act({ t: 'draft', action });
   }
 
+  lastDeck(): DeckEntry[] | null {
+    return this.lastDeckList;
+  }
+
   cardPool(seat: PlayerId): CardPool | null {
     return this.seat === seat ? this.pool : null;
   }
@@ -840,6 +957,14 @@ export class HttpConnection extends BaseConnection {
 
   match(): MatchState | null {
     return this.matchState;
+  }
+
+  offerExtend(): void {
+    void this.act({ t: 'offerExtend' });
+  }
+
+  answerExtend(_seat: PlayerId, accept: boolean): void {
+    void this.act({ t: 'answerExtend', accept });
   }
 
   chooseFirst(_seat: PlayerId, onPlay: PlayerId): void {
@@ -1041,6 +1166,14 @@ export class RemoteConnection extends BaseConnection {
 
   match(): MatchState | null {
     return this.matchState;
+  }
+
+  offerExtend(): void {
+    this.send({ t: 'offerExtend' });
+  }
+
+  answerExtend(_seat: PlayerId, accept: boolean): void {
+    this.send({ t: 'answerExtend', accept });
   }
 
   chooseFirst(_seat: PlayerId, onPlay: PlayerId): void {

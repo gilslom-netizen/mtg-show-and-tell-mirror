@@ -2320,3 +2320,63 @@ button.primary.is-cta {
   font-size: 22px;
   margin: 0 2px;
 }
+
+/* The yard count is the button that opens it. */
+.stat.as-button {
+  background: none;
+  border: 1px solid transparent;
+  color: inherit;
+  font: inherit;
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.stat.as-button:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--panel-2);
+}
+.stat.as-button:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+/* Rooms waiting to be picked back up. */
+.resume-list {
+  margin-top: 14px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.resume-list h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+.resume-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+  margin-bottom: 6px;
+}
+.resume-open {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  padding: 8px 10px;
+}
+.resume-open b {
+  font-size: 15px;
+  letter-spacing: 0.1em;
+}
+.resume-meta {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.resume-forget {
+  padding: 0 10px;
+  color: var(--text-faint);
+}

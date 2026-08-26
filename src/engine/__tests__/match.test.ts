@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { MatchTracker, newMatchState, seriesLength, summarise } from '../match.js';
+import {
+  MAX_SERIES_LENGTH,
+  MatchTracker,
+  canExtend,
+  newMatchState,
+  seriesLength,
+  summarise,
+} from '../match.js';
 import { testGame } from './harness.js';
 
 /** Best-of-three bookkeeping. */
@@ -73,18 +80,114 @@ describe('match tracker', () => {
 });
 
 describe('series length', () => {
-  it('takes only 1, 3 or 5, and reads anything else as a best of three', () => {
+  it('takes any odd length, and reads anything else as a best of three', () => {
     expect(seriesLength(1)).toBe(1);
     expect(seriesLength(3)).toBe(3);
     expect(seriesLength(5)).toBe(5);
-    // Nothing else has a rule anywhere in the code, so it becomes the default
-    // rather than a series that needs 2 wins out of 4, or 1 out of 0.
+    /*
+     * Seven and up are not offered when a room is opened, but they are real:
+     * a series extended twice is a best of seven, and a room stored at that
+     * length has to load back as one rather than quietly shrinking to three
+     * and declaring somebody the winner of a match they were still playing.
+     */
+    expect(seriesLength(7)).toBe(7);
+    expect(seriesLength(11)).toBe(11);
+    expect(newMatchState('p1', 7).bestOf).toBe(7);
+    expect(new MatchTracker('p1', 9).state.bestOf).toBe(9);
+
+    // An even length has no rule anywhere — 2 wins out of 4 is not a format.
     expect(seriesLength(2)).toBe(3);
     expect(seriesLength(0)).toBe(3);
     expect(seriesLength(4)).toBe(3);
     expect(seriesLength(undefined)).toBe(3);
-    expect(newMatchState('p1', 7).bestOf).toBe(3);
-    expect(new MatchTracker('p1', 7).state.bestOf).toBe(3);
+    // And a number nobody could reach by agreeing twice at a time.
+    expect(seriesLength(1001)).toBe(3);
+  });
+
+  /**
+   * Two more games, agreed at the end rather than chosen at the start.
+   *
+   * "Best of five" is usually something people decide after three, which is why
+   * this exists at all — and why it needs both of them to agree: a longer match
+   * is not the loser's to demand or the winner's to refuse alone.
+   */
+  describe('extending a decided match', () => {
+    function decided(): MatchTracker {
+      const t = new MatchTracker('p1', 3);
+      t.state.wins = { p1: 2, p2: 0 };
+      t.state.history = [
+        { game: 1, winner: 'p1', loser: 'p2', reason: 'x', turns: 5, onPlay: 'p1' },
+        { game: 2, winner: 'p1', loser: 'p2', reason: 'x', turns: 5, onPlay: 'p2' },
+      ];
+      t.state.gameNumber = 2;
+      t.state.matchWinner = 'p1';
+      return t;
+    }
+
+    it('cannot be offered while the match is still live', () => {
+      const t = new MatchTracker('p1', 3);
+      expect(canExtend(t.state)).toBe(false);
+      expect(t.offerExtend('p1')).toBe(false);
+    });
+
+    it('needs the other player to accept, and then adds exactly two games', () => {
+      const t = decided();
+      expect(t.offerExtend('p1')).toBe(true);
+      // The offerer cannot answer their own offer.
+      expect(t.answerExtend('p1', true)).toBe(false);
+      expect(t.answerExtend('p2', true)).toBe(true);
+      expect(t.state.bestOf).toBe(5);
+      expect(t.state.matchWinner).toBeNull();
+      expect(t.isOver()).toBe(false);
+    });
+
+    it('hands the next play-or-draw choice to whoever just lost', () => {
+      const t = decided();
+      t.offerExtend('p1');
+      t.answerExtend('p2', true);
+      // p2 lost game two, so it is p2's choice — an extension is not a fresh
+      // start with the winner on the play.
+      expect(t.state.awaitingFirstChoiceFrom).toBe('p2');
+    });
+
+    it('leaves the match decided when the offer is declined', () => {
+      const t = decided();
+      t.offerExtend('p1');
+      expect(t.answerExtend('p2', false)).toBe(false);
+      expect(t.state.bestOf).toBe(3);
+      expect(t.state.matchWinner).toBe('p1');
+      // The offer is cleared either way, so it cannot be answered twice.
+      expect(t.state.extendOfferFrom ?? null).toBeNull();
+    });
+
+    it('goes on as long as they keep agreeing: 3, 5, 7, 9', () => {
+      const t = decided();
+      const lengths: number[] = [];
+      for (let i = 0; i < 3; i++) {
+        t.offerExtend('p1');
+        t.answerExtend('p2', true);
+        lengths.push(t.state.bestOf);
+        // Play the extension out so there is a decided match to extend again.
+        t.state.wins.p1 += 1;
+        t.state.matchWinner = 'p1';
+        t.state.history.push({
+          game: t.state.history.length + 1,
+          winner: 'p1',
+          loser: 'p2',
+          reason: 'x',
+          turns: 5,
+          onPlay: 'p1',
+        });
+      }
+      expect(lengths).toEqual([5, 7, 9]);
+    });
+
+    it('refuses to run away past the cap', () => {
+      const t = decided();
+      t.state.bestOf = MAX_SERIES_LENGTH;
+      expect(canExtend(t.state)).toBe(false);
+      expect(t.offerExtend('p1')).toBe(false);
+    });
   });
 
   it('best of one is over after one game, with nobody asked to choose', () => {
