@@ -28,6 +28,7 @@ import { omniscience, showAndTell } from './combo.js';
 import { atraxaGrandUnifier, hullbreakerHorror, orcishBowmasters } from './creatures.js';
 import { manaDrain, veilOfSummer } from './interaction.js';
 import { commandeer, forceOfNegation, mindbreakTrap, pactOfNegation } from './free.js';
+import { jacesErasure } from './cube.js';
 
 /**
  * The script registry.
@@ -74,6 +75,8 @@ const ALL: CardScript[] = [
   forceOfNegation,
   mindbreakTrap,
   pactOfNegation,
+  // drafted cube
+  jacesErasure,
 ];
 
 const REGISTRY: Record<OracleId, CardScript> = {};

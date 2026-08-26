@@ -137,8 +137,10 @@ withdraws; the other player raises or withdraws. Whoever is left takes the pile
 and pays their bid — if both withdraw, the pile is gone. The winner keeps two
 cards and throws the other two away.
 
-The cube is 68 cards, which is seventeen whole piles — nothing sits out of a
-draft any more.
+The cube is 68 cards and a draft deals fourteen piles of them, so twelve cards sit
+out — a different twelve every time, decided by the shuffle. That is deliberate:
+deal every pile the cube allows and every draft sees the same cards in a different
+order, where leaving some out makes each draft a different subset.
 
 Right-click any card to hold it open in the reader beside the table, so you can
 weigh a pile up while still looking at the purses and the piles-left count. The

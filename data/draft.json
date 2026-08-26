@@ -3,6 +3,8 @@
   "coinsPerPlayer": 24,
   "pileSize": 4,
   "picksPerPile": 2,
+  "_pilesComment": "How many piles a draft deals, whatever the pool holds. The pool is shuffled first, so the cards left over are a different random handful every time — which is the point: the same sixty-odd cards in a fixed order would make every draft the same draft.",
+  "piles": 14,
   "pool": [
     "Jace, the Perfected Mind",
     "Narset, Parter of Veils",
