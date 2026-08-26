@@ -155,7 +155,7 @@
 | **Mana Drain** | 4 | Instant {U}{U}. מבטל ספל; **בתחילת הפייז הראשי הבא שלך** הוסף {C} כמספר ה־MV שלו | delayed trigger + **LKI** של MV + mana pool שנשפך בסוף הפייז |
 | **Brainstorm** | 4 | Instant {U}. שלוף 3, החזר 2 לראש הספרייה בסדר לבחירתך | 3 אירועי draw נפרדים + סידור ראש ספרייה |
 | **Dig Through Time** | 4 | Instant {6}{U}{U}, **Delve**. הצץ ב־7, 2 ליד, השאר לתחתית בסדר לבחירתך | Delve כהפחתת עלות גנרית + הגליה מבית קברות |
-| **Assemble the Team** | 4 | Sorcery {B}{G}. חפש ב**שליש העליון של הספרייה, מעוגל למעלה**, קלף ליד, ערבב | חיפוש ב**תת־קבוצה מחושבת דינמית** של זונה חבויה |
+| **Ponder** | 4 | Sorcery {U}. הצץ ב־3 העליונים, החזר אותם בסדר לבחירתך; **אתה רשאי לערבב**; שלוף קלף | סידור ראש ספרייה + ערבוב אופציונלי + draw אמיתי (טריגר Bowmasters) |
 | **Rakshasa's Bargain** | 3 | Instant {2/B}{2/G}{2/U} (**MV=6**). הצץ ב־4, 2 ליד, השאר **לבית הקברות** | עלויות היברידיות (2 או צבע) + חישוב MV נכון |
 | **Orcish Bowmasters** | 2 | {1}{B} 1/1 **Flash**. ETB *וגם* בכל פעם שיריב שולף קלף **פרט לראשון בכל draw step שלו** — 1 נזק ל־any target, ואז **Amass Orcs 1** | ספירת draws לפי step, טריגר מרובה, Amass (טוקן Army 0/0 + מוני +1/+1) |
 | **Planar Genesis** | 2 | Instant {G}{U}. הצץ ב־4; רשאי לשים **קרקע לשדה מוטה**; אחרת קלף ליד; השאר לתחתית אקראית | הכנסת קרקע לשדה **בלי land drop** |
@@ -199,8 +199,9 @@ G) Waterlogged Teachings מחפש Hullbreaker Horror / Orcish Bowmasters (יש �
 | **W** | Hallowed Fountain ×1 |
 | **C** | Mana Drain (מושהה) |
 
-`Assemble the Team` דורש **{B}{G}** — כלומר גם שחור וגם ירוק, כששני הצבעים מגיעים מקרקעות
-דו־צבעיות שמייצרות גם כחול. אלגוריתם חמדני יטה את Breeding Pool ל־{U} וייתקע.
+`Atraxa` דורשת **{3}{G}{W}{U}{B}** ו־`Abrupt Decay` מהקיוב דורש **{B}{G}** — בשני המקרים
+הצבעים מגיעים מקרקעות דו־צבעיות שמייצרות גם כחול. אלגוריתם חמדני יטה את Breeding Pool
+ל־{U} וייתקע.
 👉 **חובה matching/backtracking** (§9.3), לא greedy.
 
 ---
@@ -609,11 +610,11 @@ P2P ללא שרת בעתיד, המנגנון הוא **commit–reveal**: כל ש
 | `kind` | משמש ב־ |
 |---|---|
 | `optionalCardFromHand` | Show and Tell |
-| `chooseCards` (count, ordered, min/max) | Brainstorm, Dig Through Time, Atraxa, Rakshasa's Bargain |
-| `searchLibrary` (filter, subset) | Demonic Tutor, Assemble the Team, Waterlogged Teachings, fetchlands |
+| `chooseCards` (count, ordered, min/max) | Brainstorm, Ponder, Dig Through Time, Atraxa, Rakshasa's Bargain |
+| `searchLibrary` (filter, subset) | Demonic Tutor, Waterlogged Teachings, fetchlands |
 | `chooseTargets` | Bowmasters, Mana Drain, Hullbreaker Horror, Mystic Sanctuary |
 | `chooseMode` (up to N) | Hullbreaker Horror |
-| `yesNo` | shocklands (2 חיים), surveil, Planar Genesis |
+| `yesNo` | shocklands (2 חיים), surveil, Planar Genesis, הערבוב של Ponder |
 | `orderTriggers` | טריגרים מרובים |
 | `payMana` | הטלה ידנית |
 | `simultaneousSecretChoice` | **Show and Tell בלבד** |
@@ -697,9 +698,9 @@ export interface ManaPool { W: number; U: number; B: number; R: number; G: numbe
 
 ### 9.3 ה־Auto-Tapper — פותר, לא חמדן
 
-**הבעיה:** `Assemble the Team` = `{B}{G}`. מקורות G: Breeding Pool, Hedge Maze (שניהם גם U).
+**הבעיה:** `Abrupt Decay` מהקיוב = `{B}{G}`. מקורות G: Breeding Pool, Hedge Maze (שניהם גם U).
 מקורות B: Watery Grave, Undercity Sewers (שניהם גם U). אלגוריתם חמדני שיטה Breeding Pool
-ל־U ייתקע.
+ל־U ייתקע. אותה בעיה בדיוק עולה על Atraxa `{3}{G}{W}{U}{B}` מהדק הראשי.
 
 **הפתרון:** מודלים כ־**bipartite matching** עם backtracking. גודל הבעיה זעיר (≤10 קרקעות),
 אז חיפוש ממצה מספיק.
@@ -868,34 +869,39 @@ export const omniscience: CardScript = {
 </details>
 
 <details>
-<summary><b>Assemble the Team</b> — חיפוש בתת־קבוצה דינמית</summary>
+<summary><b>Ponder</b> — סידור ראש הספרייה, ערבוב אופציונלי, ואז שליפה</summary>
 
 ```ts
-export const assembleTheTeam: CardScript = {
-  oracleId: 'assemble_the_team',
-  timing: 'sorcery',
+export const ponder: CardScript = {
+  oracleId: 'ponder',
   *resolve(ctx) {
-    const lib = ctx.library(ctx.controller);
-    const n = Math.ceil(lib.length / 3);           // "top third, rounded up"
-    if (n === 0) return;                            // ספרייה ריקה — כלום, אבל עדיין מערבבים
-    const found = yield* ctx.searchZone({
-      player: ctx.controller,
-      cards: lib.slice(0, n),                       // ← רק השליש העליון
-      count: 1, optional: true,                     // "for a card" — מותר לא למצוא
-      prompt: `חפש בין ${n} הקלפים העליונים`,
-    });
-    if (found) ctx.moveToHand(found);
-    ctx.shuffle(ctx.controller);                    // ← תמיד, גם אם לא נמצא
+    const top = ctx.library(ctx.controller).slice(0, 3).map((c) => c.iid);
+    // קלף אחד = סדר אחד. אין מה לשאול.
+    if (top.length > 1) {
+      const ordered = yield* ctx.chooseCards({
+        player: ctx.controller,
+        cards: top, min: top.length, max: top.length,
+        ordered: true,                                // ← הראשון נשאר בראש
+        prompt: 'Put these back on top of your library',
+        from: 'library',
+      });
+      yield* putOnTopInOrder(ctx, ordered);
+    }
+    // "You may shuffle" — אופציונלי, ונשאל אחרי הסידור: הסידור הוא
+    // הדרך שבה השחקן בכלל רואה מה יש שם לפני שהוא מחליט.
+    if (yield* ctx.yesNo(ctx.controller, 'Shuffle your library?')) {
+      ctx.shuffleLibrary(ctx.controller);
+    }
+    ctx.draw(ctx.controller, 1);                      // ← draw אמיתי: Bowmasters מגיב
   },
 };
 ```
-| גודל ספרייה | שליש עליון |
+
+| מצב | מה נשאל |
 |---|---|
-| 53 | 18 |
-| 40 | 14 |
-| 10 | 4 |
-| 1 | 1 |
-| 0 | 0 |
+| 3+ קלפים בספרייה | סידור 3 → "לערבב?" → שליפה |
+| קלף אחד | "לערבב?" בלבד → שליפה |
+| ספרייה ריקה | "לערבב?" בלבד → שליפה מריקה → הפסד ב־SBA הבא |
 </details>
 
 <details>
@@ -1160,7 +1166,7 @@ Hullbreaker שאתה יכול להטיל עכשיו?" ולעצור **רק** אז
 
 - מתעדכן מ־`Brainstorm`, `Surveil`, `Planar Genesis`, `Dig Through Time` (תחתית),
   `Mystic Sanctuary`, `Atraxa`.
-- **מתאפס אוטומטית** על כל אירוע `shuffle` (fetch, tutor, Assemble the Team).
+- **מתאפס אוטומטית** על כל אירוע `shuffle` (fetch, tutor, הערבוב של Ponder).
 - נשמר גם אחרי reconnect (מאוחסן ב־localStorage לפי `gameId`).
 - **חשוב:** זה **לא** דליפת מידע — זה זיכרון של מה שהשחקן כבר ראה. השרת עדיין לא שולח
   את סדר הספרייה; הלקוח בונה את הרשימה מאירועי החשיפה שהוא קיבל.
@@ -1694,9 +1700,9 @@ nightly:     10k משחקי fuzz + כל ה־E2E + בדיקת עדכון Scryfall
 | 83 ⭐ | `Brainstorm` + fetch באותו תור | 2 הקלפים הרעים מתערבבים פנימה |
 | 84 ⭐ | `Brainstorm` עם 2 קלפים בספרייה | שליפה מריקה → הפסד ב־SBA הבא |
 | 85 | `Brainstorm` — סדר ההחזרה | `chosen[0]` הוא העליון |
-| 86 ⭐ | `Assemble the Team` — ספרייה 53 | חיפוש ב־18 העליונים בדיוק |
-| 87 | `Assemble the Team` — ספרייה 1 | חיפוש ב־1 |
-| 88 | `Assemble the Team` — לא נמצא | חוקי; **עדיין מערבב** |
+| 86 ⭐ | `Ponder` — סידור 3 העליונים | הבחירה הראשונה מסיימת בראש; היא הנשלפת |
+| 87 | `Ponder` — "לערבב?" כן מול לא | מערבב **רק** כשמבקשים; שולף תמיד |
+| 88 | `Ponder` — קלף אחד בספרייה | שלב הסידור נחסך; עדיין שואל ושולף |
 | 89 ⭐ | `Dig Through Time` — delve 6 קלפים | עולה {U}{U} בלבד |
 | 90 | `Dig Through Time` — בית קברות ריק | חייב לשלם {6}{U}{U} מלא |
 | 91 ⭐ | delve מגלה קלפים ש־`Mystic Sanctuary` רצה | הם כבר לא בבית הקברות |
@@ -1720,7 +1726,7 @@ nightly:     10k משחקי fuzz + כל ה־E2E + בדיקת עדכון Scryfall
 | 109 ⭐ | `Waterlogged Teachings` מחפש `Orcish Bowmasters` | **חוקי** — flash |
 | 110 | `Waterlogged Teachings` מחפש `Show and Tell` | **לא חוקי** (sorcery, בלי flash) |
 | 111 | שחקן משחק את הגב `Inundated Archive` | צורך land drop; נכנס מוטה |
-| 112 ⭐ | `Assemble the Team` דורש {B}{G} עם 3 מקורות | ה־solver מוצא; greedy נכשל |
+| 112 ⭐ | `{B}{G}` (Abrupt Decay מהקיוב) עם 3 מקורות | ה־solver מוצא; greedy נכשל |
 
 ### 15.9 חוקי בסיס
 
@@ -1760,11 +1766,11 @@ nightly:     10k משחקי fuzz + כל ה־E2E + בדיקת עדכון Scryfall
 
 ### שלב 3 — מנוע המאנה המלא (3 ימים)
 פרסור עלויות, היברידים, `solvePayment` עם backtracking, delve, עלות חלופית.
-- **קבלה:** בדיקה 112 (Assemble the Team {B}{G}) ירוקה. Property test:
+- **קבלה:** בדיקה 112 ({B}{G} דרך שלוש קרקעות כחולות) ירוקה. Property test:
   1000 מצבי קרקע אקראיים — ה־solver לעולם לא מחזיר `null` כשקיים פתרון (מאומת מול brute force).
 
 ### שלב 4 — הקלפים הפשוטים (3 ימים)
-Brainstorm, Demonic Tutor, Assemble the Team, Dig Through Time, Rakshasa's Bargain,
+Brainstorm, Ponder, Demonic Tutor, Dig Through Time, Rakshasa's Bargain,
 Planar Genesis, Borne Upon a Wind, Waterlogged Teachings.
 - **קבלה:** שכבה 1 (יחידה) ירוקה לכל 8. בדיקות 83–93, 103–110.
 
@@ -1817,7 +1823,7 @@ auto-pass + השהיה אקראית, hold priority, `TriggerPolicy`, מצב Omni
 | 5 | **`Mystic Sanctuary` סופר לפי שם ולא subtype** | 🟠 | בדיקה 95 |
 | 6 | **פרומפטים אינסופיים ב־combo turn** | 🟠 הורג חוויה | `TriggerPolicy` + קריטריון קבלה מדיד בשלב 9 |
 | 7 | **דליפת מידע דרך תזמון auto-pass** | 🟡 | השהיה אקראית קבועה 150–400ms |
-| 8 | **greedy auto-tap נתקע על `Assemble the Team`** | 🟡 | solver + property test מול brute force |
+| 8 | **greedy auto-tap נתקע על עלות דו־צבעית ({B}{G}, Atraxa)** | 🟡 | solver + property test מול brute force |
 | 9 | **`Veil of Summer` נועל hexproof לא נכון** | 🟡 | בדיקה 55 (קבוע חדש לא מוגן) |
 | 9b | **הנחה ש־Veil מבטל את כל האפקט של המבטל** | 🟠 | בדיקה 29 — המאנה של Drain כן מגיעה |
 | 9c | **הוצאת ספל מהסטאק לפני שהוא סיים להיפתר** | 🔴 קלף "נעלם" מכל הזונות | CR 608.2m; נתפס ע"י בדיקת שימור הקלפים ב־fuzz |
@@ -1849,9 +1855,9 @@ auto-pass + השהיה אקראית, hold priority, `TriggerPolicy`, מצב Omni
 
 ספלים (42):
   קומבו:      4 Show and Tell   4 Omniscience   4 Atraxa
-  חיפוש:      4 Assemble the Team   4 Dig Through Time   3 Rakshasa's Bargain
+  חיפוש:      4 Dig Through Time   3 Rakshasa's Bargain
               2 Waterlogged Teachings   1 Demonic Tutor
-  קנטריפ:     4 Brainstorm      1 Borne Upon a Wind
+  קנטריפ:     4 Brainstorm      4 Ponder      1 Borne Upon a Wind
   אינטראקציה: 4 Mana Drain      2 Orcish Bowmasters   2 Veil of Summer
   מאנה/גמיש:  2 Planar Genesis
   איום נוסף:  1 Hullbreaker Horror
@@ -1866,7 +1872,7 @@ Atraxa יכולה לקחת קלף אחד מכל סוג. בדק הזה קיימי
 | Creature | Atraxa, Hullbreaker Horror, Orcish Bowmasters | 1 |
 | Enchantment | Omniscience | 1 |
 | Instant | Brainstorm, Mana Drain, Dig Through Time, Veil of Summer, Borne Upon a Wind, Planar Genesis, Rakshasa's Bargain, Waterlogged Teachings | 1 |
-| Sorcery | Show and Tell, Demonic Tutor, Assemble the Team | 1 |
+| Sorcery | Show and Tell, Demonic Tutor, Ponder | 1 |
 | Land | 18 קרקעות | 1 |
 | Artifact / Planeswalker / Battle | — | 0 |
 

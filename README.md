@@ -168,7 +168,7 @@ silently wrong:
 |---|---|
 | **Show and Tell** | Both players commit in secret; nothing is revealed until both have. The permanents then enter *at the same time*, so both ETB triggers are collected together and ordered APNAP. |
 | **Modal DFCs** | Waterlogged Teachings in hand is an Instant and nothing else (CR 712.8a), so it is **not** a legal Show and Tell choice and Atraxa can only take it as an instant. |
-| **Orcish Bowmasters** | Brainstorm is three separate draws, so three triggers. Dig Through Time, Rakshasa's Bargain, Planar Genesis and Atraxa put cards into hand without drawing them, so none of them trigger it. |
+| **Orcish Bowmasters** | Brainstorm is three separate draws, so three triggers; Ponder and Borne Upon a Wind draw once each, so one apiece. Dig Through Time, Rakshasa's Bargain, Planar Genesis and Atraxa put cards into hand without drawing them, so none of them trigger it. |
 | **Mana Drain** | Adds its mana even when the target could not be countered — only an illegal target stops it. Rakshasa's Bargain is mana value 6, which is a hard Omniscience. |
 | **Veil of Summer** | The hexproof list is locked in on resolution, so later permanents are not protected. It does not stop Hullbreaker Horror bouncing your *spell* off the stack — which is how the mirror gets through it. |
 | **Mystic Sanctuary** | Counts the Island land **type**, and does not see lands entering at the same time. |
@@ -290,11 +290,6 @@ with.
 
 ## Deliberately not built
 
-- **Sideboarding.** The six sideboard cards are outside the implemented card pool, so
-  a swap screen would be a screen that cannot do anything. The best-of-three flow,
-  the play/draw choice and the series statistics are all there; adding the sideboard
-  means implementing Carpet of Flowers, Chrome Mox, Krosan Grip, Mystical Dispute and
-  Thoughtseize (Veil of Summer is already done).
 - **Undo across hidden information.** `Esc` backs out of a half-finished cast. A
   broader undo would need the safe-window rules described in DESIGN.md 11.3.
 - **Replay playback and Lab-mode branching.** The data is all there — the action log

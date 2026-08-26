@@ -5,12 +5,11 @@ import type { PlayerId } from './types.js';
  * Best-of-three bookkeeping, shared by the local and the online path so both
  * behave identically.
  *
- * Sideboarding is deliberately not modelled here. The six sideboard cards are
- * outside the implemented card pool, so offering a swap screen would be a screen
- * that cannot do anything. What is tracked instead is the thing this format is
- * actually about: who was on the play, how long each game took, and how the series
- * is going — the raw material for the "is my meta just a repeating cycle?" question
- * the format's own description raises.
+ * Sideboarding itself is not modelled here — it happens in the deckbuilder between
+ * games, out of the cards a player drafted. What this module tracks is the thing the
+ * format is actually about: who was on the play, how long each game took, and how the
+ * series is going — the raw material for the "is my meta just a repeating cycle?"
+ * question the format's own description raises.
  */
 
 export interface GameResult {

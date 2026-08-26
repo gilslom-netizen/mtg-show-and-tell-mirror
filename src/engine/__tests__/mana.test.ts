@@ -47,8 +47,8 @@ describe('cost parsing', () => {
 
 describe('payment solver', () => {
   it('112. finds {B}{G} through duals that also make blue, where greedy tapping fails', () => {
-    // This is Assemble the Team's real problem: every green source in the deck is
-    // a blue dual and so is every black source.
+    // This is a drafted Abrupt Decay's real problem: every green source in the
+    // manabase is a blue dual, and so is every black source.
     const sources = [
       src(1, 'G', 'U'), // Breeding Pool
       src(2, 'G', 'U'), // Hedge Maze

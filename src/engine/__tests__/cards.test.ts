@@ -269,39 +269,71 @@ describe('Selection and tutors', () => {
     expect(t.state.zones.p1.library[1]).toBe(second);
   });
 
-  it.each([
-    [53, 18],
-    [40, 14],
-    [10, 4],
-    [1, 1],
-  ])('86/87. Assemble the Team searches the top third of %i cards (%i)', (size, expected) => {
+  it('86. Ponder reorders the top three, and the first choice ends up on top', () => {
     const t = testGame();
-    t.p1.hand('Assemble the Team');
-    t.p1.manaBase(2);
-    t.p1.librarySize(size);
+    t.p1.hand('Ponder');
+    t.p1.manaBase(1);
     t.begin();
 
-    t.p1.cast('Assemble the Team');
+    t.p1.cast('Ponder');
     t.resolveStack();
     const c = t.expectChoice();
-    expect(c.kind).toBe('chooseCards');
-    if (c.kind === 'chooseCards') {
-      expect(c.options).toHaveLength(expected);
-      expect(c.prompt).toContain(`top ${expected}`);
-    }
+    if (c.kind !== 'chooseCards') throw new Error('expected chooseCards');
+    expect(c.ordered).toBe(true);
+    expect(c.options).toHaveLength(3);
+    const [a, b, d] = c.options.map((o) => o.iid);
+    t.answer({ kind: 'cards', iids: [d, b, a] });
+    // "You may shuffle" — declining keeps the order that was just chosen, and
+    // the draw then takes the card put on top.
+    t.no();
+    expect(t.state.zones.p1.hand).toContain(d);
+    expect(t.state.zones.p1.library[0]).toBe(b);
+    expect(t.state.zones.p1.library[1]).toBe(a);
   });
 
-  it('88. Assemble the Team shuffles even when nothing is taken', () => {
+  it('87. Ponder shuffles only when asked, and always draws', () => {
+    // auto() answers every yes/no with "no", so this is the decline branch.
+    const declined = testGame();
+    declined.p1.hand('Ponder');
+    declined.p1.manaBase(1);
+    declined.begin();
+    declined.clearEvents();
+    declined.p1.cast('Ponder');
+    declined.resolveStack();
+    declined.auto();
+    expect(declined.countEvents('shuffle')).toBe(0);
+    expect(declined.countEvents('draw')).toBe(1);
+
+    const shuffled = testGame();
+    shuffled.p1.hand('Ponder');
+    shuffled.p1.manaBase(1);
+    shuffled.begin();
+    shuffled.clearEvents();
+    shuffled.p1.cast('Ponder');
+    shuffled.resolveStack();
+    const c = shuffled.expectChoice();
+    if (c.kind !== 'chooseCards') throw new Error('expected chooseCards');
+    shuffled.answer({ kind: 'cards', iids: c.options.map((o) => o.iid) });
+    shuffled.yes();
+    expect(shuffled.countEvents('shuffle')).toBe(1);
+    expect(shuffled.countEvents('draw')).toBe(1);
+  });
+
+  it('88. Ponder still draws with only one card left to look at', () => {
     const t = testGame();
-    t.p1.hand('Assemble the Team');
-    t.p1.manaBase(2);
+    t.p1.hand('Ponder');
+    t.p1.manaBase(1);
+    t.p1.librarySize(1);
     t.begin();
 
-    t.clearEvents();
-    t.p1.cast('Assemble the Team');
+    t.p1.cast('Ponder');
     t.resolveStack();
-    t.chooseNoCards();
-    expect(t.countEvents('shuffle')).toBe(1);
+    // One card has only one order, so the arrange step is skipped entirely and
+    // the "you may shuffle" question comes first.
+    const c = t.expectChoice();
+    expect(c.kind).toBe('yesNo');
+    t.no();
+    expect(t.state.zones.p1.library).toHaveLength(0);
   });
 
   it('89/90. Delve pays the generic part only, and needs the full cost with an empty yard', () => {

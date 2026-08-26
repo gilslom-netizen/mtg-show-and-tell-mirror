@@ -1,6 +1,6 @@
 {
   "source": "scryfall.com/cards/collection",
-  "fetched": "2026-08-23",
+  "fetched": "2026-08-26",
   "cards": [
     {
       "name": "Abhorrent Oculus",
@@ -94,52 +94,52 @@
       },
       "scryfall_uri": "https://scryfall.com/card/mm3/146/abrupt-decay?utm_source=api",
       "oracle_id": "1c747fe2-289e-492a-a846-aa77707e2dc3",
-      "image_uri": "https://cards.scryfall.io/normal/front/a/8/a8e328c6-3a84-49cf-a1a3-1d1e5373d274.jpg?1783936626"
+      "image_uri": "https://cards.scryfall.io/normal/front/8/4/84f71a16-915d-4b8e-8c39-cc46bcaa9de9.jpg?1783911718"
     },
     {
-      "name": "Ashiok, Nightmare Weaver",
-      "mana_cost": "{1}{U}{B}",
-      "cmc": 3,
-      "type_line": "Legendary Planeswalker — Ashiok",
-      "oracle_text": "+2: Exile the top three cards of target opponent's library.\n−X: Put a creature card with mana value X exiled with Ashiok onto the battlefield under your control. That creature is a Nightmare in addition to its other types.\n−10: Exile all cards from all opponents' hands and graveyards.",
+      "name": "Animate Dead",
+      "mana_cost": "{1}{B}",
+      "cmc": 2,
+      "type_line": "Enchantment — Aura",
+      "oracle_text": "Enchant creature card in a graveyard\nWhen this Aura enters, if it's on the battlefield, it loses \"enchant creature card in a graveyard\" and gains \"enchant creature put onto the battlefield with this Aura.\" Return enchanted creature card to the battlefield under your control and attach this Aura to it. When this Aura leaves the battlefield, that creature's controller sacrifices it.\nEnchanted creature gets -1/-0.",
       "colors": [
-        "B",
-        "U"
+        "B"
       ],
       "color_identity": [
-        "B",
-        "U"
+        "B"
       ],
-      "keywords": [],
+      "keywords": [
+        "Enchant"
+      ],
       "layout": "normal",
       "legalities": {
         "standard": "not_legal",
         "future": "not_legal",
-        "historic": "legal",
-        "timeless": "legal",
-        "gladiator": "legal",
-        "pioneer": "legal",
-        "modern": "legal",
+        "historic": "not_legal",
+        "timeless": "not_legal",
+        "gladiator": "not_legal",
+        "pioneer": "not_legal",
+        "modern": "not_legal",
         "legacy": "legal",
         "pauper": "not_legal",
         "vintage": "legal",
-        "penny": "legal",
+        "penny": "not_legal",
         "commander": "legal",
         "oathbreaker": "legal",
         "standardbrawl": "not_legal",
-        "brawl": "legal",
-        "competitivebrawl": "legal",
+        "brawl": "not_legal",
+        "competitivebrawl": "not_legal",
         "alchemy": "not_legal",
         "paupercommander": "not_legal",
         "duel": "legal",
         "oldschool": "not_legal",
-        "premodern": "not_legal",
-        "predh": "not_legal",
+        "premodern": "legal",
+        "predh": "legal",
         "tlr": "legal"
       },
-      "scryfall_uri": "https://scryfall.com/card/ths/188/ashiok-nightmare-weaver?utm_source=api",
-      "oracle_id": "b6f52260-9ad5-4024-acf9-d77f3c08c872",
-      "image_uri": "https://cards.scryfall.io/normal/front/5/9/599c3c9f-dfb7-4357-9d9c-9a1a4616b103.jpg?1783939731"
+      "scryfall_uri": "https://scryfall.com/card/soc/207/animate-dead?utm_source=api",
+      "oracle_id": "c0d8fef4-65f4-4769-982d-b397d2b7e977",
+      "image_uri": "https://cards.scryfall.io/normal/front/1/4/1489943b-c010-488e-9c9d-87f4af67a4e4.jpg?1783913008"
     },
     {
       "name": "Ashiok's Erasure",
@@ -184,52 +184,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/thb/43/ashioks-erasure?utm_source=api",
       "oracle_id": "13cf3ef7-d88e-4cc7-a4d8-cedc671f356a",
-      "image_uri": "https://cards.scryfall.io/normal/front/d/5/d568c679-8421-4184-a73c-b18c4164fea5.jpg?1783931586"
-    },
-    {
-      "name": "Assemble the Team",
-      "mana_cost": "{B}{G}",
-      "cmc": 2,
-      "type_line": "Sorcery",
-      "oracle_text": "Search the top third of your library, rounded up, for a card. Put that card into your hand, then shuffle.",
-      "colors": [
-        "B",
-        "G"
-      ],
-      "color_identity": [
-        "B",
-        "G"
-      ],
-      "keywords": [],
-      "layout": "normal",
-      "legalities": {
-        "standard": "not_legal",
-        "future": "not_legal",
-        "historic": "legal",
-        "timeless": "legal",
-        "gladiator": "legal",
-        "pioneer": "not_legal",
-        "modern": "not_legal",
-        "legacy": "not_legal",
-        "pauper": "not_legal",
-        "vintage": "not_legal",
-        "penny": "not_legal",
-        "commander": "not_legal",
-        "oathbreaker": "not_legal",
-        "standardbrawl": "not_legal",
-        "brawl": "legal",
-        "competitivebrawl": "legal",
-        "alchemy": "not_legal",
-        "paupercommander": "not_legal",
-        "duel": "not_legal",
-        "oldschool": "not_legal",
-        "premodern": "not_legal",
-        "predh": "not_legal",
-        "tlr": "legal"
-      },
-      "scryfall_uri": "https://scryfall.com/card/ybro/17/assemble-the-team?utm_source=api",
-      "oracle_id": "d95997cc-5a80-4551-ad9f-3d6d34b319c5",
-      "image_uri": "https://cards.scryfall.io/normal/front/8/a/8a28c1e8-1969-40bc-a6fb-5494b88eb9ac.jpg?1783918541"
+      "image_uri": "https://cards.scryfall.io/normal/front/4/0/400feef5-363b-4620-8416-af833c55d3bb.jpg?1783931445"
     },
     {
       "name": "Atraxa, Grand Unifier",
@@ -285,7 +240,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/one/196/atraxa-grand-unifier?utm_source=api",
       "oracle_id": "abbcb153-0763-44c6-964f-b4ff0eb64257",
-      "image_uri": "https://cards.scryfall.io/normal/front/4/a/4a1f905f-1d55-4d02-9d24-e58070793d3f.jpg?1783918003"
+      "image_uri": "https://cards.scryfall.io/normal/front/e/5/e51e5d02-d3d0-45e5-a589-1fe25ff5082b.jpg?1783917956"
     },
     {
       "name": "Auroral Procession",
@@ -373,7 +328,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/tdc/173/bitter-triumph?utm_source=api",
       "oracle_id": "776341cb-d2ec-423f-9250-92dc8bd8d503",
-      "image_uri": "https://cards.scryfall.io/normal/front/c/5/c5333556-eea2-41ae-833e-007b9d540700.jpg?1783907094"
+      "image_uri": "https://cards.scryfall.io/normal/front/d/b/db465858-0593-4850-8f1d-400fe230a18d.jpg?1783903925"
     },
     {
       "name": "Bloodchief's Thirst",
@@ -504,7 +459,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/tle/155/brainstorm?utm_source=api",
       "oracle_id": "36cd2364-d113-47d1-b2c4-b088d9eb88dd",
-      "image_uri": "https://cards.scryfall.io/normal/front/b/5/b5545882-6963-4729-b2c6-fb4bdc75ffcc.jpg?1783904806"
+      "image_uri": "https://cards.scryfall.io/normal/front/8/b/8beb987c-1b67-4a4e-ae71-58547afad2a0.jpg?1783909627"
     },
     {
       "name": "Breeding Pool",
@@ -550,7 +505,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/trk/279/breeding-pool?utm_source=api",
       "oracle_id": "20283c4a-f1f0-42f0-bc08-6da87474426b",
-      "image_uri": "https://cards.scryfall.io/normal/front/6/3/63e4dc07-c742-41bd-8301-861637908fd1.jpg?1784036820"
+      "image_uri": "https://cards.scryfall.io/normal/front/b/b/bb54233c-0844-4965-9cde-e8a4ef3e11b8.jpg?1783933618"
     },
     {
       "name": "Cavern of Souls",
@@ -597,7 +552,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/lci/269/cavern-of-souls?utm_source=api",
       "oracle_id": "89ca686a-7c72-4d8f-9290-e89635624a83",
-      "image_uri": "https://cards.scryfall.io/normal/front/3/a/3aad15a2-8a1b-4460-9b06-e85863081878.jpg?1783913719"
+      "image_uri": "https://cards.scryfall.io/normal/front/1/7/17fc8e0f-6dba-40d6-a6f9-3eb505059727.jpg?1783913489"
     },
     {
       "name": "Chrome Mox",
@@ -645,7 +600,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/2xm/240/chrome-mox?utm_source=api",
       "oracle_id": "ec3d4466-547c-4e02-b1b5-a156ec4637e9",
-      "image_uri": "https://cards.scryfall.io/normal/front/f/3/f340cbf7-5bbe-45b9-a4bf-d1caa500ff93.jpg?1783930116"
+      "image_uri": "https://cards.scryfall.io/normal/front/6/a/6a058e68-70af-4a64-859c-c881e5578368.jpg?1783944526"
     },
     {
       "name": "Commandeer",
@@ -688,50 +643,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/cmm/80/commandeer?utm_source=api",
       "oracle_id": "ad7d854b-d303-40eb-acd6-03a8023e05e7",
-      "image_uri": "https://cards.scryfall.io/normal/front/d/c/dca0a9a8-5ebc-43a3-8450-420ab6b7b76e.jpg?1783915704"
-    },
-    {
-      "name": "Cunning Wish",
-      "mana_cost": "{2}{U}",
-      "cmc": 3,
-      "type_line": "Instant",
-      "oracle_text": "You may reveal an instant card you own from outside the game and put it into your hand. Exile Cunning Wish.",
-      "colors": [
-        "U"
-      ],
-      "color_identity": [
-        "U"
-      ],
-      "keywords": [],
-      "layout": "normal",
-      "legalities": {
-        "standard": "not_legal",
-        "future": "not_legal",
-        "historic": "not_legal",
-        "timeless": "not_legal",
-        "gladiator": "not_legal",
-        "pioneer": "not_legal",
-        "modern": "not_legal",
-        "legacy": "legal",
-        "pauper": "not_legal",
-        "vintage": "legal",
-        "penny": "not_legal",
-        "commander": "legal",
-        "oathbreaker": "legal",
-        "standardbrawl": "not_legal",
-        "brawl": "not_legal",
-        "competitivebrawl": "not_legal",
-        "alchemy": "not_legal",
-        "paupercommander": "not_legal",
-        "duel": "legal",
-        "oldschool": "not_legal",
-        "premodern": "legal",
-        "predh": "legal",
-        "tlr": "legal"
-      },
-      "scryfall_uri": "https://scryfall.com/card/jud/37/cunning-wish?utm_source=api",
-      "oracle_id": "bdf80a55-b524-4d17-9be8-a0005403a0e7",
-      "image_uri": "https://cards.scryfall.io/normal/front/c/a/ca097675-5e82-493d-beab-9fc11efd7492.jpg?1783945130"
+      "image_uri": "https://cards.scryfall.io/normal/front/c/3/c3baeb38-d662-4105-911b-1045562150a5.jpg?1783916135"
     },
     {
       "name": "Demonic Tutor",
@@ -774,7 +686,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/cmm/150/demonic-tutor?utm_source=api",
       "oracle_id": "82004860-e589-4e38-8d61-8c0210e4ea39",
-      "image_uri": "https://cards.scryfall.io/normal/front/a/2/a24b4cb6-cebb-428b-8654-74347a6a8d63.jpg?1783915679"
+      "image_uri": "https://cards.scryfall.io/normal/front/3/0/3009ba46-c9f8-46dc-8ffc-2aa4cef7b17c.jpg?1783927435"
     },
     {
       "name": "Dig Through Time",
@@ -819,7 +731,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/soc/195/dig-through-time?utm_source=api",
       "oracle_id": "f8b17b89-26ce-4208-874a-9e1d66514640",
-      "image_uri": "https://cards.scryfall.io/normal/front/0/2/020939d6-72f0-4aa0-9ac2-d16cc896cd7f.jpg?1783903792"
+      "image_uri": "https://cards.scryfall.io/normal/front/5/c/5c18c2d8-995c-4736-bdef-464abcd1d31a.jpg?1783939089"
     },
     {
       "name": "Dovin's Veto",
@@ -1000,54 +912,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/fdn/606/duress?utm_source=api",
       "oracle_id": "33d405ea-7a9a-4970-b70f-9c05d90dd6f0",
-      "image_uri": "https://cards.scryfall.io/normal/front/3/4/34c3a894-ee75-4db9-a69f-711bb3cc150a.jpg?1783908930"
-    },
-    {
-      "name": "Emergent Ultimatum",
-      "mana_cost": "{B}{B}{G}{G}{G}{U}{U}",
-      "cmc": 7,
-      "type_line": "Sorcery",
-      "oracle_text": "Search your library for up to three monocolored cards with different names and exile them. An opponent chooses one of those cards. Shuffle that card into your library. You may cast the other cards without paying their mana costs. Exile Emergent Ultimatum.",
-      "colors": [
-        "B",
-        "G",
-        "U"
-      ],
-      "color_identity": [
-        "B",
-        "G",
-        "U"
-      ],
-      "keywords": [],
-      "layout": "normal",
-      "legalities": {
-        "standard": "not_legal",
-        "future": "not_legal",
-        "historic": "legal",
-        "timeless": "legal",
-        "gladiator": "legal",
-        "pioneer": "legal",
-        "modern": "legal",
-        "legacy": "legal",
-        "pauper": "not_legal",
-        "vintage": "legal",
-        "penny": "legal",
-        "commander": "legal",
-        "oathbreaker": "legal",
-        "standardbrawl": "not_legal",
-        "brawl": "legal",
-        "competitivebrawl": "legal",
-        "alchemy": "not_legal",
-        "paupercommander": "not_legal",
-        "duel": "legal",
-        "oldschool": "not_legal",
-        "premodern": "not_legal",
-        "predh": "not_legal",
-        "tlr": "not_legal"
-      },
-      "scryfall_uri": "https://scryfall.com/card/iko/185/emergent-ultimatum?utm_source=api",
-      "oracle_id": "0eecdfb3-3b05-4051-a660-060ff6df80ef",
-      "image_uri": "https://cards.scryfall.io/normal/front/3/a/3a6a52ab-6d38-4429-9969-90064e615152.jpg?1783931025"
+      "image_uri": "https://cards.scryfall.io/normal/front/e/3/e3845911-37e1-44af-b270-bbcae21bdc61.jpg?1783932219"
     },
     {
       "name": "Eternal Witness",
@@ -1092,7 +957,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/cmm/286/eternal-witness?utm_source=api",
       "oracle_id": "30b24e8e-3b0e-4d8e-90f3-f66eb7c1858c",
-      "image_uri": "https://cards.scryfall.io/normal/front/3/9/39704000-65d3-4d39-849e-a3b617376bbc.jpg?1783915632"
+      "image_uri": "https://cards.scryfall.io/normal/front/d/7/d74e7ded-d063-4d90-a9ff-91c44a8098d7.jpg?1783928707"
     },
     {
       "name": "Expressive Iteration",
@@ -1137,7 +1002,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/msc/183/expressive-iteration?utm_source=api",
       "oracle_id": "c7aecca5-2f67-4245-ab2d-e723d8b23a67",
-      "image_uri": "https://cards.scryfall.io/normal/front/9/6/96f866ec-a163-4095-b088-d93fa0b6f6f7.jpg?1783903226"
+      "image_uri": "https://cards.scryfall.io/normal/front/d/b/db54cb6f-25e0-4d5f-876e-a6aa66042d63.jpg?1783903752"
     },
     {
       "name": "Flooded Strand",
@@ -1221,7 +1086,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/ima/55/flusterstorm?utm_source=api",
       "oracle_id": "86bf58f2-7f25-4e10-b797-25e0e8e67769",
-      "image_uri": "https://cards.scryfall.io/normal/front/f/9/f900eeb7-7c45-44bc-ad3a-0bbe594ecf50.jpg?1783935548"
+      "image_uri": "https://cards.scryfall.io/normal/front/b/a/ba8fa9db-f24f-46d4-add1-71b7f77636e2.jpg?1783903931"
     },
     {
       "name": "Force of Negation",
@@ -1267,23 +1132,22 @@
       "image_uri": "https://cards.scryfall.io/normal/front/1/8/1825a719-1b2a-4af9-9cd2-7cb497cd0317.jpg?1783921916"
     },
     {
-      "name": "Galvanic Iteration",
-      "mana_cost": "{U}{R}",
+      "name": "Founding the Third Path",
+      "mana_cost": "{1}{U}",
       "cmc": 2,
-      "type_line": "Instant",
-      "oracle_text": "When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nFlashback {1}{U}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+      "type_line": "Enchantment — Saga",
+      "oracle_text": "Read ahead (Choose a chapter and start with that many lore counters. Add one after your draw step. Skipped chapters don't trigger. Sacrifice after III.)\nI — You may cast an instant or sorcery spell with mana value 1 or 2 from your hand without paying its mana cost.\nII — Target player mills four cards.\nIII — Exile target instant or sorcery card from your graveyard. Copy it. You may cast the copy.",
       "colors": [
-        "R",
         "U"
       ],
       "color_identity": [
-        "R",
         "U"
       ],
       "keywords": [
-        "Flashback"
+        "Read Ahead",
+        "Mill"
       ],
-      "layout": "normal",
+      "layout": "saga",
       "legalities": {
         "standard": "not_legal",
         "future": "not_legal",
@@ -1295,7 +1159,7 @@
         "legacy": "legal",
         "pauper": "not_legal",
         "vintage": "legal",
-        "penny": "legal",
+        "penny": "not_legal",
         "commander": "legal",
         "oathbreaker": "legal",
         "standardbrawl": "not_legal",
@@ -1309,9 +1173,9 @@
         "predh": "not_legal",
         "tlr": "legal"
       },
-      "scryfall_uri": "https://scryfall.com/card/msc/184/galvanic-iteration?utm_source=api",
-      "oracle_id": "c51ed6e3-813b-49c4-b1de-7f92a77f8f6e",
-      "image_uri": "https://cards.scryfall.io/normal/front/4/e/4e148c83-09d1-4055-b1a6-5c624c67810d.jpg?1783903225"
+      "scryfall_uri": "https://scryfall.com/card/dmu/50/founding-the-third-path?utm_source=api",
+      "oracle_id": "0eff910a-712d-4652-8b3b-9eddf63eb891",
+      "image_uri": "https://cards.scryfall.io/normal/front/2/d/2d841faa-9e0b-45ff-9dfd-f8a169d9af76.jpg?1783921351"
     },
     {
       "name": "Glacierwood Siege",
@@ -1455,7 +1319,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/dsc/88/growth-spiral?utm_source=api",
       "oracle_id": "34bcc217-dd91-45a0-90d7-a94d02f1f317",
-      "image_uri": "https://cards.scryfall.io/normal/front/1/e/1e10e2b4-9639-41ae-8b8e-253224d3d513.jpg?1783909637"
+      "image_uri": "https://cards.scryfall.io/normal/front/a/2/a275b02c-352a-405e-9a9b-5024506cd67c.jpg?1783913849"
     },
     {
       "name": "Hallowed Fountain",
@@ -1501,7 +1365,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/trk/286/hallowed-fountain?utm_source=api",
       "oracle_id": "f1750962-a87c-49f6-b731-02ae971ac6ea",
-      "image_uri": "https://cards.scryfall.io/normal/front/b/7/b7285986-7e08-4969-86ef-452dc5bfdd9f.jpg?1784036830"
+      "image_uri": "https://cards.scryfall.io/normal/front/f/9/f97a6d34-03ab-49f1-b02e-405b733f8843.jpg?1783933617"
     },
     {
       "name": "Hedge Maze",
@@ -1596,52 +1460,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/inr/68/hullbreaker-horror?utm_source=api",
       "oracle_id": "d4a84e78-d9b9-4c67-8a4b-4329e65f0f15",
-      "image_uri": "https://cards.scryfall.io/normal/front/1/3/137acb70-a1fd-4ea9-a5d9-f4b438eb5e82.jpg?1783908162"
-    },
-    {
-      "name": "Invert Polarity",
-      "mana_cost": "{U}{U}{R}",
-      "cmc": 3,
-      "type_line": "Instant",
-      "oracle_text": "Choose target spell, then flip a coin. If you win the flip, gain control of that spell and you may choose new targets for it. If you lose the flip, counter that spell.",
-      "colors": [
-        "R",
-        "U"
-      ],
-      "color_identity": [
-        "R",
-        "U"
-      ],
-      "keywords": [],
-      "layout": "normal",
-      "legalities": {
-        "standard": "not_legal",
-        "future": "not_legal",
-        "historic": "legal",
-        "timeless": "legal",
-        "gladiator": "banned",
-        "pioneer": "not_legal",
-        "modern": "legal",
-        "legacy": "legal",
-        "pauper": "not_legal",
-        "vintage": "legal",
-        "penny": "legal",
-        "commander": "legal",
-        "oathbreaker": "legal",
-        "standardbrawl": "not_legal",
-        "brawl": "legal",
-        "competitivebrawl": "legal",
-        "alchemy": "not_legal",
-        "paupercommander": "not_legal",
-        "duel": "banned",
-        "oldschool": "not_legal",
-        "premodern": "not_legal",
-        "predh": "not_legal",
-        "tlr": "legal"
-      },
-      "scryfall_uri": "https://scryfall.com/card/mh3/190/invert-polarity?utm_source=api",
-      "oracle_id": "69e12b1f-0fd9-43a9-b3db-fe08290442c6",
-      "image_uri": "https://cards.scryfall.io/normal/front/d/c/dcee6a8a-c3a8-43bc-beb9-be30d03ab952.jpg?1783911250"
+      "image_uri": "https://cards.scryfall.io/normal/front/4/b/4b546bcf-2e86-42af-bf32-81c7fd36ef8c.jpg?1783924891"
     },
     {
       "name": "Island",
@@ -1685,7 +1504,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/trk/319/island?utm_source=api",
       "oracle_id": "b2c6aa39-2d2a-459c-a555-fb48ba993373",
-      "image_uri": "https://cards.scryfall.io/normal/front/f/3/f3cc07cd-cc79-4745-b0b7-eade60175cc3.jpg?1785981645"
+      "image_uri": "https://cards.scryfall.io/normal/front/0/e/0e443748-edf1-4499-9507-3649dd57ee95.jpg?1783908843"
     },
     {
       "name": "Jace, the Perfected Mind",
@@ -1776,54 +1595,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/m12/60/jaces-erasure?utm_source=api",
       "oracle_id": "bb7c069b-8d3f-4ba2-874b-8ec575fd6dd4",
-      "image_uri": "https://cards.scryfall.io/normal/front/9/7/970f4f34-f834-41a7-aff1-7cef82cefc74.jpg?1783941092"
-    },
-    {
-      "name": "Kasmina, Enigma Sage",
-      "mana_cost": "{1}{G}{U}",
-      "cmc": 3,
-      "type_line": "Legendary Planeswalker — Kasmina",
-      "oracle_text": "Each other planeswalker you control has the loyalty abilities of Kasmina.\n+2: Scry 1.\n−X: Create a 0/0 green and blue Fractal creature token. Put X +1/+1 counters on it.\n−8: Search your library for an instant or sorcery card that shares a color with this planeswalker, exile that card, then shuffle. You may cast that card without paying its mana cost.",
-      "colors": [
-        "G",
-        "U"
-      ],
-      "color_identity": [
-        "G",
-        "U"
-      ],
-      "keywords": [
-        "Scry"
-      ],
-      "layout": "normal",
-      "legalities": {
-        "standard": "not_legal",
-        "future": "not_legal",
-        "historic": "legal",
-        "timeless": "legal",
-        "gladiator": "legal",
-        "pioneer": "legal",
-        "modern": "legal",
-        "legacy": "legal",
-        "pauper": "not_legal",
-        "vintage": "legal",
-        "penny": "legal",
-        "commander": "legal",
-        "oathbreaker": "legal",
-        "standardbrawl": "not_legal",
-        "brawl": "legal",
-        "competitivebrawl": "legal",
-        "alchemy": "not_legal",
-        "paupercommander": "not_legal",
-        "duel": "legal",
-        "oldschool": "not_legal",
-        "premodern": "not_legal",
-        "predh": "not_legal",
-        "tlr": "legal"
-      },
-      "scryfall_uri": "https://scryfall.com/card/stx/196/kasmina-enigma-sage?utm_source=api",
-      "oracle_id": "06425cb9-d157-4155-a727-78656df12458",
-      "image_uri": "https://cards.scryfall.io/normal/front/1/7/178bf300-38cf-4ab2-9e66-6fcaa112b649.jpg?1783927310"
+      "image_uri": "https://cards.scryfall.io/normal/front/3/6/3662d1cc-1279-409f-9f0a-9c15c3407103.jpg?1783941824"
     },
     {
       "name": "Krosan Grip",
@@ -1868,7 +1640,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/c21/198/krosan-grip?utm_source=api",
       "oracle_id": "3e39224c-72ce-4ecc-aa17-12c071ea1f3e",
-      "image_uri": "https://cards.scryfall.io/normal/front/d/3/d3571dee-7b90-4c0c-abc7-59b515ffa129.jpg?1783927533"
+      "image_uri": "https://cards.scryfall.io/normal/front/f/8/f847439f-a9b6-4a3c-abd1-76d54e0aed99.jpg?1783927424"
     },
     {
       "name": "Lier, Disciple of the Drowned",
@@ -1913,7 +1685,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/tdc/157/lier-disciple-of-the-drowned?utm_source=api",
       "oracle_id": "f224db3d-cdd2-43f2-b625-4b861efa6449",
-      "image_uri": "https://cards.scryfall.io/normal/front/b/8/b8b70585-e0ea-4cb4-9360-a8ab47626696.jpg?1783907103"
+      "image_uri": "https://cards.scryfall.io/normal/front/7/8/78fb8900-d28d-4e33-96a7-66fcbc117adf.jpg?1783925638"
     },
     {
       "name": "Mana Drain",
@@ -1959,52 +1731,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/2x2/57/mana-drain?utm_source=api",
       "oracle_id": "74d3277a-38e5-4732-afed-084a56148f20",
-      "image_uri": "https://cards.scryfall.io/normal/front/3/c/3c429c40-2389-41e5-8681-4bb274e25eba.jpg?1783921913"
-    },
-    {
-      "name": "Memory Deluge",
-      "mana_cost": "{2}{U}{U}",
-      "cmc": 4,
-      "type_line": "Instant",
-      "oracle_text": "Look at the top X cards of your library, where X is the amount of mana spent to cast this spell. Put two of them into your hand and the rest on the bottom of your library in a random order.\nFlashback {5}{U}{U} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
-      "colors": [
-        "U"
-      ],
-      "color_identity": [
-        "U"
-      ],
-      "keywords": [
-        "Flashback"
-      ],
-      "layout": "normal",
-      "legalities": {
-        "standard": "not_legal",
-        "future": "not_legal",
-        "historic": "legal",
-        "timeless": "legal",
-        "gladiator": "legal",
-        "pioneer": "legal",
-        "modern": "legal",
-        "legacy": "legal",
-        "pauper": "not_legal",
-        "vintage": "legal",
-        "penny": "not_legal",
-        "commander": "legal",
-        "oathbreaker": "legal",
-        "standardbrawl": "not_legal",
-        "brawl": "legal",
-        "competitivebrawl": "legal",
-        "alchemy": "not_legal",
-        "paupercommander": "not_legal",
-        "duel": "legal",
-        "oldschool": "not_legal",
-        "premodern": "not_legal",
-        "predh": "not_legal",
-        "tlr": "not_legal"
-      },
-      "scryfall_uri": "https://scryfall.com/card/inr/75/memory-deluge?utm_source=api",
-      "oracle_id": "e6fd55f2-7e26-469c-a44a-ea2eb90e19a9",
-      "image_uri": "https://cards.scryfall.io/normal/front/e/d/edcd3802-ddb3-4eb6-9b6e-a26d76557662.jpg?1783908159"
+      "image_uri": "https://cards.scryfall.io/normal/front/4/c/4c7f0ea5-a142-4157-b85d-ec49dd79adf6.jpg?1783911725"
     },
     {
       "name": "Memory Lapse",
@@ -2047,7 +1774,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/ema/60/memory-lapse?utm_source=api",
       "oracle_id": "bbfb3e4a-b389-4391-8141-13b68c0ef2e0",
-      "image_uri": "https://cards.scryfall.io/normal/front/3/0/30202613-d05f-4f47-af97-d0b75ccac293.jpg?1783937610"
+      "image_uri": "https://cards.scryfall.io/normal/front/9/8/98c1b465-b6d9-491b-bfc2-c034cc825d27.jpg?1783927440"
     },
     {
       "name": "Meticulous Archive",
@@ -2270,7 +1997,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/dmr/59/mystic-remora?utm_source=api",
       "oracle_id": "8a52f3c0-2552-4425-b2e3-5496eb2232a7",
-      "image_uri": "https://cards.scryfall.io/normal/front/4/0/40140991-cffa-4b52-9a25-37e9a8aa9ddd.jpg?1783918491"
+      "image_uri": "https://cards.scryfall.io/normal/front/5/8/58e93dff-b774-4765-b7bd-d3957e42ff4a.jpg?1783947511"
     },
     {
       "name": "Mystic Sanctuary",
@@ -2314,7 +2041,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/soc/388/mystic-sanctuary?utm_source=api",
       "oracle_id": "17b60106-a4c7-410a-8ac3-ec8e74e29a7c",
-      "image_uri": "https://cards.scryfall.io/normal/front/4/c/4cd86997-d7b9-4b5b-9488-11f5c679e4d3.jpg?1783903726"
+      "image_uri": "https://cards.scryfall.io/normal/front/1/7/170e792c-80d5-4775-ad95-37614574ab84.jpg?1783932577"
     },
     {
       "name": "Mystical Dispute",
@@ -2360,51 +2087,6 @@
       "image_uri": "https://cards.scryfall.io/normal/front/f/b/fbe04cb8-a8b9-4241-baae-b398a2509a3a.jpg?1783932655"
     },
     {
-      "name": "Narset Transcendent",
-      "mana_cost": "{2}{W}{U}",
-      "cmc": 4,
-      "type_line": "Legendary Planeswalker — Narset",
-      "oracle_text": "+1: Look at the top card of your library. If it's a noncreature, nonland card, you may reveal it and put it into your hand.\n−2: When you next cast an instant or sorcery spell from your hand this turn, it gains rebound. (Exile the spell as it resolves. At the beginning of your next upkeep, you may cast that card from exile without paying its mana cost.)\n−9: You get an emblem with \"Your opponents can't cast noncreature spells.\"",
-      "colors": [
-        "U",
-        "W"
-      ],
-      "color_identity": [
-        "U",
-        "W"
-      ],
-      "keywords": [],
-      "layout": "normal",
-      "legalities": {
-        "standard": "not_legal",
-        "future": "not_legal",
-        "historic": "legal",
-        "timeless": "legal",
-        "gladiator": "legal",
-        "pioneer": "legal",
-        "modern": "legal",
-        "legacy": "legal",
-        "pauper": "not_legal",
-        "vintage": "legal",
-        "penny": "legal",
-        "commander": "legal",
-        "oathbreaker": "legal",
-        "standardbrawl": "not_legal",
-        "brawl": "legal",
-        "competitivebrawl": "legal",
-        "alchemy": "not_legal",
-        "paupercommander": "not_legal",
-        "duel": "legal",
-        "oldschool": "not_legal",
-        "premodern": "not_legal",
-        "predh": "not_legal",
-        "tlr": "not_legal"
-      },
-      "scryfall_uri": "https://scryfall.com/card/dtk/225/narset-transcendent?utm_source=api",
-      "oracle_id": "e1de0c94-0ecc-425a-9b92-27c2745d07e7",
-      "image_uri": "https://cards.scryfall.io/normal/front/4/8/4816d092-e34b-4397-8599-43d8e85a8f39.jpg?1783938571"
-    },
-    {
       "name": "Narset, Parter of Veils",
       "mana_cost": "{1}{U}{U}",
       "cmc": 3,
@@ -2445,7 +2127,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/cmm/853/narset-parter-of-veils?utm_source=api",
       "oracle_id": "ab26fbe2-e808-48b9-8d0d-3fbb6c3d554f",
-      "image_uri": "https://cards.scryfall.io/normal/front/4/e/4e6e5c63-b6e5-4756-bf23-6c6f8669442d.jpg?1783915440"
+      "image_uri": "https://cards.scryfall.io/normal/front/8/c/8c39f9b4-02b9-4d44-b8d6-4fd02ebbb0c5.jpg?1783933458"
     },
     {
       "name": "Narset's Reversal",
@@ -2488,7 +2170,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/tdc/92/narsets-reversal?utm_source=api",
       "oracle_id": "d55f6c70-321f-4fb4-bd33-0850ae1a7c36",
-      "image_uri": "https://cards.scryfall.io/normal/front/4/e/4ede8d68-6870-445c-b140-da98adbc246a.jpg?1783907140"
+      "image_uri": "https://cards.scryfall.io/normal/front/6/3/63754036-d51e-47bb-925b-564d9dc922ff.jpg?1783933459"
     },
     {
       "name": "Nature's Claim",
@@ -2531,7 +2213,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/ima/177/natures-claim?utm_source=api",
       "oracle_id": "6d4e558e-9109-4918-a082-fdcbaffd516b",
-      "image_uri": "https://cards.scryfall.io/normal/front/d/2/d24b6640-ef2f-4c92-beb3-afdf78f9c2d5.jpg?1783935517"
+      "image_uri": "https://cards.scryfall.io/normal/front/2/1/2144f53e-5f3b-4ee4-8b2a-b7cb22fa14ca.jpg?1783932003"
     },
     {
       "name": "Omniscience",
@@ -2574,50 +2256,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/fdn/161/omniscience?utm_source=api",
       "oracle_id": "730e39e6-c61d-48b5-8827-bfd952bf1be7",
-      "image_uri": "https://cards.scryfall.io/normal/front/d/3/d33d91d0-1506-45e4-9def-975bf901815e.jpg?1783909079"
-    },
-    {
-      "name": "One with the Multiverse",
-      "mana_cost": "{6}{U}{U}",
-      "cmc": 8,
-      "type_line": "Enchantment",
-      "oracle_text": "You may look at the top card of your library any time.\nYou may play lands and cast spells from the top of your library.\nOnce during each of your turns, you may cast a spell from your hand or the top of your library without paying its mana cost.",
-      "colors": [
-        "U"
-      ],
-      "color_identity": [
-        "U"
-      ],
-      "keywords": [],
-      "layout": "normal",
-      "legalities": {
-        "standard": "not_legal",
-        "future": "not_legal",
-        "historic": "legal",
-        "timeless": "legal",
-        "gladiator": "legal",
-        "pioneer": "legal",
-        "modern": "legal",
-        "legacy": "legal",
-        "pauper": "not_legal",
-        "vintage": "legal",
-        "penny": "not_legal",
-        "commander": "legal",
-        "oathbreaker": "legal",
-        "standardbrawl": "not_legal",
-        "brawl": "legal",
-        "competitivebrawl": "legal",
-        "alchemy": "not_legal",
-        "paupercommander": "not_legal",
-        "duel": "legal",
-        "oldschool": "not_legal",
-        "premodern": "not_legal",
-        "predh": "not_legal",
-        "tlr": "not_legal"
-      },
-      "scryfall_uri": "https://scryfall.com/card/dsc/121/one-with-the-multiverse?utm_source=api",
-      "oracle_id": "06bb4272-25d1-46db-8585-15f919267e1e",
-      "image_uri": "https://cards.scryfall.io/normal/front/1/c/1c85ae22-ccd0-4649-a736-1915043daae7.jpg?1783909627"
+      "image_uri": "https://cards.scryfall.io/normal/front/a/3/a3c11195-144e-44c4-aaa9-c534037748ea.jpg?1783914927"
     },
     {
       "name": "Orcish Bowmasters",
@@ -2840,6 +2479,49 @@
       "image_uri": "https://cards.scryfall.io/normal/front/6/e/6e288374-2b71-4ace-b1d2-a19fee6cb4af.jpg?1783911240"
     },
     {
+      "name": "Ponder",
+      "mana_cost": "{U}",
+      "cmc": 1,
+      "type_line": "Sorcery",
+      "oracle_text": "Look at the top three cards of your library, then put them back in any order. You may shuffle.\nDraw a card.",
+      "colors": [
+        "U"
+      ],
+      "color_identity": [
+        "U"
+      ],
+      "keywords": [],
+      "layout": "normal",
+      "legalities": {
+        "standard": "not_legal",
+        "future": "not_legal",
+        "historic": "legal",
+        "timeless": "legal",
+        "gladiator": "legal",
+        "pioneer": "not_legal",
+        "modern": "banned",
+        "legacy": "legal",
+        "pauper": "legal",
+        "vintage": "legal",
+        "penny": "not_legal",
+        "commander": "legal",
+        "oathbreaker": "legal",
+        "standardbrawl": "not_legal",
+        "brawl": "legal",
+        "competitivebrawl": "legal",
+        "alchemy": "not_legal",
+        "paupercommander": "legal",
+        "duel": "legal",
+        "oldschool": "not_legal",
+        "premodern": "not_legal",
+        "predh": "legal",
+        "tlr": "legal"
+      },
+      "scryfall_uri": "https://scryfall.com/card/tdc/159/ponder?utm_source=api",
+      "oracle_id": "02090581-61aa-4348-ad57-451be8ee91c2",
+      "image_uri": "https://cards.scryfall.io/normal/front/b/a/ba6b6fc5-5077-4812-b8e9-906783dbaf67.jpg?1783942899"
+    },
+    {
       "name": "Psychic Frog",
       "mana_cost": "{U}{B}",
       "cmc": 2,
@@ -2927,50 +2609,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/ema/142/pyroblast?utm_source=api",
       "oracle_id": "ecc435e2-deb1-420a-a79f-01dd08747314",
-      "image_uri": "https://cards.scryfall.io/normal/front/b/0/b029eb9a-dd7a-40c2-96c4-0063d9cc002c.jpg?1783937576"
-    },
-    {
-      "name": "Quicken",
-      "mana_cost": "{U}",
-      "cmc": 1,
-      "type_line": "Instant",
-      "oracle_text": "The next sorcery spell you cast this turn can be cast as though it had flash. (It can be cast any time you could cast an instant.)\nDraw a card.",
-      "colors": [
-        "U"
-      ],
-      "color_identity": [
-        "U"
-      ],
-      "keywords": [],
-      "layout": "normal",
-      "legalities": {
-        "standard": "not_legal",
-        "future": "not_legal",
-        "historic": "legal",
-        "timeless": "legal",
-        "gladiator": "legal",
-        "pioneer": "legal",
-        "modern": "legal",
-        "legacy": "legal",
-        "pauper": "not_legal",
-        "vintage": "legal",
-        "penny": "legal",
-        "commander": "legal",
-        "oathbreaker": "legal",
-        "standardbrawl": "not_legal",
-        "brawl": "legal",
-        "competitivebrawl": "legal",
-        "alchemy": "not_legal",
-        "paupercommander": "not_legal",
-        "duel": "legal",
-        "oldschool": "not_legal",
-        "premodern": "not_legal",
-        "predh": "legal",
-        "tlr": "legal"
-      },
-      "scryfall_uri": "https://scryfall.com/card/rvr/57/quicken?utm_source=api",
-      "oracle_id": "cf188dd3-1927-481b-b8c0-93b1222dbf53",
-      "image_uri": "https://cards.scryfall.io/normal/front/6/7/67751745-61c9-488f-b5b3-310c0bafdda7.jpg?1783913333"
+      "image_uri": "https://cards.scryfall.io/normal/front/d/6/d6af7f6d-f5dd-4334-a39d-dc0063680bc2.jpg?1783941621"
     },
     {
       "name": "Rakshasa's Bargain",
@@ -3065,53 +2704,6 @@
       "image_uri": "https://cards.scryfall.io/normal/front/a/c/acfde780-899a-4c5b-a39b-f4a3ff129103.jpg?1783910791"
     },
     {
-      "name": "Ral, Storm Conduit",
-      "mana_cost": "{2}{U}{R}",
-      "cmc": 4,
-      "type_line": "Legendary Planeswalker — Ral",
-      "oracle_text": "Whenever you cast or copy an instant or sorcery spell, Ral deals 1 damage to target opponent or planeswalker.\n+2: Scry 1.\n−2: When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.",
-      "colors": [
-        "R",
-        "U"
-      ],
-      "color_identity": [
-        "R",
-        "U"
-      ],
-      "keywords": [
-        "Scry"
-      ],
-      "layout": "normal",
-      "legalities": {
-        "standard": "not_legal",
-        "future": "not_legal",
-        "historic": "legal",
-        "timeless": "legal",
-        "gladiator": "legal",
-        "pioneer": "legal",
-        "modern": "legal",
-        "legacy": "legal",
-        "pauper": "not_legal",
-        "vintage": "legal",
-        "penny": "legal",
-        "commander": "legal",
-        "oathbreaker": "legal",
-        "standardbrawl": "not_legal",
-        "brawl": "legal",
-        "competitivebrawl": "legal",
-        "alchemy": "not_legal",
-        "paupercommander": "not_legal",
-        "duel": "legal",
-        "oldschool": "not_legal",
-        "premodern": "not_legal",
-        "predh": "not_legal",
-        "tlr": "not_legal"
-      },
-      "scryfall_uri": "https://scryfall.com/card/war/211/ral-storm-conduit?utm_source=api",
-      "oracle_id": "b7da26c9-78a6-41c5-a5ef-6555e8274d7a",
-      "image_uri": "https://cards.scryfall.io/normal/front/6/7/678ce3bf-152d-45ca-87ae-ad46c921328b.jpg?1783933390"
-    },
-    {
       "name": "Reanimate",
       "mana_cost": "{B}",
       "cmc": 1,
@@ -3152,7 +2744,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/dsc/155/reanimate?utm_source=api",
       "oracle_id": "a044474a-cd72-4e9d-bd8d-a08f2de9cdc0",
-      "image_uri": "https://cards.scryfall.io/normal/front/3/6/368b6903-5fc4-43e7-bd44-46b8107c8bb4.jpg?1783909614"
+      "image_uri": "https://cards.scryfall.io/normal/front/6/0/609c34f9-9f53-4773-a02b-517209024fc2.jpg?1783911724"
     },
     {
       "name": "Reprieve",
@@ -3283,7 +2875,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/one/108/sheoldreds-edict?utm_source=api",
       "oracle_id": "217062f5-96f1-454c-9507-17f34ef37070",
-      "image_uri": "https://cards.scryfall.io/normal/front/a/9/a9225cc3-90f0-448f-a8d9-7c6c2796d077.jpg?1783918041"
+      "image_uri": "https://cards.scryfall.io/normal/front/d/c/dca66a1b-0acd-4b79-b5fe-16f2930f9c1b.jpg?1783903924"
     },
     {
       "name": "Show and Tell",
@@ -3326,7 +2918,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/cn2/121/show-and-tell?utm_source=api",
       "oracle_id": "b83a3ba0-249e-4c39-bbf0-cb005413f7d2",
-      "image_uri": "https://cards.scryfall.io/normal/front/f/a/fa7b7897-36e0-415a-8bb7-602886164852.jpg?1783937320"
+      "image_uri": "https://cards.scryfall.io/normal/front/0/8/08844d76-fc69-4fe3-9c1d-118110b3eb2c.jpg?1783912751"
     },
     {
       "name": "Snapcaster Mage",
@@ -3373,7 +2965,50 @@
       },
       "scryfall_uri": "https://scryfall.com/card/inr/478/snapcaster-mage?utm_source=api",
       "oracle_id": "2bb2eda7-3b38-4c56-870f-c3218a1056f5",
-      "image_uri": "https://cards.scryfall.io/normal/front/2/2/22b36ad5-bf4d-436a-9c3c-fa4acd0052fe.jpg?1783907976"
+      "image_uri": "https://cards.scryfall.io/normal/front/7/e/7e41765e-43fe-461d-baeb-ee30d13d2d93.jpg?1783933834"
+    },
+    {
+      "name": "Sneak Attack",
+      "mana_cost": "{3}{R}",
+      "cmc": 4,
+      "type_line": "Enchantment",
+      "oracle_text": "{R}: You may put a creature card from your hand onto the battlefield. That creature gains haste. Sacrifice the creature at the beginning of the next end step.",
+      "colors": [
+        "R"
+      ],
+      "color_identity": [
+        "R"
+      ],
+      "keywords": [],
+      "layout": "normal",
+      "legalities": {
+        "standard": "not_legal",
+        "future": "not_legal",
+        "historic": "banned",
+        "timeless": "legal",
+        "gladiator": "legal",
+        "pioneer": "not_legal",
+        "modern": "not_legal",
+        "legacy": "legal",
+        "pauper": "not_legal",
+        "vintage": "legal",
+        "penny": "not_legal",
+        "commander": "legal",
+        "oathbreaker": "legal",
+        "standardbrawl": "not_legal",
+        "brawl": "legal",
+        "competitivebrawl": "legal",
+        "alchemy": "not_legal",
+        "paupercommander": "not_legal",
+        "duel": "legal",
+        "oldschool": "not_legal",
+        "premodern": "legal",
+        "predh": "legal",
+        "tlr": "not_legal"
+      },
+      "scryfall_uri": "https://scryfall.com/card/dmr/139/sneak-attack?utm_source=api",
+      "oracle_id": "e7aee670-e6ac-4b3a-b3d1-7b7013db8f3d",
+      "image_uri": "https://cards.scryfall.io/normal/front/b/2/b2418b3d-574a-40e7-9b6b-1bc4a8199105.jpg?1783918368"
     },
     {
       "name": "Spell Pierce",
@@ -3416,7 +3051,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/dft/64/spell-pierce?utm_source=api",
       "oracle_id": "d64b0848-0193-4025-ba62-63ecd8fb9f50",
-      "image_uri": "https://cards.scryfall.io/normal/front/8/d/8dd4374f-0301-4b2e-bc99-2cd19568cb3b.jpg?1783907902"
+      "image_uri": "https://cards.scryfall.io/normal/front/b/c/bc8f80e2-dd9d-4abc-b44c-fbef4d403e6f.jpg?1783903929"
     },
     {
       "name": "Steam Vents",
@@ -3548,7 +3183,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/2x2/94/surgical-extraction?utm_source=api",
       "oracle_id": "3bfa088c-9a47-4123-aee5-4de44e355bef",
-      "image_uri": "https://cards.scryfall.io/normal/front/e/1/e15d76ac-1c23-4503-8225-375ac2bf2fb6.jpg?1783921896"
+      "image_uri": "https://cards.scryfall.io/normal/front/1/1/11cc603a-5d60-4959-a03f-e3dfbee4606b.jpg?1783911723"
     },
     {
       "name": "Swords to Plowshares",
@@ -3591,7 +3226,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/msc/143/swords-to-plowshares?utm_source=api",
       "oracle_id": "b1544f21-7e98-461b-aed5-e748b0168c52",
-      "image_uri": "https://cards.scryfall.io/normal/front/b/4/b4e9c870-23c0-413a-ae39-265f09da16d1.jpg?1783903243"
+      "image_uri": "https://cards.scryfall.io/normal/front/c/c/cc9ece2f-7eda-4fc5-a562-3e16e71560e9.jpg?1783927441"
     },
     {
       "name": "Tamiyo, Collector of Tales",
@@ -3714,49 +3349,6 @@
       "image_uri": "https://cards.scryfall.io/normal/front/2/a/2a717b98-cdac-416d-bf6c-f6b6638e65d1.jpg?1783911236"
     },
     {
-      "name": "Teferi, Master of Time",
-      "mana_cost": "{2}{U}{U}",
-      "cmc": 4,
-      "type_line": "Legendary Planeswalker — Teferi",
-      "oracle_text": "You may activate loyalty abilities of Teferi on any player's turn any time you could cast an instant.\n+1: Draw a card, then discard a card.\n−3: Target creature you don't control phases out. (Treat it and anything attached to it as though they don't exist until its controller's next turn.)\n−10: Take two extra turns after this one.",
-      "colors": [
-        "U"
-      ],
-      "color_identity": [
-        "U"
-      ],
-      "keywords": [],
-      "layout": "normal",
-      "legalities": {
-        "standard": "not_legal",
-        "future": "not_legal",
-        "historic": "legal",
-        "timeless": "legal",
-        "gladiator": "legal",
-        "pioneer": "legal",
-        "modern": "legal",
-        "legacy": "legal",
-        "pauper": "not_legal",
-        "vintage": "legal",
-        "penny": "legal",
-        "commander": "legal",
-        "oathbreaker": "legal",
-        "standardbrawl": "not_legal",
-        "brawl": "legal",
-        "competitivebrawl": "legal",
-        "alchemy": "not_legal",
-        "paupercommander": "not_legal",
-        "duel": "legal",
-        "oldschool": "not_legal",
-        "premodern": "not_legal",
-        "predh": "not_legal",
-        "tlr": "not_legal"
-      },
-      "scryfall_uri": "https://scryfall.com/card/m21/75/teferi-master-of-time?utm_source=api",
-      "oracle_id": "e802fb53-7cf5-46bc-8a0b-f99cf5c20f74",
-      "image_uri": "https://cards.scryfall.io/normal/front/9/c/9c0c61e3-9f3d-4e7f-9046-0ea336dd8a2d.jpg?1783930718"
-    },
-    {
       "name": "Thought Erasure",
       "mana_cost": "{U}{B}",
       "cmc": 2,
@@ -3801,7 +3393,52 @@
       },
       "scryfall_uri": "https://scryfall.com/card/grn/206/thought-erasure?utm_source=api",
       "oracle_id": "4bae4e34-fcf4-4aee-8da2-5b3ee41a595a",
-      "image_uri": "https://cards.scryfall.io/normal/front/7/c/7ce226ad-cb1d-47f5-90fc-27704e181884.jpg?1783934119"
+      "image_uri": "https://cards.scryfall.io/normal/front/2/8/28fd4926-3a40-4af9-ab3f-dacb79ca1da2.jpg?1783931961"
+    },
+    {
+      "name": "Thought Scour",
+      "mana_cost": "{U}",
+      "cmc": 1,
+      "type_line": "Instant",
+      "oracle_text": "Target player mills two cards.\nDraw a card.",
+      "colors": [
+        "U"
+      ],
+      "color_identity": [
+        "U"
+      ],
+      "keywords": [
+        "Mill"
+      ],
+      "layout": "normal",
+      "legalities": {
+        "standard": "not_legal",
+        "future": "not_legal",
+        "historic": "legal",
+        "timeless": "legal",
+        "gladiator": "legal",
+        "pioneer": "not_legal",
+        "modern": "legal",
+        "legacy": "legal",
+        "pauper": "legal",
+        "vintage": "legal",
+        "penny": "not_legal",
+        "commander": "legal",
+        "oathbreaker": "legal",
+        "standardbrawl": "not_legal",
+        "brawl": "legal",
+        "competitivebrawl": "legal",
+        "alchemy": "not_legal",
+        "paupercommander": "legal",
+        "duel": "legal",
+        "oldschool": "not_legal",
+        "premodern": "not_legal",
+        "predh": "not_legal",
+        "tlr": "legal"
+      },
+      "scryfall_uri": "https://scryfall.com/card/2x2/65/thought-scour?utm_source=api",
+      "oracle_id": "83101ba8-a569-4827-8c53-9ca0dfcd59a7",
+      "image_uri": "https://cards.scryfall.io/normal/front/1/4/142944d5-1b11-4ec4-b6b4-b5c03e682cd3.jpg?1783930443"
     },
     {
       "name": "Thoughtseize",
@@ -3844,7 +3481,52 @@
       },
       "scryfall_uri": "https://scryfall.com/card/2xm/109/thoughtseize?utm_source=api",
       "oracle_id": "edd8d1e8-be43-4c38-bb3a-83081fbaf0b5",
-      "image_uri": "https://cards.scryfall.io/normal/front/b/2/b281a308-ab6b-47b6-bec7-632c9aaecede.jpg?1783930173"
+      "image_uri": "https://cards.scryfall.io/normal/front/6/5/65b7275a-5305-42e6-b5c3-8b88568b4e28.jpg?1783939770"
+    },
+    {
+      "name": "Through the Breach",
+      "mana_cost": "{4}{R}",
+      "cmc": 5,
+      "type_line": "Instant — Arcane",
+      "oracle_text": "You may put a creature card from your hand onto the battlefield. That creature gains haste. Sacrifice that creature at the beginning of the next end step.\nSplice onto Arcane {2}{R}{R} (As you cast an Arcane spell, you may reveal this card from your hand and pay its splice cost. If you do, add this card's effects to that spell.)",
+      "colors": [
+        "R"
+      ],
+      "color_identity": [
+        "R"
+      ],
+      "keywords": [
+        "Splice"
+      ],
+      "layout": "normal",
+      "legalities": {
+        "standard": "not_legal",
+        "future": "not_legal",
+        "historic": "not_legal",
+        "timeless": "not_legal",
+        "gladiator": "not_legal",
+        "pioneer": "not_legal",
+        "modern": "legal",
+        "legacy": "legal",
+        "pauper": "not_legal",
+        "vintage": "legal",
+        "penny": "legal",
+        "commander": "legal",
+        "oathbreaker": "legal",
+        "standardbrawl": "not_legal",
+        "brawl": "not_legal",
+        "competitivebrawl": "not_legal",
+        "alchemy": "not_legal",
+        "paupercommander": "not_legal",
+        "duel": "legal",
+        "oldschool": "not_legal",
+        "premodern": "not_legal",
+        "predh": "legal",
+        "tlr": "not_legal"
+      },
+      "scryfall_uri": "https://scryfall.com/card/inr/175/through-the-breach?utm_source=api",
+      "oracle_id": "c207aaee-0b67-4520-ad02-2c289228be2a",
+      "image_uri": "https://cards.scryfall.io/normal/front/c/9/c90a3430-f6d9-4432-84d3-9952d2b82003.jpg?1783908110"
     },
     {
       "name": "Thundering Falls",
@@ -4033,6 +3715,49 @@
       "image_uri": "https://cards.scryfall.io/normal/front/2/b/2b5801fb-2026-4f25-98bc-ebb2f99684b9.jpg?1786507741"
     },
     {
+      "name": "Up the Beanstalk",
+      "mana_cost": "{1}{G}",
+      "cmc": 2,
+      "type_line": "Enchantment",
+      "oracle_text": "When this enchantment enters and whenever you cast a spell with mana value 5 or greater, draw a card.",
+      "colors": [
+        "G"
+      ],
+      "color_identity": [
+        "G"
+      ],
+      "keywords": [],
+      "layout": "normal",
+      "legalities": {
+        "standard": "banned",
+        "future": "banned",
+        "historic": "legal",
+        "timeless": "legal",
+        "gladiator": "legal",
+        "pioneer": "legal",
+        "modern": "banned",
+        "legacy": "legal",
+        "pauper": "not_legal",
+        "vintage": "legal",
+        "penny": "not_legal",
+        "commander": "legal",
+        "oathbreaker": "legal",
+        "standardbrawl": "legal",
+        "brawl": "legal",
+        "competitivebrawl": "legal",
+        "alchemy": "not_legal",
+        "paupercommander": "not_legal",
+        "duel": "legal",
+        "oldschool": "not_legal",
+        "premodern": "not_legal",
+        "predh": "not_legal",
+        "tlr": "legal"
+      },
+      "scryfall_uri": "https://scryfall.com/card/woe/195/up-the-beanstalk?utm_source=api",
+      "oracle_id": "050f5733-7c0b-4991-9a6c-7ea12ccf0ca9",
+      "image_uri": "https://cards.scryfall.io/normal/front/2/d/2d5e991f-23b2-4db0-a452-7755125b1fd2.jpg?1783915075"
+    },
+    {
       "name": "Uro, Titan of Nature's Wrath",
       "mana_cost": "{1}{G}{U}",
       "cmc": 3,
@@ -4079,7 +3804,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/thb/229/uro-titan-of-natures-wrath?utm_source=api",
       "oracle_id": "ee302659-59ed-4eef-babe-451b9ccf7f14",
-      "image_uri": "https://cards.scryfall.io/normal/front/a/0/a0b6a71e-56cb-4d25-8f2b-7a4f1b60900d.jpg?1783931516"
+      "image_uri": "https://cards.scryfall.io/normal/front/1/e/1e3259f8-ee93-4b02-b8e1-a7bd6dd698ca.jpg?1783927088"
     },
     {
       "name": "Utopia Sprawl",
@@ -4131,7 +3856,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/rvr/159/utopia-sprawl?utm_source=api",
       "oracle_id": "00d8efa6-a2d9-4249-8da7-b45173675329",
-      "image_uri": "https://cards.scryfall.io/normal/front/5/e/5ea568df-04a1-4012-98ec-ba75e189e0ca.jpg?1783913297"
+      "image_uri": "https://cards.scryfall.io/normal/front/8/e/8ee63809-729b-48b1-a06d-3edc2a26208f.jpg?1783914916"
     },
     {
       "name": "Veil of Summer",
@@ -4284,7 +4009,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/trk/306/watery-grave?utm_source=api",
       "oracle_id": "fc9ec820-4245-4a96-b009-5308a818ca58",
-      "image_uri": "https://cards.scryfall.io/normal/front/5/5/5525d6a6-e532-4047-9da4-bfae7927fecc.jpg?1784036860"
+      "image_uri": "https://cards.scryfall.io/normal/front/7/d/7d4595f2-9297-40dc-b2dd-7144bbb401f7.jpg?1783934098"
     },
     {
       "name": "Wilderness Reclamation",
@@ -4327,7 +4052,7 @@
       },
       "scryfall_uri": "https://scryfall.com/card/dsc/205/wilderness-reclamation?utm_source=api",
       "oracle_id": "6f856f99-4cb4-479d-958d-964220965ed6",
-      "image_uri": "https://cards.scryfall.io/normal/front/5/e/5e6c0cb4-f17d-48ae-9bbf-9498505a23b0.jpg?1783909598"
+      "image_uri": "https://cards.scryfall.io/normal/front/5/4/54af08f7-9c6c-464e-b2f7-2b5803f36481.jpg?1783933661"
     }
   ]
 }

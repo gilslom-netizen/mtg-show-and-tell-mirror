@@ -52,11 +52,11 @@ describe('setting up a draft', () => {
   });
 
   it('sets aside cards that cannot make a whole pile', () => {
-    // 69 cards is 17 piles and one card over — that card cannot be dealt two
-    // public and one to each player, so it sits the draft out.
+    // 63 cards is 15 piles and three cards over — those cannot be dealt two
+    // public and one to each player, so they sit the draft out.
     const s = draft();
-    expect(s.pilesTotal).toBe(17);
-    expect(s.setAside).toHaveLength(draftPoolOracleIds().length - 17 * 4);
+    expect(s.pilesTotal).toBe(15);
+    expect(s.setAside).toHaveLength(draftPoolOracleIds().length - 15 * 4);
   });
 
   it('is deterministic in the seed, and different across seeds', () => {

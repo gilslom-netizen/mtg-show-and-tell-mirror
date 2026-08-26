@@ -50,7 +50,7 @@ describe('setup', () => {
     const playable = poolIds.filter((id) => scripted.has(id));
     // Some pool cards are already implemented because the main deck uses them.
     expect(playable.length).toBeGreaterThan(0);
-    expect(poolIds.length).toBe(69);
+    expect(poolIds.length).toBe(63);
   });
 
   it('parses mana values correctly, including hybrid symbols', () => {

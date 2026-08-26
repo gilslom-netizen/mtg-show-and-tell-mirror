@@ -18,29 +18,6 @@ export const demonicTutor: CardScript = {
 };
 
 /**
- * Assemble the Team — "search the top third of your library, rounded up".
- * The searchable subset shrinks as the game goes on, so it is computed at resolution.
- */
-export const assembleTheTeam: CardScript = {
-  oracleId: 'assemble_the_team',
-  *resolve(ctx) {
-    const lib = ctx.library(ctx.controller);
-    const n = Math.ceil(lib.length / 3);
-    if (n > 0) {
-      const found = yield* ctx.searchZone({
-        player: ctx.controller,
-        cards: lib.slice(0, n).map((c) => c.iid),
-        prompt: `Search the top ${n} card${n === 1 ? '' : 's'} of your library (top third, rounded up)`,
-        optional: true,
-      });
-      if (found !== null) yield* ctx.moveTo(found, 'hand');
-    }
-    // The shuffle happens whether or not anything was found.
-    ctx.shuffleLibrary(ctx.controller);
-  },
-};
-
-/**
  * Waterlogged Teachings // Inundated Archive.
  *
  * The front face finds "an instant card OR a card with flash", which in this deck

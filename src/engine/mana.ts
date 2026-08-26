@@ -4,9 +4,10 @@ import type { CostSymbol, IID, ManaKind, ManaPool, PaymentPlan } from './types.j
  * Cost parsing and the payment solver.
  *
  * The solver is a real backtracking search rather than greedy tapping. That is not
- * over-engineering for this deck: Assemble the Team costs {B}{G} while every green
- * source (Breeding Pool, Hedge Maze) and every black source (Watery Grave, Undercity
- * Sewers) also makes blue. A greedy tapper strands the player. See DESIGN.md 9.3.
+ * over-engineering for this manabase: a drafted Abrupt Decay costs {B}{G} while every
+ * green source (Breeding Pool, Hedge Maze) and every black source (Watery Grave,
+ * Undercity Sewers) also makes blue, and Atraxa wants four different colours out of
+ * the same duals. A greedy tapper strands the player. See DESIGN.md 9.3.
  */
 
 export const MANA_KINDS: ManaKind[] = ['W', 'U', 'B', 'R', 'G', 'C'];

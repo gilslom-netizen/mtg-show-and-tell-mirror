@@ -51,20 +51,28 @@ async function main(): Promise<void> {
     collector_number: printings[name].collector_number,
   }));
 
-  const res = await fetch(API, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      'User-Agent': 'show-and-tell-mirror/1.0',
-    },
-    body: JSON.stringify({ identifiers }),
-  });
-  if (!res.ok) throw new Error(`Scryfall returned ${res.status}`);
-  const json = (await res.json()) as { data: Json[]; not_found: Json[] };
-  if (json.not_found.length > 0) {
+  // Scryfall's collection endpoint takes at most 75 identifiers per request, and
+  // the main deck plus the sideboard cube is well past that.
+  const fetched: Json[] = [];
+  const notFound: Json[] = [];
+  for (let i = 0; i < identifiers.length; i += 70) {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'User-Agent': 'show-and-tell-mirror/1.0',
+      },
+      body: JSON.stringify({ identifiers: identifiers.slice(i, i + 70) }),
+    });
+    if (!res.ok) throw new Error(`Scryfall returned ${res.status}`);
+    const json = (await res.json()) as { data: Json[]; not_found: Json[] };
+    fetched.push(...json.data);
+    notFound.push(...json.not_found);
+  }
+  if (notFound.length > 0) {
     throw new Error(
-      `Scryfall could not find these printings: ${JSON.stringify(json.not_found)}`,
+      `Scryfall could not find these printings: ${JSON.stringify(notFound)}`,
     );
   }
 
@@ -72,7 +80,7 @@ async function main(): Promise<void> {
   // Scryfall was actually asked for, not by name (a set can print the same name
   // twice, e.g. a promo and the normal card share nothing else in common).
   const byPrint = new Map(
-    json.data.map((c) => [`${String(c.set)}/${String(c.collector_number)}`, c]),
+    fetched.map((c) => [`${String(c.set)}/${String(c.collector_number)}`, c]),
   );
 
   const changes: string[] = [];

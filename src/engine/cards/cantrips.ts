@@ -3,8 +3,8 @@ import type { CardScript } from '../script-types.js';
 import type { IID } from '../types.js';
 
 /**
- * Card selection. The important detail in this file is that Brainstorm performs
- * three SEPARATE draws, while Dig Through Time, Rakshasa's Bargain and Planar
+ * Card selection. The important detail in this file is that Brainstorm and Ponder
+ * perform real draws, while Dig Through Time, Rakshasa's Bargain and Planar
  * Genesis "put cards into your hand" and are not draws at all. That distinction is
  * the entire Orcish Bowmasters matchup.
  */
@@ -42,6 +42,38 @@ function* putOnTopInOrder(
     yield* ctx.moveTo(chosen[i], 'library', { position: 'top' });
   }
 }
+
+/**
+ * Ponder — look at three, put them back in any order, then "you may shuffle",
+ * then draw. The order is asked first because arranging them is how the player
+ * gets to see what is there before deciding whether to shuffle it away.
+ */
+export const ponder: CardScript = {
+  oracleId: 'ponder',
+  *resolve(ctx) {
+    const top = ctx.library(ctx.controller).slice(0, 3).map((c) => c.iid);
+    // One card has only one order, so there is nothing to ask.
+    if (top.length > 1) {
+      const ordered = yield* ctx.chooseCards({
+        player: ctx.controller,
+        cards: top,
+        min: top.length,
+        max: top.length,
+        ordered: true,
+        prompt: 'Put these back on top of your library (first one ends up on top)',
+        from: 'library',
+      });
+      yield* putOnTopInOrder(ctx, ordered);
+    }
+
+    if (yield* ctx.yesNo(ctx.controller, 'Shuffle your library?')) {
+      ctx.shuffleLibrary(ctx.controller);
+    }
+
+    // A real draw, so an opposing Orcish Bowmasters does trigger.
+    ctx.draw(ctx.controller, 1);
+  },
+};
 
 export const borneUponAWind: CardScript = {
   oracleId: 'borne_upon_a_wind',

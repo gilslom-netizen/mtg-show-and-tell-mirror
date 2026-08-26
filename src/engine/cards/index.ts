@@ -20,9 +20,10 @@ import {
   brainstorm,
   digThroughTime,
   planarGenesis,
+  ponder,
   rakshasasBargain,
 } from './cantrips.js';
-import { assembleTheTeam, demonicTutor, waterloggedTeachings } from './tutors.js';
+import { demonicTutor, waterloggedTeachings } from './tutors.js';
 import { omniscience, showAndTell } from './combo.js';
 import { atraxaGrandUnifier, hullbreakerHorror, orcishBowmasters } from './creatures.js';
 import { manaDrain, veilOfSummer } from './interaction.js';
@@ -49,13 +50,13 @@ const ALL: CardScript[] = [
   mistriseVillage,
   // selection
   brainstorm,
+  ponder,
   borneUponAWind,
   digThroughTime,
   rakshasasBargain,
   planarGenesis,
   // tutors
   demonicTutor,
-  assembleTheTeam,
   waterloggedTeachings,
   // combo
   showAndTell,

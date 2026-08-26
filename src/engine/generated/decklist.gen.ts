@@ -4,13 +4,9 @@
 export const DECKLIST = {
   "name": "Show and Tell Mirror",
   "format": "timeless",
-  "note": "Both players play this exact list. Sideboard is built only for the mirror.",
+  "note": "Both players play this exact list. The sideboard is not a fixed list any more — it is drafted from the cube in data/draft.json.",
   "source": "https://moxfield.com/decks/v_pV9CkWUUuU1UXYVjvcRA",
   "maindeck": [
-    {
-      "count": 4,
-      "name": "Assemble the Team"
-    },
     {
       "count": 4,
       "name": "Atraxa, Grand Unifier"
@@ -84,6 +80,10 @@ export const DECKLIST = {
       "name": "Polluted Delta"
     },
     {
+      "count": 4,
+      "name": "Ponder"
+    },
+    {
       "count": 3,
       "name": "Rakshasa's Bargain"
     },
@@ -106,32 +106,6 @@ export const DECKLIST = {
     {
       "count": 2,
       "name": "Watery Grave"
-    }
-  ],
-  "sideboard": [
-    {
-      "count": 4,
-      "name": "Carpet of Flowers"
-    },
-    {
-      "count": 3,
-      "name": "Chrome Mox"
-    },
-    {
-      "count": 2,
-      "name": "Krosan Grip"
-    },
-    {
-      "count": 2,
-      "name": "Mystical Dispute"
-    },
-    {
-      "count": 2,
-      "name": "Thoughtseize"
-    },
-    {
-      "count": 2,
-      "name": "Veil of Summer"
     }
   ],
   "consideringBoard": [],

@@ -55,7 +55,7 @@ export interface ChooseTargetsOpts {
 
 export interface SearchOpts {
   player: PlayerId;
-  /** The searchable subset. Assemble the Team passes only the top third. */
+  /** The searchable subset — a card that only searches part of the library passes that part. */
   cards: IID[];
   filter?: (c: CardInstance) => boolean;
   prompt: string;

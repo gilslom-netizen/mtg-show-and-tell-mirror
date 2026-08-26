@@ -120,13 +120,16 @@ describe('the opening hand', () => {
       }
     }
     expect(game.state.mode).toBe('playing');
-    // p1 mulliganed once and put a card on the bottom, so they keep six. This
-    // particular six has no land in it, so the engine's own auto-pass — which
-    // only fires when a player has nothing at all to do — runs p1's turn out
-    // and p2 has drawn for their turn by the time we look. Both are still
-    // round 1: `turn` counts rounds, not player-turns.
+    // p1 mulliganed once and put a card on the bottom, so they keep six. p2 kept
+    // their opening seven untouched. p2's hand is asserted as "seven or more"
+    // rather than exactly seven because the engine's own auto-pass — which fires
+    // when a player has nothing at all to do — may already have run p1's turn out
+    // and given p2 their draw, depending on whether this seed's six has a land in
+    // it. `turn` counts rounds, not player-turns, so either way it is still 1.
     expect(game.state.zones.p1.hand).toHaveLength(6);
+    expect(game.state.players.p1.mulligansTaken).toBe(1);
     expect(game.state.turn).toBe(1);
-    expect(game.state.zones.p2.hand).toHaveLength(8);
+    expect(game.state.players.p2.mulligansTaken).toBe(0);
+    expect(game.state.zones.p2.hand.length).toBeGreaterThanOrEqual(7);
   });
 });

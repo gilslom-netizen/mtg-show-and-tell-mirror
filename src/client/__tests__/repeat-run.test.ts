@@ -274,11 +274,24 @@ describe('running a repeat', () => {
 
     // Ask for five more when only one Brainstorm is left.
     useStore.getState().startRepeat(pattern.steps, 5, 'p1');
-    // The fourth cast goes through; after that the spells resolve and each one
-    // asks which cards to put back, which the run waits on — so the player has
-    // to keep answering for it to get anywhere.
+    useStore.getState().advanceRepeat();
+    expect(stackSize()).toBe(4);
+
+    /*
+     * The fifth cast is not there — but four Brainstorms are still on the stack,
+     * and while anything is resolving "the step I want is missing" means nothing.
+     * So the run waits, and the only thing that ends the wait is the stack
+     * actually draining. Passing here stands in for the player clicking through
+     * it; the comfort layer's auto-pass deliberately will not, because the run is
+     * holding priority for an action of its own.
+     */
     for (let i = 0; i < 40 && useStore.getState().repeat; i++) {
       answerAnyPrompt();
+      const st = useStore.getState();
+      for (const seat of ['p1', 'p2'] as const) {
+        const view = st.views[seat];
+        if (view && !view.choice && canAct(view, seat)) st.send({ t: 'passPriority' }, seat, 'auto');
+      }
       useStore.getState().advanceRepeat();
     }
 
