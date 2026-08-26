@@ -53,8 +53,15 @@ export function createDraft(opts: CreateDraftOptions): DraftState {
   shuffleArray(rng, ids);
 
   const total = pileCount(ids.length);
-  // A pile is always four cards; a remainder could not be dealt evenly, so it
-  // sits out rather than becoming a short pile one player sees more of.
+  /*
+   * Which cards sit out is decided by the shuffle above, and that is the point.
+   *
+   * The format deals fourteen piles however big the pool is, so a sixty-three
+   * card cube leaves seven cards out of every draft — a different seven each
+   * time. Dealing every pile the pool allowed instead would put all but the
+   * remainder into every draft, and two drafts of the same cube would differ only
+   * in what order the same cards arrived in.
+   */
   const dealable = total * PILE_SIZE;
   const setAside = ids.slice(dealable);
   const undealt = ids.slice(0, dealable);

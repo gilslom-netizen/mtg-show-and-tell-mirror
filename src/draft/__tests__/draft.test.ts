@@ -9,7 +9,12 @@ import {
   pilesRemaining,
 } from '../draft.js';
 import { redactDraft } from '../redact.js';
-import { COINS_PER_PLAYER, PILE_SIZE, draftPoolOracleIds } from '../../engine/draft-pool.js';
+import {
+  COINS_PER_PLAYER,
+  PILES,
+  PILE_SIZE,
+  draftPoolOracleIds,
+} from '../../engine/draft-pool.js';
 import type { DraftState } from '../types.js';
 import type { PlayerId } from '../../engine/types.js';
 
@@ -51,24 +56,59 @@ describe('setting up a draft', () => {
     expect(s.coins).toEqual({ p1: COINS_PER_PLAYER, p2: COINS_PER_PLAYER });
   });
 
-  it('deals the whole cube, because it divides into piles exactly', () => {
-    // 68 cards is 17 piles with nothing over. That is a property of the list
-    // rather than of the code, and it is worth a test: a cube that is not a
-    // multiple of four silently leaves cards out of every draft.
+  it('deals the same number of piles however big the pool is', () => {
     const s = draft();
-    expect(draftPoolOracleIds().length % PILE_SIZE).toBe(0);
-    expect(s.pilesTotal).toBe(17);
-    expect(s.setAside).toHaveLength(0);
+    expect(s.pilesTotal).toBe(PILES);
+    expect(s.undealt.length + PILE_SIZE).toBe(PILES * PILE_SIZE);
+    // Everything the fourteen piles do not use sits the draft out. The cube
+    // dividing evenly into fours no longer means nothing is left over: the pile
+    // count is the format's, not the list's.
+    expect(s.setAside).toHaveLength(draftPoolOracleIds().length - PILES * PILE_SIZE);
+    expect(s.setAside.length).toBeGreaterThan(0);
   });
 
-  it('sets aside cards that cannot make a whole pile', () => {
-    // The rule still has to hold for a pool that does not divide, since the list
-    // is edited by hand and has not always divided.
+  /**
+   * A different handful sits out every time, and that is the whole reason the
+   * number of piles is fixed rather than "as many as the pool makes".
+   *
+   * Deal every pile the cards allow and all but the remainder are in every draft,
+   * so two drafts of the same cube differ only in what order the same cards
+   * arrived in. Leaving a dozen out at random makes each draft a different subset
+   * of the cube — and grows the cube's job from ordering the same cards to
+   * choosing which ones turn up at all.
+   */
+  it('leaves a different handful out each time', () => {
+    const seenAside = new Set<string>();
+    for (let seed = 1; seed <= 12; seed++) {
+      const s = draft(seed);
+      const names = s.setAside.map((iid) => s.cards[iid].oracleId).sort();
+      expect(names).toHaveLength(draftPoolOracleIds().length - PILES * PILE_SIZE);
+      seenAside.add(names.join(','));
+    }
+    // Twelve seeds, twelve different sets: nothing is systematically excluded.
+    expect(seenAside.size).toBe(12);
+  });
+
+  it('never deals a card that was set aside', () => {
+    const s = draft(5);
+    const aside = new Set(s.setAside);
+    const dealt = new Set([...s.undealt, ...pileCards(s.pile!)]);
+    for (const iid of aside) expect(dealt.has(iid)).toBe(false);
+    expect(aside.size + dealt.size).toBe(Object.keys(s.cards).length);
+  });
+
+  it('still refuses to deal a pile it cannot fill', () => {
+    // The remainder rule has not gone anywhere; it is just no longer the only
+    // reason cards sit out. A pool of fourteen makes three piles and two spares.
     const odd = draft(1, draftPoolOracleIds().slice(0, 4 * 3 + 2));
     expect(odd.pilesTotal).toBe(3);
-    // Two over: they cannot be dealt two public and one to each player, so they
-    // sit the draft out rather than becoming a short pile one player sees more of.
     expect(odd.setAside).toHaveLength(2);
+  });
+
+  it('makes a short draft out of a short pool rather than refusing', () => {
+    const s = draft(1, shortPool(3));
+    expect(s.pilesTotal).toBe(3);
+    expect(s.setAside).toHaveLength(0);
   });
 
   it('is deterministic in the seed, and different across seeds', () => {
@@ -315,6 +355,16 @@ describe('what each player is told', () => {
 });
 
 describe('the numbers on screen', () => {
+  it('tells both players the same fourteen piles and the same number sitting out', () => {
+    const s = draft(3);
+    for (const seat of ['p1', 'p2'] as PlayerId[]) {
+      const view = redactDraft(s, seat);
+      expect(view.pilesTotal).toBe(PILES);
+      expect(view.pilesRemaining).toBe(PILES);
+      expect(view.setAsideCount).toBe(draftPoolOracleIds().length - PILES * PILE_SIZE);
+    }
+  });
+
   it('counts the pile on the table as still to be won', () => {
     const s = draft(1, shortPool(3));
     expect(s.pilesTotal).toBe(3);

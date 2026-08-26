@@ -452,7 +452,9 @@ export function DraftScreen({ viewer }: { viewer: PlayerId }) {
         <span className="bid-note">
           They have taken {draft.opponentPickCount}
           {draft.setAsideCount > 0 &&
-            ` · ${draft.setAsideCount} card${draft.setAsideCount === 1 ? '' : 's'} sat out (a pile is always four)`}
+            ` · ${draft.setAsideCount} random card${
+              draft.setAsideCount === 1 ? '' : 's'
+            } sat this draft out`}
         </span>
       </footer>
 

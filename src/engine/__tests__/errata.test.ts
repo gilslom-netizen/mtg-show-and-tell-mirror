@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ERRATA, errataFor, manaValueOf, oracleByName } from '../oracle.js';
+import { ERRATA, errataFor, frontFace, manaValueOf, oracle, oracleByName } from '../oracle.js';
+import { testGame, type TestGame } from './harness.js';
+import type { PlayerId } from '../types.js';
 import { ORACLE_DATA } from '../generated/oracle-cards.gen.js';
 
 /**
@@ -103,5 +105,130 @@ describe('the errata layer', () => {
       expect(built.manaCost ?? '', name).toBe(card.mana_cost ?? '');
       expect(built.oracleText, name).toBe(card.oracle_text ?? '');
     }
+  });
+});
+
+/**
+ * The errata as the engine plays them, not as the data file states them.
+ *
+ * A cost written in a JSON file is a claim; what settles it is whether the card is
+ * castable off the mana the change was meant to make it castable off. Every one of
+ * these puts the card in a hand with exactly the lands its new cost needs and no
+ * more, so it would not be offered if the erratum had not landed.
+ */
+/**
+ * Run everything out, pointing every mill trigger at `at` — or declining it all
+ * when `at` is null. Anything else that comes up is answered the harness's way.
+ */
+function settle(t: TestGame, at: PlayerId | null): void {
+  for (let guard = 0; guard < 80; guard++) {
+    const pc = t.state.pendingChoice;
+    if (pc?.kind === 'chooseTargets' && pc.source?.oracleId === 'jaces_erasure') {
+      const target = at ? pc.candidates.find((c) => c.kind === 'player' && c.id === at) : undefined;
+      t.answer({ kind: 'targets', targets: target ? [target] : [] });
+      continue;
+    }
+    if (pc) {
+      // One at a time: `auto()` left to itself answers every open choice, and its
+      // answer to an optional target is "no target" — which would decline exactly
+      // the triggers this is here to point somewhere.
+      t.auto(1);
+      continue;
+    }
+    if (t.state.stack.length === 0 && t.state.pendingTriggers.length === 0) return;
+    const p = t.state.priorityPlayer;
+    if (!p) {
+      t.game.advance();
+      continue;
+    }
+    t.seat(p).pass();
+  }
+  throw new Error('the stack never settled');
+}
+
+describe('the errata in a game', () => {
+  /** Every cast p1 could legally make right now, by card name. */
+  function castable(t: TestGame): string[] {
+    return t.game
+      .legalActions('p1')
+      .filter((a) => a.intent.t === 'castSpell')
+      .map((a) => frontFace(t.state.cards[(a.intent as { iid: number }).iid].oracleId).name);
+  }
+
+  it("makes Ashiok's Erasure castable off two lands", () => {
+    const t = testGame({ startingPlayer: 'p2' });
+    t.p2.hand('Show and Tell');
+    t.p2.manaBase(3);
+    t.begin();
+    t.p2.cast('Show and Tell');
+    t.p2.pass();
+
+    t.p1.conjure("Ashiok's Erasure");
+    t.p1.manaBase(2);
+    // Flash, and two mana is now the whole cost. At four it would not be here.
+    expect(castable(t)).toContain("Ashiok's Erasure");
+  });
+
+  it('makes Lier castable on turn three', () => {
+    const t = testGame();
+    t.p1.conjure('Lier, Disciple of the Drowned');
+    t.p1.manaBase(3);
+    t.begin();
+    expect(castable(t)).toContain('Lier, Disciple of the Drowned');
+  });
+
+  it('makes Eternal Witness castable off one green source', () => {
+    const t = testGame();
+    t.p1.conjure('Eternal Witness');
+    // manaBase deals blue duals: exactly one of them makes green, which is the
+    // whole point of the change — at {1}{G}{G} this hand could not cast it.
+    t.p1.manaBase(3);
+    t.begin();
+    const green = t.state.zones.p1.battlefield.filter((iid) =>
+      oracle(t.state.cards[iid].oracleId).producedMana.includes('G'),
+    );
+    expect(green.length).toBe(1);
+    expect(castable(t)).toContain('Eternal Witness');
+  });
+
+  /**
+   * The one erratum that is entirely behaviour: "mills two" is not a cost or a
+   * type line, so nothing about it is visible until the card actually resolves.
+   */
+  it("mills two for Jace's Erasure, not one", () => {
+    const t = testGame();
+    t.p1.conjure("Jace's Erasure");
+    t.p1.hand('Brainstorm');
+    t.p1.manaBase(3);
+    t.begin();
+    t.p1.cast("Jace's Erasure");
+    t.resolveStack();
+
+    const before = t.state.zones.p2.graveyard.length;
+    const library = t.state.zones.p2.library.length;
+    t.p1.cast('Brainstorm');
+    settle(t, 'p2');
+
+    // Brainstorm draws three, so three triggers at two cards each.
+    expect(t.state.zones.p2.graveyard.length - before).toBe(6);
+    expect(library - t.state.zones.p2.library.length).toBe(6);
+  });
+
+  it('lets you decline the mill rather than forcing it', () => {
+    const t = testGame();
+    t.p1.conjure("Jace's Erasure");
+    t.p1.hand('Brainstorm');
+    t.p1.manaBase(3);
+    t.begin();
+    t.p1.cast("Jace's Erasure");
+    t.resolveStack();
+
+    const before = t.state.zones.p2.graveyard.length;
+    t.p1.cast('Brainstorm');
+    // "No target" is how the trigger's "you may" is expressed — and declining is a
+    // real decision in a format that already loses a fifth of its games to an
+    // empty library.
+    settle(t, null);
+    expect(t.state.zones.p2.graveyard.length).toBe(before);
   });
 });
