@@ -21,6 +21,7 @@ import {
   useTriggerPolicy,
 } from './hooks';
 import { MAX_REPEATS, describePattern, detectPattern } from './repeat';
+import { Overlay } from './ui';
 import { SettingsPanel, HelpPanel } from './panels';
 import { inviteLink, normaliseRoomCode, randomRoomCode, roomFromUrl } from './room-code';
 import { forgetRoom, howLongAgo, rememberedRooms, type RememberedRoom } from './rooms';
@@ -994,6 +995,16 @@ function BottomBar({ viewer }: { viewer: PlayerId }) {
  * The loser chooses play or draw for the next game — which in a combo mirror is
  * not a formality, so it is a real prompt rather than an assumed "on the play".
  */
+/**
+ * The end of a game, for as long as you want it.
+ *
+ * It used to take itself away. When the computer lost it also owed the
+ * play-or-draw decision, answered inside a second, and the next game started —
+ * so the result, the final board and the log were gone before they had been
+ * read. Now the match is held where it is until you say go, the dialog can be
+ * put aside to look at the board behind it, and it comes back from a bar at the
+ * bottom. Nothing advances on its own.
+ */
 function GameOver({ viewer }: { viewer: PlayerId }) {
   const view = useStore((s) => s.views[viewer])!;
   const detach = useStore((s) => s.detach);
@@ -1002,11 +1013,70 @@ function GameOver({ viewer }: { viewer: PlayerId }) {
   const match: MatchState | null = connection?.match() ?? null;
   const won = view.winner === viewer;
   const opponent: PlayerId = viewer === 'p1' ? 'p2' : 'p1';
+  const [minimised, setMinimised] = useState(false);
+  const [released, setReleased] = useState(false);
+
+  /*
+   * Hold the match while this is on screen, and let go on the way out — including
+   * when the component unmounts, so leaving for the lobby never leaves a
+   * connection stuck waiting for a screen that no longer exists.
+   */
+  useEffect(() => {
+    if (!connection) return;
+    connection.holdResult(!released);
+    return () => connection.holdResult(false);
+  }, [connection, released]);
+
+  // Escape brings it back, the same key that dismisses a minimised decision.
+  useEffect(() => {
+    if (!minimised) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMinimised(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [minimised]);
+
+  const headline = (() => {
+    if (!match) return won ? 'You win' : 'You lose';
+    if (match.matchWinner !== null) {
+      return match.matchWinner === viewer ? 'You win the match' : 'You lose the match';
+    }
+    return won ? `Game ${match.history.length} to you` : `Game ${match.history.length} to them`;
+  })();
+
+  if (minimised) {
+    return (
+      <button
+        className="gameover-minimised"
+        data-testid="restore-result"
+        onClick={() => setMinimised(false)}
+      >
+        <span className="pulse-dot" aria-hidden />
+        <b>{headline}</b>
+        <span className="choice-minimised-what">{view.endReason}</span>
+        <span className="chip">Back to the result</span>
+      </button>
+    );
+  }
+
+  const MinimiseResult = () => (
+    <button
+      className="dialog-minimise"
+      data-testid="minimise-result"
+      onClick={() => setMinimised(true)}
+      title="Look at the final board. Nothing moves on — the result waits for you."
+      aria-label="Hide the result and look at the board"
+    >
+      ⤢
+    </button>
+  );
 
   if (!match) {
     return (
-      <div className="overlay">
+      <Overlay>
         <div className="dialog gameover" style={{ minWidth: 380 }}>
+          <MinimiseResult />
           <div className={`headline ${won ? 'win' : 'lose'}`}>{won ? 'You win' : 'You lose'}</div>
           <div className="prompt">{view.endReason}</div>
           <div className="actions" style={{ justifyContent: 'center' }}>
@@ -1015,7 +1085,7 @@ function GameOver({ viewer }: { viewer: PlayerId }) {
             </button>
           </div>
         </div>
-      </div>
+      </Overlay>
     );
   }
 
@@ -1049,17 +1119,10 @@ function GameOver({ viewer }: { viewer: PlayerId }) {
   const canOffer = matchOver && offer === null && canExtend(match);
 
   return (
-    <div className="overlay">
+    <Overlay>
       <div className="dialog gameover" style={{ minWidth: 460 }}>
-        <div className={`headline ${won ? 'win' : 'lose'}`}>
-          {matchOver
-            ? match.matchWinner === viewer
-              ? 'You win the match'
-              : 'You lose the match'
-            : won
-              ? `Game ${match.history.length} to you`
-              : `Game ${match.history.length} to them`}
-        </div>
+        <MinimiseResult />
+        <div className={`headline ${won ? 'win' : 'lose'}`}>{headline}</div>
         <div className="prompt">{view.endReason}</div>
 
         <div className="row" style={{ justifyContent: 'center', fontSize: 20, fontWeight: 800 }}>
@@ -1149,13 +1212,31 @@ function GameOver({ viewer }: { viewer: PlayerId }) {
               </button>
             </div>
           </>
+        ) : connection?.kind === 'local' ? (
+          /*
+           * The computer is the one to choose play or draw, and it will do it the
+           * moment it is allowed to. That decision starts the next game, so it
+           * waits behind this button rather than behind a one-second timer.
+           */
+          <>
+            <div className="prompt">
+              Take your time. Game {match.gameNumber + 1} starts when you say so.
+            </div>
+            <div className="actions" style={{ justifyContent: 'center' }}>
+              <button onClick={() => detach()}>Back to the lobby</button>
+              <button onClick={() => setMinimised(true)}>Look at the board</button>
+              <button className="primary" onClick={() => setReleased(true)}>
+                Start game {match.gameNumber + 1}
+              </button>
+            </div>
+          </>
         ) : (
           <div className="prompt">
             Waiting for them to choose play or draw for game {match.gameNumber + 1}…
           </div>
         )}
       </div>
-    </div>
+    </Overlay>
   );
 }
 

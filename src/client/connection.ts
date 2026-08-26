@@ -45,6 +45,16 @@ export interface Connection {
   match(): MatchState | null;
   /** The loser of the previous game picks who is on the play. */
   chooseFirst(seat: PlayerId, onPlay: PlayerId): void;
+  /**
+   * Hold the match where it is while a finished game is still being read.
+   *
+   * Only the computer needs telling. When it lost the game it also owes the
+   * play-or-draw decision, and it answered within the second — which started the
+   * next game and took the result screen, the final board and the log off the
+   * table before anyone had read them. A human opponent cannot do that: they are
+   * looking at their own result screen. Online this is a no-op.
+   */
+  holdResult(held: boolean): void;
   /** Ask the other player for two more games; answer their asking. */
   offerExtend(seat: PlayerId): void;
   answerExtend(seat: PlayerId, accept: boolean): void;
@@ -140,6 +150,8 @@ abstract class BaseConnection implements Connection {
   abstract chooseFirst(seat: PlayerId, onPlay: PlayerId): void;
   abstract offerExtend(seat: PlayerId): void;
   abstract answerExtend(seat: PlayerId, accept: boolean): void;
+  /** Nothing to hold when the opponent is a person with their own screen. */
+  holdResult(_held: boolean): void {}
   dispose(): void {
     this.listeners.clear();
   }
@@ -280,6 +292,18 @@ export class LocalConnection extends BaseConnection {
 
   // --- the computer's seat --------------------------------------------------
 
+  /** True while a finished game is being read; see `holdResult`. */
+  private resultHeld = false;
+
+  holdResult(held: boolean): void {
+    if (this.resultHeld === held) return;
+    this.resultHeld = held;
+    // Time the next move from when it was released, not from when the game ended,
+    // so letting go does not produce an instant reply.
+    this.aiNextAt = 0;
+    this.notify();
+  }
+
   /** Which seat, if any, the opponent currently owes an action for. */
   private opponentOwes(): PlayerId | null {
     if (!this.opts.opponent) return null;
@@ -295,7 +319,12 @@ export class LocalConnection extends BaseConnection {
      * stopped, with a screen that was waiting for somebody who was never asked.
      */
     const awaiting = this.tracker?.state.awaitingFirstChoiceFrom ?? null;
-    if (awaiting !== null) return theirs.includes(awaiting) ? awaiting : null;
+    if (awaiting !== null) {
+      // Held while the result is still on screen: answering this is what starts
+      // the next game, and the next game is what clears the board being read.
+      if (this.resultHeld) return null;
+      return theirs.includes(awaiting) ? awaiting : null;
+    }
 
     const s = this.game.state;
     if (s.winner !== null) return null;

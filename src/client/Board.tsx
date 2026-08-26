@@ -6,8 +6,9 @@ import { unimplementedReason } from '@engine/cards/index';
 import { frontFace, oracle } from '@engine/oracle';
 import type { IID, PlayerId } from '@engine/types';
 import { CardFace, CardPreview } from './CardView';
+import { ManaText } from './mana';
 import { ChoiceLayer } from './dialogs';
-import { KnownTopPanel, LogPanel, PhaseTrack, PlayerBar, StackPanel, cardTitle } from './ui';
+import { KnownTopPanel, LogPanel, Overlay, PhaseTrack, PlayerBar, StackPanel, cardTitle } from './ui';
 import { Splitter, clampSize } from './Splitter';
 import { canAct, useStore } from './store';
 import { DEFAULT_SETTINGS } from './settings';
@@ -223,13 +224,17 @@ function ActionMenu({
   onClose: () => void;
 }) {
   return (
-    <div className="overlay" onClick={onClose} style={{ background: 'rgba(5,7,11,0.5)' }}>
+    <Overlay onClick={onClose} style={{ background: 'rgba(5,7,11,0.5)' }}>
       <div className="dialog" style={{ minWidth: 320 }} onClick={(e) => e.stopPropagation()}>
         <h2>Choose an action</h2>
         <div className="mode-grid">
           {actions.map((a, i) => (
             <button key={i} className="mode-option" onClick={() => onPick(a)}>
-              <b>{a.label}</b>
+              {/* The label carries its mana in braces; drawn, it says which
+                  colour a dual land is about to make. */}
+              <b>
+                <ManaText text={a.label} />
+              </b>
             </button>
           ))}
         </div>
@@ -237,7 +242,7 @@ function ActionMenu({
           <button onClick={onClose}>Cancel</button>
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }
 

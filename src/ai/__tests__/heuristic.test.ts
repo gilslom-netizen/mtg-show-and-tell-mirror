@@ -760,3 +760,51 @@ describe('a prompt that permits nothing', () => {
     expect(() => t.game.submitChoice('p1', choice.id, response)).not.toThrow();
   });
 });
+
+describe('answering a spell while Omniscience is out', () => {
+  /**
+   * A playtester could not tell whether the computer was ignoring his spells or
+   * simply had nothing, which is a fair thing not to be able to tell from the
+   * other side of the table. Both halves are worth pinning down: it does answer
+   * when it can, and a turn where it does not is a turn where it could not.
+   */
+  const opposingSpellOnStack = (setup: (t: TestGame) => void) => {
+    const t = testGame({ startingPlayer: 'p1' });
+    t.p1.hand('Show and Tell');
+    t.p1.manaBase(3);
+    setup(t);
+    t.begin();
+    t.p1.cast('Show and Tell');
+    t.p1.pass(); // their turn to answer, my spell on the stack
+    return t;
+  };
+
+  it('counters for free with no lands at all', () => {
+    const t = opposingSpellOnStack((g) => {
+      g.p2.hand('Mana Drain');
+      g.p2.conjureOntoBattlefield('Omniscience');
+      // Deliberately no mana: without Omniscience this hand does nothing.
+      expect(g.p2.battlefieldNames()).not.toContain('island');
+    });
+
+    const view = redact(t.state, 'p2');
+    expect(view.legalActions.some((a) => a.label.includes('Mana Drain') && a.label.includes('free'))).toBe(
+      true,
+    );
+    const intent = agent.act(view, 50);
+    expect(intent.t).toBe('castSpell');
+  });
+
+  it('passes when the only card it holds cannot be cast now', () => {
+    // The control, and the answer to the playtester: a hand of one sorcery is a
+    // hand with no answer in it, however much mana Omniscience saves.
+    const t = opposingSpellOnStack((g) => {
+      g.p2.hand('Demonic Tutor');
+      g.p2.conjureOntoBattlefield('Omniscience');
+    });
+
+    const view = redact(t.state, 'p2');
+    expect(view.legalActions.some((a) => a.intent.t === 'castSpell')).toBe(false);
+    expect(agent.act(view, 50).t).toBe('passPriority');
+  });
+});

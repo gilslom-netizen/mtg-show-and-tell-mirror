@@ -392,7 +392,19 @@ export function useTriggerPolicy(viewer: PlayerId) {
       const target = bowmastersTarget(policy.bowmasters, choice.candidates, view, viewer);
       if (target) respond({ kind: 'targets', targets: [target] }, viewer, 'policy');
     }
-  }, [view?.choice?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    /*
+     * The policy is a dependency, not just a value read once per prompt.
+     *
+     * Keyed on the choice id alone, changing a dropdown while its own prompt was
+     * open did nothing at all: the trigger you were looking at had already been
+     * decided against the old setting, and the new one only took effect on the
+     * next one. Switching Hullbreaker to "bounce their spell" while Hullbreaker
+     * is asking is exactly when you would switch it.
+     *
+     * Answering twice is not a risk — `respond` returns early once the prompt is
+     * gone — so re-running against a still-open prompt is the whole point.
+     */
+  }, [view?.choice?.id, policy.hullbreaker, policy.bowmasters]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 

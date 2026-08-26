@@ -76,6 +76,29 @@ export const Pip = memo(function Pip({ symbol }: { symbol: ManaSymbol }) {
   );
 });
 
+/**
+ * A line of text with its mana symbols drawn as pips.
+ *
+ * Engine labels carry costs in the same braces the oracle text uses — "Tap Watery
+ * Grave for {U}" — and printing that literally is how the land-tapping menu ended
+ * up asking which colour you wanted in plain grey text. A dual land offers two
+ * options that differ by one letter, which is exactly the thing colour is for.
+ */
+export function ManaText({ text }: { text: string }) {
+  const parts = text.split(/(\{[^}]+\})/g).filter((p) => p !== '');
+  return (
+    <>
+      {parts.map((part, i) =>
+        /^\{[^}]+\}$/.test(part) ? (
+          <Pip key={i} symbol={classify(part.slice(1, -1))} />
+        ) : (
+          <span key={i}>{part}</span>
+        ),
+      )}
+    </>
+  );
+}
+
 /** A whole mana cost, in printed order. */
 export function ManaCost({
   cost,
@@ -89,7 +112,7 @@ export function ManaCost({
   const symbols = parseManaSymbols(cost);
   if (symbols.length === 0) return null;
   return (
-    <span className={`mana-cost is-${size} ${className}`.trim()}>
+    <span className={`mana-cost is-${size} ${className}`.trim()} data-count={symbols.length}>
       {symbols.map((s, i) => (
         <Pip key={i} symbol={s} />
       ))}

@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { frontFace, oracle } from '@engine/oracle';
 import type { PlayerView } from '@engine/redact';
 import { MANA_KINDS } from '@engine/mana';
 import type { ManaKind, ManaPool, PlayerId, Step } from '@engine/types';
 import { CardFace } from './CardView';
+import { Pip } from './mana';
 import { useStore } from './store';
 
 /** Small, shared pieces of chrome. */
@@ -26,6 +28,41 @@ export function seatClass(seat: PlayerId, viewer: PlayerId): string {
   return seat === viewer ? 'seat-mine' : 'seat-theirs';
 }
 
+/**
+ * A dialog that is actually on top of everything.
+ *
+ * `.overlay` is `position: fixed` with a high z-index, which is enough right up
+ * until it is rendered inside something that has made its own stacking context.
+ * The player bar is `position: sticky; z-index: 4`, so the graveyard opened from
+ * it was painted *inside* that layer: the turn divider and the bar itself came
+ * out on top of the dialog, and the cards in it were sliced in half. z-index 60
+ * cannot beat z-index 5 when the 60 is nested inside a 4.
+ *
+ * A portal moves the markup to the end of `document.body`, where there is no
+ * ancestor to be trapped under. Nothing changes visually — the overlay was
+ * already `fixed` — so this is safe for any dialog, and the ones that are
+ * already at the top level lose nothing by using it.
+ */
+export function Overlay({
+  children,
+  className = '',
+  style,
+  onClick,
+}: {
+  children: ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+  onClick?: () => void;
+}) {
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div className={`overlay ${className}`.trim()} style={style} onClick={onClick}>
+      {children}
+    </div>,
+    document.body,
+  );
+}
+
 export function ManaWidget({ pool, floating }: { pool: ManaPool; floating: boolean }) {
   const total = MANA_KINDS.reduce((n, k) => n + pool[k], 0);
   if (total === 0) return null;
@@ -34,11 +71,14 @@ export function ManaWidget({ pool, floating }: { pool: ManaPool; floating: boole
       className={`mana-widget${floating ? ' floating' : ''}`}
       title={floating ? 'This mana empties at the end of the phase' : 'Mana pool'}
     >
+      {/*
+        The same pip the costs are drawn with, rather than a bare `pip W` that
+        matched no colour rule at all — the pool was a row of identical grey
+        circles, so floating {U}{U}{B} could not be told from {B}{B}{B}.
+      */}
       {MANA_KINDS.flatMap((k) =>
         Array.from({ length: pool[k] }, (_, i) => (
-          <span key={`${k}${i}`} className={`pip ${k}`}>
-            {k}
-          </span>
+          <Pip key={`${k}${i}`} symbol={{ raw: k, kind: 'colour', colours: [k], label: k }} />
         )),
       )}
       {floating && <span style={{ fontSize: 11 }}>empties at end of phase</span>}
@@ -77,7 +117,7 @@ function YardStat({
         <b>{view.players[seat].graveyardCount}</b> yard
       </button>
       {open && (
-        <div className="overlay" onClick={() => setOpen(false)}>
+        <Overlay onClick={() => setOpen(false)}>
           <div className="dialog" onClick={(e) => e.stopPropagation()}>
             <h2>{seat === viewer ? 'Your graveyard' : "Opponent's graveyard"}</h2>
             {gy.length === 0 ? (
@@ -103,7 +143,7 @@ function YardStat({
               <button onClick={() => setOpen(false)}>Close</button>
             </div>
           </div>
-        </div>
+        </Overlay>
       )}
     </>
   );
@@ -125,11 +165,6 @@ export function PlayerBar({
   return (
     <div className={`playerbar ${seatClass(seat, viewer)}${hasPriority ? ' has-priority' : ''}`}>
       <span className="seat-name">{seat === viewer ? 'You' : 'Opponent'}</span>
-      {/* Who was on the play is public and permanent - a playtester who could not
-          see it read his own legal first draw as a bug. */}
-      <span className="chip dim" title="Decided before the first mulligan">
-        {view.startingPlayer === seat ? 'on the play' : 'on the draw'}
-      </span>
       <span className={`stat life${p.life <= 5 ? ' low' : ''}`}>
         <b>{p.life}</b> life
       </span>
@@ -140,6 +175,16 @@ export function PlayerBar({
         <b>{p.libraryCount}</b> library
       </span>
       <YardStat view={view} seat={seat} viewer={viewer} />
+      {/*
+        Who was on the play is public and permanent — a playtester who could not
+        see it read his own legal first draw as a bug — but it never changes, and
+        sitting between the name and the life total it pushed every number that
+        does change a chip's width further away from the player it belongs to.
+        It reads just as well after them.
+      */}
+      <span className="chip dim" title="Decided before the first mulligan">
+        {view.startingPlayer === seat ? 'on the play' : 'on the draw'}
+      </span>
       {p.spellsCastThisTurnCount > 0 && (
         <span className="chip" title="Spells cast this turn — Hullbreaker Horror counts these">
           {p.spellsCastThisTurnCount} cast

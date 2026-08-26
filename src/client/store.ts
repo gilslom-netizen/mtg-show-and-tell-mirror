@@ -473,7 +473,18 @@ export const useStore = create<StoreState>((set, get) => ({
   cancel() {
     const conn = get().connection;
     if (!conn) return;
-    conn.cancel(get().viewSeat);
+    /*
+     * A finished game does not rewind.
+     *
+     * Escape is undo, and it applied to the last action whatever that was — so
+     * pressing it while reading the result took the concede back, resurrected the
+     * game and left the match tracker holding a result for a game that was
+     * suddenly in progress again. The result screen exists to be sat with; the
+     * one key everyone presses to dismiss things should not quietly undo it.
+     */
+    const seat = get().viewSeat;
+    if (get().views[seat]?.winner !== null) return;
+    conn.cancel(seat);
   },
 
   setAutoPass(mode) {

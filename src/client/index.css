@@ -591,7 +591,39 @@ input[type='number'] {
   border-radius: 999px;
   /* A dark backing so pale pips survive whatever art is behind them. */
   background: rgba(8, 10, 15, 0.72);
-  --pip-size: calc(var(--card-w) * 0.135);
+  /*
+     A five-pip cost is wider than the card it sits on. Anchored to the right
+     inside an `overflow: hidden` card, the overflow goes off the *left* edge, so
+     Atraxa's {3}{G}{W}{U}{B} lost its {3} — the one pip that says what it costs.
+     Long costs get smaller pips, and the wrap is the backstop for anything
+     longer still: two tidy rows beat a cost that lies about itself.
+  */
+  max-width: calc(100% - 6px);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 1px;
+}
+/*
+   Sized against the card rather than in fixed pixels, because the card itself is
+   fluid: a battlefield card is 0.66 of a base that ranges 112–168px, so the same
+   five pips fit comfortably at one window width and overflow at another. `min()`
+   keeps the normal cost at its printed size and only shrinks the long ones.
+*/
+.mana-cost.card-cost[data-count='4'] {
+  --pip-size: min(17px, calc(var(--card-w) * 0.2));
+}
+.mana-cost.card-cost[data-count='5'] {
+  --pip-size: min(17px, calc(var(--card-w) * 0.16));
+}
+.mana-cost.card-cost[data-count='6'] {
+  --pip-size: min(15px, calc(var(--card-w) * 0.13));
+  gap: 1px;
+}
+.mana-cost.card-cost[data-count='7'],
+.mana-cost.card-cost[data-count='8'],
+.mana-cost.card-cost[data-count='9'] {
+  --pip-size: min(13px, calc(var(--card-w) * 0.11));
+  gap: 1px;
 }
 
 .card-badge.cost.is-free {
@@ -790,8 +822,13 @@ input[type='number'] {
 .playerbar {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 5px 12px;
+  /*
+     Was 14px, which pushed the life total, the yard and the rest a long way from
+     the name they belong to — the row read as scattered pieces rather than one
+     player's line. They are a single group and should sit like one.
+  */
+  gap: 8px;
+  padding: 5px 10px;
   border-radius: var(--radius);
   background: var(--panel);
   border: 1px solid var(--border);
@@ -846,7 +883,9 @@ input[type='number'] {
 .mana-widget {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  /* The pool sits in the player bar, where 17px pips would set the row height. */
+  --pip-size: 14px;
+  gap: 4px;
   padding: 4px 10px;
   border-radius: 999px;
   background: var(--bg-sunken);
@@ -1122,6 +1161,35 @@ input[type='number'] {
   background: var(--panel);
   border-color: var(--mine);
 }
+/*
+   The result, put aside.
+   Fixed rather than in the flow: the game-over screen is rendered at the top of
+   the app, not inside the decision area, so a full-width bar there would push the
+   whole table up by its own height at the exact moment you are trying to look at
+   it. Above the overlay's own layer, because it is what brings the overlay back.
+*/
+.gameover-minimised {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 75;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(680px, 94vw);
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  border: 1px solid var(--mine);
+  box-shadow: var(--shadow-lg);
+  font-size: 12.5px;
+  text-align: left;
+}
+.gameover-minimised:hover:not(:disabled) {
+  background: var(--panel);
+}
+
 .choice-minimised-what {
   color: var(--text-dim);
   overflow: hidden;
@@ -1614,6 +1682,9 @@ button.linkish:hover {
 .gameover .headline {
   font-size: 26px;
   font-weight: 800;
+  /* Symmetric room for the minimise control in the corner, so making space for
+     it does not shove a centred headline off centre. */
+  padding: 0 34px;
 }
 .gameover .headline.win {
   color: var(--good);
