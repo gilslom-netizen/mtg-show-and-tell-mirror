@@ -12,6 +12,9 @@ import type { CostSymbol, IID, ManaKind, ManaPool, PaymentPlan } from './types.j
 
 export const MANA_KINDS: ManaKind[] = ['W', 'U', 'B', 'R', 'G', 'C'];
 
+/** What a Phyrexian symbol costs when it is not paid with mana. CR 107.4f. */
+export const PHYREXIAN_LIFE = 2;
+
 export function emptyPool(): ManaPool {
   return { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
 }
@@ -45,6 +48,10 @@ export function parseCost(cost: string | null): CostSymbol[] {
     } else if (/^[WUBRG]\/[WUBRG]$/.test(s)) {
       const [a, b] = s.split('/');
       out.push({ t: 'hybridColor', a: a as never, b: b as never });
+    } else if (/^[WUBRG]\/P$/.test(s)) {
+      // {U/P}: that colour, or two life. Its mana value is 1 either way, which is
+      // counted in oracle.ts rather than here.
+      out.push({ t: 'phyrexian', c: s[0] as never });
     } else if (/^[WUBRG]$/.test(s)) {
       out.push({ t: 'colored', c: s as never });
     } else if (s === 'C') {
@@ -117,9 +124,21 @@ interface Slot {
   accepts: ManaKind[];
 }
 
-function slotsFor(symbols: CostSymbol[], hybridChoice: boolean[]): Slot[] | null {
+/**
+ * Turn a cost into the list of mana it needs, once every either/or in it has been
+ * decided. `hybridChoice` picks the coloured half of each {2/B}; `payWithLife`
+ * picks life over mana for each Phyrexian symbol, and those symbols then need no
+ * mana at all — the life is reported back instead.
+ */
+function slotsFor(
+  symbols: CostSymbol[],
+  hybridChoice: boolean[],
+  payWithLife: boolean[] = [],
+): { slots: Slot[]; life: number } | null {
   const slots: Slot[] = [];
   let hybridIndex = 0;
+  let phyrexianIndex = 0;
+  let life = 0;
   for (const s of symbols) {
     switch (s.t) {
       case 'generic':
@@ -137,13 +156,18 @@ function slotsFor(symbols: CostSymbol[], hybridChoice: boolean[]): Slot[] | null
         else for (let i = 0; i < s.n; i++) slots.push({ accepts: MANA_KINDS });
         break;
       }
+      case 'phyrexian': {
+        if (payWithLife[phyrexianIndex++]) life += PHYREXIAN_LIFE;
+        else slots.push({ accepts: [s.c] });
+        break;
+      }
     }
   }
-  return slots;
+  return { slots, life };
 }
 
-function countHybridGeneric(symbols: CostSymbol[]): number {
-  return symbols.filter((s) => s.t === 'hybridGeneric').length;
+function countSymbols(symbols: CostSymbol[], t: CostSymbol['t']): number {
+  return symbols.filter((s) => s.t === t).length;
 }
 
 interface SolveAttempt {
@@ -248,8 +272,15 @@ export function solvePayment(
   symbols: CostSymbol[],
   pool: ManaPool,
   sources: ManaSource[],
+  /**
+   * The payer's life total, for Phyrexian symbols. Left at zero, a Phyrexian
+   * symbol can only be paid with mana — which is the right default for any caller
+   * that does not know whose life it would be spending.
+   */
+  life = 0,
 ): PaymentPlan | null {
-  const hybridCount = countHybridGeneric(symbols);
+  const hybridCount = countSymbols(symbols, 'hybridGeneric');
+  const phyrexianCount = countSymbols(symbols, 'phyrexian');
 
   // Enumerate hybrid-generic choices. Paying the coloured half is cheaper in total
   // mana, so try "all coloured" first and walk towards "all generic".
@@ -261,21 +292,46 @@ export function solvePayment(
   }
   if (hybridCount === 0) combos.push([]);
 
+  /*
+   * Enumerate Phyrexian choices, fewest life payments first.
+   *
+   * Life is a real cost and mana on the battlefield is not — an untapped Island is
+   * worth nothing at the end of the turn — so a Probe cast off an Island should
+   * cost the Island, not two life. Only when the mana is not there does paying
+   * life come into it. CR 118.4: you may only pay life you have.
+   */
+  const lifeCombos: boolean[][] = [];
+  for (let mask = 0; mask < 1 << phyrexianCount; mask++) {
+    const choice: boolean[] = [];
+    for (let i = 0; i < phyrexianCount; i++) choice.push(Boolean(mask & (1 << i)));
+    if (choice.filter(Boolean).length * PHYREXIAN_LIFE <= life) lifeCombos.push(choice);
+  }
+  lifeCombos.sort((a, b) => a.filter(Boolean).length - b.filter(Boolean).length);
+  if (phyrexianCount === 0) lifeCombos.push([]);
+
   // Two passes: without reserved sources, then with them.
   const passes: ManaSource[][] = [sources.filter((s) => !s.reserved), sources];
 
   for (const available of passes) {
-    for (const choice of combos) {
-      const slots = slotsFor(symbols, choice);
-      if (!slots) continue;
-      if (slots.length === 0) return { fromPool: emptyPool(), taps: [] };
-      const attempt = trySolveSlots(slots, pool, available);
-      if (attempt) return { fromPool: attempt.fromPool, taps: attempt.taps };
+    for (const payWithLife of lifeCombos) {
+      for (const choice of combos) {
+        const built = slotsFor(symbols, choice, payWithLife);
+        if (!built) continue;
+        const { slots, life: lifeCost } = built;
+        if (slots.length === 0) return { fromPool: emptyPool(), taps: [], life: lifeCost };
+        const attempt = trySolveSlots(slots, pool, available);
+        if (attempt) return { fromPool: attempt.fromPool, taps: attempt.taps, life: lifeCost };
+      }
     }
   }
   return null;
 }
 
-export function canPay(symbols: CostSymbol[], pool: ManaPool, sources: ManaSource[]): boolean {
-  return solvePayment(symbols, pool, sources) !== null;
+export function canPay(
+  symbols: CostSymbol[],
+  pool: ManaPool,
+  sources: ManaSource[],
+  life = 0,
+): boolean {
+  return solvePayment(symbols, pool, sources, life) !== null;
 }

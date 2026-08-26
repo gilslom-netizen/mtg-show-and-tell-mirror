@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { testGame } from './harness.js';
 import { MAINDECK, MAINDECK_SIZE } from '../deck.js';
 import { ORACLE, allOracleIds, oracleByName } from '../oracle.js';
+import { parseCost } from '../mana.js';
 import { scriptedOracleIds } from '../cards/index.js';
 import { DRAFT_POOL, grantedLands } from '../draft-pool.js';
 
@@ -50,7 +51,7 @@ describe('setup', () => {
     const playable = poolIds.filter((id) => scripted.has(id));
     // Some pool cards are already implemented because the main deck uses them.
     expect(playable.length).toBeGreaterThan(0);
-    expect(poolIds.length).toBe(63);
+    expect(poolIds.length).toBe(68);
 
     /*
      * The spells you can cast without paying for them, named rather than counted.
@@ -63,6 +64,31 @@ describe('setup', () => {
     for (const name of ['Commandeer', 'Force of Negation', 'Mindbreak Trap', 'Pact of Negation']) {
       expect(scripted.has(oracleByName(name).oracleId), `${name} has no script`).toBe(true);
     }
+  });
+
+  it('can parse the cost of every card it knows about', () => {
+    /*
+     * The guard that was missing.
+     *
+     * A cost is only parsed when somebody tries to cast the card, so an
+     * unsupported symbol sits in the database doing nothing until the first
+     * player draws it and the engine throws in their face. Surgical Extraction
+     * ({B/P}) and Jace, the Perfected Mind ({2}{U}{U/P}) sat in the cube exactly
+     * like that. Parsing the whole database up front costs a millisecond and
+     * turns that into a failing test the day the card is added.
+     */
+    const unparseable: string[] = [];
+    for (const id of allOracleIds()) {
+      const card = ORACLE[id];
+      for (const face of card.faces ?? [card]) {
+        try {
+          parseCost(face.manaCost);
+        } catch (e) {
+          unparseable.push(`${face.name} — ${face.manaCost}: ${(e as Error).message}`);
+        }
+      }
+    }
+    expect(unparseable).toEqual([]);
   });
 
   it('parses mana values correctly, including hybrid symbols', () => {

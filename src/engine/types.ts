@@ -84,7 +84,8 @@ export type CostSymbol =
   | { t: 'generic'; n: number }
   | { t: 'colored'; c: Color }
   | { t: 'hybridColor'; a: Color; b: Color } // {U/B}
-  | { t: 'hybridGeneric'; n: number; c: Color }; // {2/B}
+  | { t: 'hybridGeneric'; n: number; c: Color } // {2/B}
+  | { t: 'phyrexian'; c: Color }; // {U/P} — that colour, or two life
 
 export interface ManaPool {
   W: number;
@@ -102,6 +103,8 @@ export interface PaymentPlan {
   fromPool: ManaPool;
   /** Lands (or other sources) to tap, with the colour each one produces. */
   taps: { iid: IID; produce: ManaKind }[];
+  /** Life paid for Phyrexian symbols. Zero for every cost that has none. */
+  life: number;
 }
 
 // ---------------------------------------------------------------------------

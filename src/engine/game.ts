@@ -816,7 +816,12 @@ export class Game {
         return;
       }
     } else if (!opts.free) {
-      const plan = solvePayment(symbols, s.players[player].manaPool, this.manaSources(player));
+      const plan = solvePayment(
+        symbols,
+        s.players[player].manaPool,
+        this.manaSources(player),
+        s.players[player].life,
+      );
       if (!plan) {
         this.emit(moveCardRaw(s, iid, 'hand'));
         s.castingIid = null;
@@ -906,7 +911,12 @@ export class Game {
     const s = this.state;
     if (cost.mana) {
       const symbols = parseCost(cost.mana);
-      const plan = solvePayment(symbols, s.players[player].manaPool, this.manaSources(player, source.iid));
+      const plan = solvePayment(
+        symbols,
+        s.players[player].manaPool,
+        this.manaSources(player, source.iid),
+        s.players[player].life,
+      );
       if (!plan) return false;
       this.executePayment(player, plan, symbols);
     }
@@ -1301,7 +1311,7 @@ export class Game {
        */
       const name = s.cards[d.sourceIid] ? cardName(s.cards[d.sourceIid]) : 'A pact';
       const symbols = parseCost(d.cost);
-      const plan = solvePayment(symbols, s.players[ap].manaPool, this.manaSources(ap));
+      const plan = solvePayment(symbols, s.players[ap].manaPool, this.manaSources(ap), s.players[ap].life);
       if (plan) {
         const pay = (yield this.request({
           kind: 'yesNo',
@@ -1842,11 +1852,19 @@ export class Game {
 
   private executePayment(
     player: PlayerId,
-    plan: { fromPool: import('./types.js').ManaPool; taps: { iid: IID; produce: ManaKind }[] },
+    plan: {
+      fromPool: import('./types.js').ManaPool;
+      taps: { iid: IID; produce: ManaKind }[];
+      life?: number;
+    },
     _symbols: CostSymbol[],
   ): void {
     const s = this.state;
     const pool = s.players[player].manaPool;
+    // A Phyrexian symbol paid with life. This is a cost, not damage — nothing
+    // replaces or prevents it — and it can legally take a player to zero, where
+    // the next state-based check ends the game.
+    if (plan.life) this.changeLife(player, -plan.life);
     for (const tap of plan.taps) {
       const c = s.cards[tap.iid];
       if (!c) continue;
@@ -2185,6 +2203,16 @@ function hasUnusedShieldConsumed(s: GameState, player: PlayerId): boolean {
 
 export function producedManaOf(card: CardInstance): ManaKind[] {
   if (card.isToken) return [];
+  /*
+   * A mana creature cannot tap the turn it lands. CR 302.6 — an ability with {T}
+   * in its cost needs the permanent to have been under your control since your
+   * last turn began, and nothing about it being a mana ability changes that.
+   *
+   * The pool had no mana creature in it until Birds of Paradise, so every source
+   * was a land and this never came up. It comes up now, and it is the difference
+   * between a turn-one Birds and a turn-one Birds that already made mana.
+   */
+  if (card.summoningSick && currentFace(card).types.includes('Creature')) return [];
   const face = currentFace(card);
   return face.producedMana as ManaKind[];
 }
@@ -2275,7 +2303,7 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
       const gy = state.zones[player].graveyard.length;
       symbols = reduceGeneric(symbols, Math.min(gy, genericPortion(symbols)));
     }
-    if (canPay(symbols, ps.manaPool, sources)) {
+    if (canPay(symbols, ps.manaPool, sources, ps.life)) {
       out.push({ intent: { t: 'castSpell', iid: c.iid }, label: `Cast ${cardName(c)}` });
     }
   }
@@ -2293,7 +2321,7 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
       if (ab.cost.mana) {
         const symbols = parseCost(ab.cost.mana);
         const other = sources.filter((src) => !(ab.cost.tap && src.iid === c.iid));
-        if (!canPay(symbols, ps.manaPool, other)) return;
+        if (!canPay(symbols, ps.manaPool, other, ps.life)) return;
       }
       if (ab.targets && !hasAllRequiredTargets(state, ab.targets, player, c)) return;
       out.push({ intent: { t: 'activateAbility', iid: c.iid, index }, label: `${cardName(c)}: ${ab.text}` });

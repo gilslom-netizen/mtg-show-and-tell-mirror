@@ -9,7 +9,7 @@ import {
   pilesRemaining,
 } from '../draft.js';
 import { redactDraft } from '../redact.js';
-import { COINS_PER_PLAYER, draftPoolOracleIds } from '../../engine/draft-pool.js';
+import { COINS_PER_PLAYER, PILE_SIZE, draftPoolOracleIds } from '../../engine/draft-pool.js';
 import type { DraftState } from '../types.js';
 import type { PlayerId } from '../../engine/types.js';
 
@@ -51,12 +51,24 @@ describe('setting up a draft', () => {
     expect(s.coins).toEqual({ p1: COINS_PER_PLAYER, p2: COINS_PER_PLAYER });
   });
 
-  it('sets aside cards that cannot make a whole pile', () => {
-    // 63 cards is 15 piles and three cards over — those cannot be dealt two
-    // public and one to each player, so they sit the draft out.
+  it('deals the whole cube, because it divides into piles exactly', () => {
+    // 68 cards is 17 piles with nothing over. That is a property of the list
+    // rather than of the code, and it is worth a test: a cube that is not a
+    // multiple of four silently leaves cards out of every draft.
     const s = draft();
-    expect(s.pilesTotal).toBe(15);
-    expect(s.setAside).toHaveLength(draftPoolOracleIds().length - 15 * 4);
+    expect(draftPoolOracleIds().length % PILE_SIZE).toBe(0);
+    expect(s.pilesTotal).toBe(17);
+    expect(s.setAside).toHaveLength(0);
+  });
+
+  it('sets aside cards that cannot make a whole pile', () => {
+    // The rule still has to hold for a pool that does not divide, since the list
+    // is edited by hand and has not always divided.
+    const odd = draft(1, draftPoolOracleIds().slice(0, 4 * 3 + 2));
+    expect(odd.pilesTotal).toBe(3);
+    // Two over: they cannot be dealt two public and one to each player, so they
+    // sit the draft out rather than becoming a short pile one player sees more of.
+    expect(odd.setAside).toHaveLength(2);
   });
 
   it('is deterministic in the seed, and different across seeds', () => {

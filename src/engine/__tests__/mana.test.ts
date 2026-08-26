@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { canPay, emptyPool, parseCost, reduceGeneric, solvePayment, type ManaSource } from '../mana.js';
-import { manaValueOf } from '../oracle.js';
+import { manaValueOf, oracleByName } from '../oracle.js';
 
 /** DESIGN.md 9 — cost parsing and the payment solver. */
 
@@ -58,6 +58,52 @@ describe('payment solver', () => {
     expect(plan).not.toBeNull();
     const produced = plan!.taps.map((t) => t.produce).sort();
     expect(produced).toEqual(['B', 'G']);
+  });
+
+  /**
+   * Phyrexian mana, which the cube brought in with Gitaxian Probe.
+   *
+   * {U/P} is "pay {U}, or pay two life". The parser used to throw on it outright,
+   * which would have taken the whole oracle index down with it the moment the card
+   * entered the pool.
+   */
+  it('reads {U/P} as one symbol worth one mana', () => {
+    expect(parseCost('{U/P}')).toEqual([{ t: 'phyrexian', c: 'U' }]);
+    expect(oracleByName('Gitaxian Probe').mv).toBe(1);
+  });
+
+  it('spends the mana rather than the life when the mana is there', () => {
+    // An untapped Island is worth nothing at the end of the turn and two life is
+    // worth two life, so the Island goes first.
+    const plan = solvePayment(parseCost('{U/P}'), emptyPool(), [src(1, 'U')], 20);
+    expect(plan).not.toBeNull();
+    expect(plan!.life).toBe(0);
+    expect(plan!.taps).toHaveLength(1);
+  });
+
+  it('pays the two life when the mana is not', () => {
+    const plan = solvePayment(parseCost('{U/P}'), emptyPool(), [], 20);
+    expect(plan).not.toBeNull();
+    expect(plan!.life).toBe(2);
+    expect(plan!.taps).toHaveLength(0);
+  });
+
+  it('will not pay life the player does not have', () => {
+    // CR 118.4 — you may only pay an amount of life you actually have. At one, the
+    // cost simply cannot be paid; at two it can, and it takes you to zero.
+    expect(canPay(parseCost('{U/P}'), emptyPool(), [], 1)).toBe(false);
+    expect(canPay(parseCost('{U/P}'), emptyPool(), [], 2)).toBe(true);
+    // And a caller that does not say whose life it is never spends any.
+    expect(canPay(parseCost('{U/P}'), emptyPool(), [])).toBe(false);
+  });
+
+  it('mixes life and mana inside one cost', () => {
+    // Not a card in this pool, but the solver should not care how many there are.
+    const plan = solvePayment(parseCost('{1}{U/P}{U/P}'), emptyPool(), [src(1, 'U'), src(2, 'U')], 20);
+    expect(plan).not.toBeNull();
+    // Two blue sources cover the generic and one Phyrexian; the other costs life.
+    expect(plan!.taps).toHaveLength(2);
+    expect(plan!.life).toBe(2);
   });
 
   it('reports failure when a colour is simply unavailable', () => {

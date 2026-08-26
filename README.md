@@ -137,6 +137,9 @@ withdraws; the other player raises or withdraws. Whoever is left takes the pile
 and pays their bid — if both withdraw, the pile is gone. The winner keeps two
 cards and throws the other two away.
 
+The cube is 68 cards, which is seventeen whole piles — nothing sits out of a
+draft any more.
+
 Right-click any card to hold it open in the reader beside the table, so you can
 weigh a pile up while still looking at the purses and the piles-left count. The
 same right-click reads a card during a game.

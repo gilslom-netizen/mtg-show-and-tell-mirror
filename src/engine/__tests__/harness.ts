@@ -53,6 +53,16 @@ export class Seat {
     return out;
   }
 
+  /** As `conjure`, but the card starts on the battlefield, ready to act. */
+  conjureOntoBattlefield(...names: string[]): IID[] {
+    const iids = this.conjure(...names);
+    for (const iid of iids) {
+      moveCardRaw(this.t.game.state, iid, 'battlefield', { controller: this.id });
+      this.t.game.state.cards[iid].summoningSick = false;
+    }
+    return iids;
+  }
+
   /** Move these cards from library to hand. */
   hand(...names: string[]): IID[] {
     const iids = this.take(names);

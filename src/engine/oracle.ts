@@ -98,6 +98,26 @@ export function manaValueOf(cost: string | null): number {
   return total;
 }
 
+/**
+ * The mana a permanent taps for, without a script.
+ *
+ * The engine offers "tap this for {G}" off Scryfall's `produced_mana` alone, which
+ * is exactly right for a land or a Mox — their whole ability is "{T}: Add" — and
+ * exactly wrong for anything whose mana costs more than the tap. Deathrite Shaman
+ * reports producing all five colours, but only by exiling a land from a graveyard
+ * first; offered as a plain tap it would be a free Birds of Paradise that also
+ * fixes. So a non-land has to actually say "{T}: Add" to get the shortcut, and
+ * anything conditional waits for a script instead of being quietly wrong.
+ *
+ * Lands keep the old rule, including the inherited fallback: a basic prints no
+ * text at all, so there is nothing to match against.
+ */
+function producedManaFor(f: RawFace, types: string[], fallback: string[]): string[] {
+  if (types.includes('Land')) return f.produced_mana ?? fallback;
+  if (!f.produced_mana) return [];
+  return /\{T\}: Add /.test(f.oracle_text ?? '') ? f.produced_mana : [];
+}
+
 function buildFace(
   f: RawFace,
   fallbackImage: string | null,
@@ -106,8 +126,7 @@ function buildFace(
   const { types, subtypes, supertypes } = parseTypeLine(f.type_line);
   // Scryfall reports produced_mana at card level for modal DFCs, so the land face
   // has to inherit it or Inundated Archive would tap for nothing.
-  const produced =
-    f.produced_mana ?? (types.includes('Land') ? fallbackProducedMana : []);
+  const produced = producedManaFor(f, types, fallbackProducedMana);
   return {
     name: f.name,
     manaCost: f.mana_cost && f.mana_cost.length > 0 ? f.mana_cost : null,
