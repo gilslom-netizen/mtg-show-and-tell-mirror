@@ -251,14 +251,26 @@ export function determinize(view: PlayerView, rng: RngState): DeterminizeResult 
   );
   if (stepIndex < 0) return { state: null, failure: 'unknown-card' };
 
-  const delayed: DelayedTrigger[] = view.delayedMana.map((d, i) => ({
-    id: 100000 + i,
-    kind: 'manaDrain',
-    controller: d.controller,
-    amount: d.amount,
-    // Never read: the delayed trigger fires for whoever is active, whenever that is.
-    armedOnTurn: view.turn,
-  }));
+  const delayed: DelayedTrigger[] = [
+    ...view.delayedMana.map((d, i): DelayedTrigger => ({
+      id: 100000 + i,
+      kind: 'manaDrain',
+      controller: d.controller,
+      amount: d.amount,
+      // Never read: the delayed trigger fires for whoever is active, whenever that is.
+      armedOnTurn: view.turn,
+    })),
+    // A pact is public and can end the game on its own, so a search that dropped it
+    // would be searching a position where nobody ever has to pay.
+    ...view.pacts.map((d, i): DelayedTrigger => ({
+      id: 200000 + i,
+      kind: 'pact',
+      controller: d.controller,
+      cost: d.cost,
+      sourceIid: -1,
+      armedOnTurn: view.turn,
+    })),
+  ];
 
   const state: GameState = {
     gameId: view.gameId,
@@ -390,6 +402,7 @@ function canonical(view: PlayerView): string {
     combat: view.combat,
     effects: view.effects,
     delayedMana: view.delayedMana,
+    pacts: view.pacts,
     omniscienceActive: view.omniscienceActive,
     // The strongest line of the lot: two positions that offer the same player the
     // same set of legal actions are the same position as far as a search cares.

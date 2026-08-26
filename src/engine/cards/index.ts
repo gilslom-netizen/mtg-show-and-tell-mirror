@@ -27,6 +27,7 @@ import { demonicTutor, waterloggedTeachings } from './tutors.js';
 import { omniscience, showAndTell } from './combo.js';
 import { atraxaGrandUnifier, hullbreakerHorror, orcishBowmasters } from './creatures.js';
 import { manaDrain, veilOfSummer } from './interaction.js';
+import { commandeer, forceOfNegation, mindbreakTrap, pactOfNegation } from './free.js';
 
 /**
  * The script registry.
@@ -68,6 +69,11 @@ const ALL: CardScript[] = [
   // interaction
   manaDrain,
   veilOfSummer,
+  // spells you can cast without paying for them
+  commandeer,
+  forceOfNegation,
+  mindbreakTrap,
+  pactOfNegation,
 ];
 
 const REGISTRY: Record<OracleId, CardScript> = {};

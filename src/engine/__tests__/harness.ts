@@ -1,7 +1,7 @@
 import { MAINDECK } from '../deck.js';
 import { Game, type Intent } from '../game.js';
 import { oracleByName } from '../oracle.js';
-import { cardName, currentFace, moveCardRaw, stepAt } from '../state.js';
+import { cardName, currentFace, makeCard, moveCardRaw, stepAt } from '../state.js';
 import { TURN_SEQUENCE, type ChoiceResponse, type GameEvent, type IID, type PlayerId, type Phase, type Step } from '../types.js';
 
 /**
@@ -29,6 +29,25 @@ export class Seat {
       if (iid === undefined) {
         throw new Error(`No ${name} left in ${this.id}'s library`);
       }
+      out.push(iid);
+    }
+    return out;
+  }
+
+  /**
+   * Put a card into hand that was never in the deck.
+   *
+   * The drafted cube is sixty-odd cards no maindeck library contains, so a test for
+   * one of them cannot begin by finding it in a library it was never shuffled into.
+   * Everything else about it is an ordinary card of this player's.
+   */
+  conjure(...names: string[]): IID[] {
+    const s = this.t.game.state;
+    const out: IID[] = [];
+    for (const name of names) {
+      const iid = s.nextIid++;
+      s.cards[iid] = makeCard(iid, oracleByName(name).oracleId, this.id, 'hand');
+      s.zones[this.id].hand.push(iid);
       out.push(iid);
     }
     return out;
@@ -154,11 +173,12 @@ export class Seat {
 
   // --- actions -------------------------------------------------------------
 
-  cast(name: string, opts: { free?: boolean; hold?: boolean } = {}): void {
+  cast(name: string, opts: { free?: boolean; alt?: boolean; hold?: boolean } = {}): void {
     this.t.intent(this.id, {
       t: 'castSpell',
       iid: this.find(name, 'hand'),
       free: opts.free,
+      alt: opts.alt,
       holdPriority: opts.hold,
     });
   }

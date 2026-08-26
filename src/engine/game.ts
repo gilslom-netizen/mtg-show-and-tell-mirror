@@ -77,7 +77,15 @@ import {
 
 export type Intent =
   | { t: 'playLand'; iid: IID; face?: 'front' | 'back' }
-  | { t: 'castSpell'; iid: IID; free?: boolean; holdPriority?: boolean }
+  | {
+      t: 'castSpell';
+      iid: IID;
+      /** Omniscience and friends: no cost at all. */
+      free?: boolean;
+      /** The card's own "rather than pay this spell's mana cost". */
+      alt?: boolean;
+      holdPriority?: boolean;
+    }
   | { t: 'activateAbility'; iid: IID; index: number }
   | { t: 'tapForMana'; iid: IID; kind: ManaKind }
   | { t: 'passPriority' }
@@ -287,6 +295,7 @@ export class Game {
       case 'castSpell':
         this.current = this.castSpell(player, intent.iid, {
           free: intent.free ?? false,
+          alt: intent.alt ?? false,
           holdPriority: intent.holdPriority ?? false,
         });
         break;
@@ -609,7 +618,7 @@ export class Game {
     }
   }
 
-  private playerLoses(p: PlayerId, reason: 'life' | 'deckOut' | 'concede'): void {
+  private playerLoses(p: PlayerId, reason: 'life' | 'deckOut' | 'concede' | 'unpaidPact'): void {
     const s = this.state;
     if (s.players[p].hasLost) return;
     s.players[p].hasLost = true;
@@ -620,7 +629,9 @@ export class Game {
         ? 'life total reached 0'
         : reason === 'deckOut'
           ? 'tried to draw from an empty library'
-          : 'conceded';
+          : reason === 'unpaidPact'
+            ? 'a pact came due and went unpaid'
+            : 'conceded';
     this.events.push({ t: 'gameOver', winner: s.winner, reason: s.endReason });
     logLine(s, `${p} loses — ${s.endReason}`, { player: p });
   }
@@ -735,7 +746,7 @@ export class Game {
   private *castSpell(
     player: PlayerId,
     iid: IID,
-    opts: { free: boolean; holdPriority: boolean },
+    opts: { free: boolean; alt: boolean; holdPriority: boolean },
   ): Eff {
     const s = this.state;
     const card = s.cards[iid];
@@ -789,7 +800,20 @@ export class Game {
     }
 
     // Pay.
-    if (!opts.free) {
+    const altCost = opts.alt ? script?.altCost : undefined;
+    if (altCost) {
+      /*
+       * An alternative cost replaces the mana cost, so nothing here touches mana —
+       * CR 601.2f still applies, it is just that the total cost is "exile two blue
+       * cards" instead of {5}{U}{U}. It is paid after targets, like any cost.
+       */
+      const paid = yield* altCost.pay(this.makeCtx(card, player, card.targets ?? [], [], {}));
+      if (!paid) {
+        this.emit(moveCardRaw(s, iid, 'hand'));
+        s.castingIid = null;
+        return;
+      }
+    } else if (!opts.free) {
       const plan = solvePayment(symbols, s.players[player].manaPool, this.manaSources(player));
       if (!plan) {
         this.emit(moveCardRaw(s, iid, 'hand'));
@@ -811,7 +835,9 @@ export class Game {
 
     logLine(
       s,
-      `casts ${cardName(card)}${opts.free ? ' (free)' : ''}${
+      `casts ${cardName(card)}${
+        opts.free ? ' (free)' : altCost ? ` (${altCost.label})` : ''
+      }${
         card.targets?.length ? ` → ${card.targets.map((t) => targetLabel(s, t)).join(', ')}` : ''
       }`,
       { player, iids: [iid] },
@@ -994,7 +1020,7 @@ export class Game {
   }
 
   /** Counter a spell. Respects "can't be countered" from every source. */
-  counterSpell(spellIid: IID, byIid: IID | null): boolean {
+  counterSpell(spellIid: IID, byIid: IID | null, opts: { exile?: boolean } = {}): boolean {
     const s = this.state;
     const spell = s.cards[spellIid];
     if (!spell || spell.zone !== 'stack') return false;
@@ -1007,8 +1033,30 @@ export class Game {
       return false;
     }
     this.events.push({ t: 'spellCountered', iid: spellIid, by: byIid });
-    logLine(s, `${cardName(spell)} is countered`, { player: spell.controller, iids: [spellIid] });
-    this.emit(moveCardRaw(s, spellIid, 'graveyard'));
+    logLine(
+      s,
+      `${cardName(spell)} is countered${opts.exile ? ' and exiled' : ''}`,
+      { player: spell.controller, iids: [spellIid] },
+    );
+    // Force of Negation exiles instead — which matters here, because half this
+    // format's graveyard is Dig Through Time fuel and Mystic Sanctuary targets.
+    this.emit(moveCardRaw(s, spellIid, opts.exile ? 'exile' : 'graveyard'));
+    return true;
+  }
+
+  /**
+   * Take over a spell on the stack (Commandeer).
+   *
+   * Only the controller changes. Ownership does not, which is why the card still
+   * goes to its owner's graveyard afterwards — CR 108.3.
+   */
+  gainControlOfSpell(spellIid: IID, player: PlayerId): boolean {
+    const s = this.state;
+    const spell = s.cards[spellIid];
+    if (!spell || spell.zone !== 'stack' || spell.isAbility) return false;
+    if (spell.controller === player) return false;
+    spell.controller = player;
+    logLine(s, `gains control of ${cardName(spell)}`, { player, iids: [spellIid] });
     return true;
   }
 
@@ -1139,8 +1187,12 @@ export class Game {
         }
         break;
       }
+      case 'upkeep': {
+        yield* this.fireDelayedTriggers('upkeep');
+        break;
+      }
       case 'main': {
-        this.fireDelayedTriggers();
+        yield* this.fireDelayedTriggers('main');
         break;
       }
       case 'declare_attackers': {
@@ -1211,17 +1263,63 @@ export class Game {
     s.step = step;
   }
 
-  private fireDelayedTriggers(): void {
+  /**
+   * The promises that came due this step.
+   *
+   * Filtering by controller alone is enough to mean "your next one": whichever
+   * turn a delayed trigger was armed on, that player's own upkeep and main phase
+   * for that turn have already gone by, so the next one to arrive is the next one
+   * they get.
+   */
+  private *fireDelayedTriggers(when: 'upkeep' | 'main'): Eff {
     const s = this.state;
     const ap = s.activePlayer;
-    const ready = s.delayed.filter((d) => d.controller === ap);
+    const kind = when === 'upkeep' ? 'pact' : 'manaDrain';
+    const ready = s.delayed.filter((d) => d.controller === ap && d.kind === kind);
     if (ready.length === 0) return;
-    s.delayed = s.delayed.filter((d) => d.controller !== ap);
+    s.delayed = s.delayed.filter((d) => !(d.controller === ap && d.kind === kind));
+
     for (const d of ready) {
-      // Mana Drain: "add an amount of {C} equal to that spell's mana value".
-      s.players[ap].manaPool.C += d.amount;
-      this.events.push({ t: 'manaAdded', player: ap, pool: clonePool(s.players[ap].manaPool) });
-      logLine(s, `Mana Drain adds ${d.amount} colorless mana`, { player: ap });
+      if (d.kind === 'manaDrain') {
+        // "Add an amount of {C} equal to that spell's mana value."
+        s.players[ap].manaPool.C += d.amount;
+        this.events.push({ t: 'manaAdded', player: ap, pool: clonePool(s.players[ap].manaPool) });
+        logLine(s, `Mana Drain adds ${d.amount} colorless mana`, { player: ap });
+        continue;
+      }
+
+      /*
+       * "Pay {3}{U}{U}. If you don't, you lose the game."
+       *
+       * Not optional in the sense that skipping it is free: this is the whole
+       * price of the free counterspell, and a client that quietly paid or quietly
+       * declined for you would be deciding the game. So it is always asked, even
+       * when there is no way to pay — being told you cannot afford it is part of
+       * knowing you have lost.
+       */
+      const name = s.cards[d.sourceIid] ? cardName(s.cards[d.sourceIid]) : 'A pact';
+      const symbols = parseCost(d.cost);
+      const plan = solvePayment(symbols, s.players[ap].manaPool, this.manaSources(ap));
+      if (plan) {
+        const pay = (yield this.request({
+          kind: 'yesNo',
+          player: ap,
+          prompt: `${name}: pay ${d.cost}, or lose the game`,
+          yesLabel: `Pay ${d.cost}`,
+          noLabel: 'Do not pay — lose the game',
+        })) as ChoiceResponse;
+        if (pay.kind === 'yesNo' && pay.value) {
+          this.executePayment(ap, plan, symbols);
+          logLine(s, `pays ${d.cost} for ${name}`, { player: ap, iids: [d.sourceIid] });
+          continue;
+        }
+      } else {
+        // No prompt when there is nothing to decide — being asked a question with
+        // one answer is worse than being told what happened.
+        logLine(s, `cannot pay ${d.cost} for ${name}`, { player: ap, iids: [d.sourceIid] });
+      }
+      this.playerLoses(ap, 'unpaidPact');
+      return;
     }
   }
 
@@ -1619,17 +1717,22 @@ export class Game {
         if (def.optional) continue;
         return null;
       }
-      if (candidates.length === 1 && !def.optional) {
-        // Only one legal choice — never ask. DESIGN.md 12.1.
-        out.push(candidates[0]);
+      // "Any number of target …" — the ceiling is however many there are, and
+      // choosing none is allowed, so it is always a question.
+      const any = def.count === 'any';
+      const count = any ? candidates.length : typeof def.count === 'number' ? def.count : 1;
+      if (!any && candidates.length === count && !def.optional) {
+        // Exactly as many legal choices as the card needs — never ask.
+        // DESIGN.md 12.1.
+        out.push(...candidates);
         continue;
       }
       const res = (yield this.request({
         kind: 'chooseTargets',
         player,
         candidates,
-        count: 1,
-        optional: Boolean(def.optional),
+        count,
+        optional: any || Boolean(def.optional),
         prompt: def.prompt,
         source: { iid: sourceIid, oracleId: s.cards[sourceIid]?.oracleId ?? self.oracleId },
       })) as ChoiceResponse;
@@ -1828,7 +1931,35 @@ export class Game {
       },
       emit: (evs) => game.emit(evs),
       log: (text, iids) => logLine(s, text, { player: controller, iids }),
-      counterSpell: (iid) => game.counterSpell(iid, self.iid),
+      counterSpell: (iid, o) => game.counterSpell(iid, self.iid, o),
+      addDelayedPayment: (p, cost) => {
+        s.delayed.push({
+          id: s.nextEffectId++,
+          kind: 'pact',
+          controller: p,
+          cost,
+          sourceIid: self.iid,
+          armedOnTurn: s.turn,
+        });
+      },
+      gainControlOfSpell: (iid, p) => game.gainControlOfSpell(iid, p),
+      chooseNewTargetsFor: function* (iid, chooser) {
+        const spell = s.cards[iid];
+        if (!spell || spell.zone !== 'stack') return false;
+        const defs = getScript(spell.oracleId)?.targets;
+        if (!defs || defs.length === 0) return false;
+        // Asked as the new controller, so "target spell you don't control" now
+        // means the ones *they* don't control — a commandeered Mana Drain points
+        // back the way it came.
+        const chosen = yield* game.chooseTargetsForDefs(defs, chooser, spell, iid);
+        if (chosen === null) return false;
+        spell.targets = chosen;
+        logLine(s, `${cardName(spell)} → ${chosen.map((t) => targetLabel(s, t)).join(', ')}`, {
+          player: chooser,
+          iids: [iid],
+        });
+        return true;
+      },
       addDelayedMana: (p, amount) => {
         s.delayed.push({
           id: s.nextEffectId++,
@@ -2019,7 +2150,14 @@ function sameIntent(a: Intent, b: Intent): boolean {
         b.t === 'playLand' && a.iid === b.iid && (a.face ?? 'front') === (b.face ?? 'front')
       );
     case 'castSpell':
-      return b.t === 'castSpell' && a.iid === b.iid && Boolean(a.free) === Boolean(b.free);
+      return (
+        b.t === 'castSpell' &&
+        a.iid === b.iid &&
+        Boolean(a.free) === Boolean(b.free) &&
+        // The same card is on offer up to three ways under an Omniscience — free,
+        // for its alternative cost, and for mana. They are different actions.
+        Boolean(a.alt) === Boolean(b.alt)
+      );
     case 'activateAbility':
       return b.t === 'activateAbility' && a.iid === b.iid && a.index === b.index;
     case 'tapForMana':
@@ -2113,6 +2251,22 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
     if (omniscience) {
       out.push({ intent: { t: 'castSpell', iid: c.iid, free: true }, label: `Cast ${cardName(c)} (free)` });
     }
+
+    /*
+     * The alternative cost is offered alongside the mana cost, never instead of it.
+     *
+     * This is the whole point of the card: a Commandeer is castable for {5}{U}{U}
+     * with seven lands out *and* for two blue cards out of hand, and which one is
+     * right depends on what else you were planning to do with either. Offering only
+     * one of them would be making that decision for the player.
+     */
+    if (script?.altCost?.available(state, player, c)) {
+      out.push({
+        intent: { t: 'castSpell', iid: c.iid, alt: true },
+        label: `Cast ${cardName(c)} (${script.altCost.label})`,
+      });
+    }
+
     let symbols = parseCost(face.manaCost);
     if (script?.hasDelve) {
       const gy = state.zones[player].graveyard.length;

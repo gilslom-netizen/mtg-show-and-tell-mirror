@@ -261,14 +261,35 @@ export type ActiveEffect =
       expires: EffectExpiry;
     };
 
-export interface DelayedTrigger {
-  id: number;
-  kind: 'manaDrain';
-  controller: PlayerId;
-  amount: number;
-  /** Fires at the beginning of this player's next main phase. */
-  armedOnTurn: number;
-}
+/**
+ * Something a card set up now that happens later, with nothing on the stack to
+ * point at in the meantime.
+ *
+ * Both of these are promises the game has to keep whatever happens to the card
+ * that made them: Mana Drain's mana arrives even if the Drain has long since been
+ * exiled, and Pact of Negation's bill comes due even if you have since lost the
+ * board. So they live on the state, not on a permanent.
+ */
+export type DelayedTrigger =
+  | {
+      id: number;
+      kind: 'manaDrain';
+      controller: PlayerId;
+      amount: number;
+      /** Fires at the beginning of this player's next main phase. */
+      armedOnTurn: number;
+    }
+  | {
+      id: number;
+      kind: 'pact';
+      controller: PlayerId;
+      /** What has to be paid, as a mana cost string. */
+      cost: string;
+      /** The card that wrote the cheque, for the log. */
+      sourceIid: IID;
+      /** Fires at the beginning of this player's next upkeep. */
+      armedOnTurn: number;
+    };
 
 export interface PendingTrigger {
   id: number;
@@ -318,7 +339,7 @@ export interface PlayerState {
   /** Set when a draw was attempted from an empty library — SBA turns this into a loss. */
   triedToDrawFromEmpty: boolean;
   hasLost: boolean;
-  lostReason?: 'life' | 'deckOut' | 'concede';
+  lostReason?: 'life' | 'deckOut' | 'concede' | 'unpaidPact';
   /** Mulligan bookkeeping. */
   mulligansTaken: number;
   keptHand: boolean;

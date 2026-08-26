@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { testGame } from './harness.js';
+import { testGame, type TestGame } from './harness.js';
+
+/** The mana a Mana Drain has promised, or null if it promised none. */
+function drainedMana(t: TestGame): number | null {
+  const d = t.state.delayed[0];
+  return d && d.kind === 'manaDrain' ? d.amount : null;
+}
+
 
 /** DESIGN.md 15.2 (Omniscience) and 15.6 (Hullbreaker Horror). */
 
@@ -110,7 +117,7 @@ describe('Omniscience', () => {
 
     expect(t.p2.graveyardNames()).toContain('Show and Tell');
     expect(t.state.delayed).toHaveLength(1);
-    expect(t.state.delayed[0].amount).toBe(3);
+    expect(drainedMana(t)).toBe(3);
   });
 
   it('23. both players can be casting for free at once; the active player acts first', () => {
@@ -218,7 +225,7 @@ describe('Hullbreaker Horror', () => {
     expect(t.p1.battlefieldNames()).toContain('Hullbreaker Horror');
     // Ruling: the target was legal, it just could not be countered — so the mana
     // still arrives.
-    expect(t.state.delayed[0]?.amount).toBe(7);
+    expect(drainedMana(t)).toBe(7);
   });
 
   it('67. every free cast under Omniscience triggers the Horror separately', () => {

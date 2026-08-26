@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { testGame } from './harness.js';
+import { testGame, type TestGame } from './harness.js';
+
+/** The mana a Mana Drain has promised, or null if it promised none. */
+function drainedMana(t: TestGame): number | null {
+  const d = t.state.delayed[0];
+  return d && d.kind === 'manaDrain' ? d.amount : null;
+}
+
 
 /** DESIGN.md 15.3 (Mana Drain), 15.4 (Orcish Bowmasters), 15.5 (Veil of Summer). */
 
@@ -19,7 +26,7 @@ describe('Mana Drain', () => {
     t.p1.cast('Mana Drain');
     t.resolveAll();
 
-    expect(t.state.delayed[0].amount).toBe(6);
+    expect(drainedMana(t)).toBe(6);
     expect(t.p2.graveyardNames()).toContain("Rakshasa's Bargain");
   });
 
@@ -35,7 +42,7 @@ describe('Mana Drain', () => {
     t.p2.pass();
     t.p1.cast('Mana Drain');
     t.resolveAll();
-    expect(t.state.delayed[0].amount).toBe(7);
+    expect(drainedMana(t)).toBe(7);
   });
 
   it('28. a modal DFC cast from its front face is worth its front face mana value', () => {
@@ -50,7 +57,7 @@ describe('Mana Drain', () => {
     t.p2.pass();
     t.p1.cast('Mana Drain');
     t.resolveAll();
-    expect(t.state.delayed[0].amount).toBe(4);
+    expect(drainedMana(t)).toBe(4);
   });
 
   it('29. Veil of Summer stops the counter but NOT the mana', () => {
@@ -74,7 +81,7 @@ describe('Mana Drain', () => {
     expect(t.wasCountered('Show and Tell')).toBe(false);
     expect(t.wasResolved('Show and Tell')).toBe(true);
     // ...but p1 still gets the ritual.
-    expect(t.state.delayed[0]?.amount).toBe(3);
+    expect(drainedMana(t)).toBe(3);
   });
 
   it('30. Mistrise Village protects a single spell from being countered', () => {

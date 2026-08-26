@@ -51,6 +51,18 @@ describe('setup', () => {
     // Some pool cards are already implemented because the main deck uses them.
     expect(playable.length).toBeGreaterThan(0);
     expect(poolIds.length).toBe(63);
+
+    /*
+     * The spells you can cast without paying for them, named rather than counted.
+     *
+     * They came first because of what "not playable yet" does to them specifically:
+     * an unimplemented Commandeer is not a card that does nothing, it is a card the
+     * client will not even stop for — you hold two blue cards and an answer, and
+     * priority passes as though your hand were empty.
+     */
+    for (const name of ['Commandeer', 'Force of Negation', 'Mindbreak Trap', 'Pact of Negation']) {
+      expect(scripted.has(oracleByName(name).oracleId), `${name} has no script`).toBe(true);
+    }
   });
 
   it('parses mana values correctly, including hybrid symbols', () => {

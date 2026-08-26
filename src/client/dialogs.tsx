@@ -403,7 +403,30 @@ function ChooseTargetsDialog({
   choice: Extract<ChoiceView, { kind: 'chooseTargets' }>;
   onAnswer: Answer;
 }) {
-  const pick = (t: TargetRef) => onAnswer({ kind: 'targets', targets: [t] });
+  /*
+   * One target is a click; more than one is a selection.
+   *
+   * The request has always carried a count and this dialog has always sent
+   * exactly one target, which was invisible for as long as every card in the
+   * format targeted once. Mindbreak Trap exiles any number of the spells on the
+   * stack, and sending one of the four they just cast is not that card.
+   */
+  const many = choice.count > 1;
+  const [chosen, setChosen] = useState<TargetRef[]>([]);
+  const isChosen = (t: TargetRef) => chosen.some((c) => sameRef(c, t));
+  const pick = (t: TargetRef) => {
+    if (!many) {
+      onAnswer({ kind: 'targets', targets: [t] });
+      return;
+    }
+    setChosen((prev) =>
+      prev.some((c) => sameRef(c, t))
+        ? prev.filter((c) => !sameRef(c, t))
+        : prev.length < choice.count
+          ? [...prev, t]
+          : prev,
+    );
+  };
   const players = choice.candidates.filter((c) => c.kind === 'player');
   const cards = choice.candidates.filter((c) => c.kind !== 'player');
 
@@ -411,12 +434,16 @@ function ChooseTargetsDialog({
     <div className="overlay">
       <div className="dialog">
         <MinimiseButton />
-        <h2>Choose a target</h2>
+        <h2>{many ? `Choose up to ${choice.count} targets` : 'Choose a target'}</h2>
         <div className="prompt">{choice.prompt}</div>
         {players.length > 0 && (
           <div className="row">
             {players.map((t) => (
-              <button key={`p-${t.kind === 'player' ? t.id : ''}`} onClick={() => pick(t)}>
+              <button
+                key={`p-${t.kind === 'player' ? t.id : ''}`}
+                className={many && isChosen(t) ? 'primary' : undefined}
+                onClick={() => pick(t)}
+              >
                 {targetName(view, t)}
               </button>
             ))}
@@ -431,20 +458,40 @@ function ChooseTargetsDialog({
                   key={iid}
                   card={view.cards[iid] ?? null}
                   viewer={viewer}
+                  selected={many && isChosen(t)}
                   onClick={() => pick(t)}
                 />
               );
             })}
           </div>
         )}
-        {choice.optional && (
+        {many ? (
           <div className="actions">
-            <button onClick={() => onAnswer({ kind: 'targets', targets: [] })}>No target</button>
+            <button
+              className="primary"
+              disabled={chosen.length === 0 && !choice.optional}
+              onClick={() => onAnswer({ kind: 'targets', targets: chosen })}
+            >
+              {chosen.length === 0 ? 'No targets' : `Confirm ${chosen.length}`}
+            </button>
           </div>
+        ) : (
+          choice.optional && (
+            <div className="actions">
+              <button onClick={() => onAnswer({ kind: 'targets', targets: [] })}>No target</button>
+            </div>
+          )
         )}
       </div>
     </div>
   );
+}
+
+/** Two target references pointing at the same thing. */
+function sameRef(a: TargetRef, b: TargetRef): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === 'player' && b.kind === 'player') return a.id === b.id;
+  return 'iid' in a && 'iid' in b && a.iid === b.iid;
 }
 
 function ChooseModeDialog({

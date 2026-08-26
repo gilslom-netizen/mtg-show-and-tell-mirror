@@ -113,6 +113,32 @@ describe('stopping for the stack', () => {
     expect(shouldStop(view, withStops({ opponentSpellOnStack: 'always' }), 'off')).toBe(false);
   });
 
+  /**
+   * The report this whole thing started from: two blue cards and a Commandeer in
+   * hand, their spell on the stack, and the client passed without stopping.
+   *
+   * It was not the stop rule's fault — with no seven lands out there was no legal
+   * cast to stop for, because the engine did not know Commandeer had another cost.
+   * Which is exactly why this test lives here as well as in the engine: "can I
+   * answer this?" is one question asked in two places, and it only reads the list
+   * of legal actions.
+   */
+  it('stops for a spell you can only afford the other way', () => {
+    const t = testGame({ startingPlayer: 'p2' });
+    t.p2.hand('Show and Tell');
+    t.p2.manaBase(3);
+    t.begin();
+    t.p2.cast('Show and Tell');
+    t.p2.pass();
+
+    // No lands, so nothing in hand is castable for mana.
+    t.p1.hand('Brainstorm', 'Dig Through Time');
+    expect(shouldStop(redact(t.state, 'p1'), DEFAULT_SETTINGS, 'off')).toBe(false);
+
+    t.p1.conjure('Commandeer');
+    expect(shouldStop(redact(t.state, 'p1'), DEFAULT_SETTINGS, 'off')).toBe(true);
+  });
+
   it('still honours "always" and "never" for a spell of theirs on top', () => {
     const t = stacked();
     const view = redact(t.state, 'p1');

@@ -122,6 +122,11 @@ export interface PlayerView {
   combat: CombatState | null;
   effects: ActiveEffect[];
   delayedMana: { controller: PlayerId; amount: number }[];
+  /**
+   * Pacts that come due at their controller's next upkeep. Public: the spell
+   * resolved in the open, and forgetting one loses the game on the spot.
+   */
+  pacts: { controller: PlayerId; cost: string }[];
 
   choice: ChoiceView | null;
   /** True when a choice is pending but it belongs to the other player. */
@@ -348,7 +353,12 @@ export function redact(state: GameState, viewer: PlayerId): PlayerView {
 
     combat: state.combat ? JSON.parse(JSON.stringify(state.combat)) : null,
     effects: JSON.parse(JSON.stringify(state.effects)),
-    delayedMana: state.delayed.map((d) => ({ controller: d.controller, amount: d.amount })),
+    delayedMana: state.delayed
+      .filter((d) => d.kind === 'manaDrain')
+      .map((d) => ({ controller: d.controller, amount: d.amount })),
+    pacts: state.delayed
+      .filter((d) => d.kind === 'pact')
+      .map((d) => ({ controller: d.controller, cost: d.cost })),
 
     choice,
     waitingOnOpponentChoice: state.pendingChoice !== null && choice === null,
