@@ -14,6 +14,7 @@ import {
   type OnlineCapability,
 } from './connection';
 import {
+  seatHasSomethingToDo,
   useAutoPass,
   useHotkeys,
   useOmniscienceHold,
@@ -196,6 +197,9 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
       startingPlayer: Math.random() < 0.5 ? 'p1' : 'p2',
       seats: ['p1', 'p2'],
       scenario,
+      // The series length is the lobby's, whichever way you start a game. A drill
+      // ignores it — it is one staged position, not a series.
+      bestOf,
     });
     onStart(mode);
     attach(conn as Connection, 'p1');
@@ -211,6 +215,7 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
           url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
           room: code,
           playerName: 'player',
+          bestOf,
         });
     setRoom(code);
     // Puts the code in the address bar, so the tab is now a shareable invite and a
@@ -284,6 +289,10 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
 
         <section className="lobby-section">
           <h2>Length of the series</h2>
+          <p className="lobby-note">
+            Applies to every game you start from here — online and the solo modes
+            alike. Online, it is set by whoever opens the room.
+          </p>
           <div className="segmented" data-testid="best-of" role="group">
             {[1, 3, 5].map((n) => (
               <button
@@ -334,23 +343,35 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
         <details className="lobby-fold">
           <summary>Experiments — solo modes for learning and testing</summary>
           <div className="mode-grid is-two-up">
-            <button className="mode-option" onClick={() => startLocal('lab')}>
+            <button className="mode-option" data-testid="mode-lab" onClick={() => startLocal('lab')}>
               <b>Lab</b>
               <span>
-                Play both seats yourself. Best for learning lines and testing interactions.
+                Play both seats yourself. Best for learning lines and testing
+                interactions. Runs as a best of {bestOf}.
               </span>
             </button>
-            <button className="mode-option" onClick={() => startLocal('goldfish')}>
+            <button
+              className="mode-option"
+              data-testid="mode-goldfish"
+              onClick={() => startLocal('goldfish')}
+            >
               <b>Goldfish</b>
               <span>
                 You play, the other seat does nothing. For drilling the combo turn.
+                Runs as a best of {bestOf}.
               </span>
             </button>
           </div>
         </details>
 
         <details className="lobby-fold">
-          <summary>Drills — jump straight to a decision this deck actually faces</summary>
+          <summary>
+            Drills — jump straight to a decision this deck actually faces
+          </summary>
+          <p className="lobby-note">
+            A drill is one staged position rather than a series, so the length above
+            does not apply to it.
+          </p>
           <div className="mode-grid is-two-up">
             {Object.entries(SCENARIOS).map(([key, spec]) => (
               <button
@@ -872,11 +893,10 @@ function GameOver({ viewer }: { viewer: PlayerId }) {
   const view = useStore((s) => s.views[viewer])!;
   const detach = useStore((s) => s.detach);
   const connection = useStore((s) => s.connection);
+  const controls = useStore((s) => s.controls);
   const match: MatchState | null = connection?.match() ?? null;
   const won = view.winner === viewer;
   const opponent: PlayerId = viewer === 'p1' ? 'p2' : 'p1';
-
-  const chooseFirst = (onPlay: PlayerId) => connection?.chooseFirst(viewer, onPlay);
 
   if (!match) {
     return (
@@ -895,8 +915,19 @@ function GameOver({ viewer }: { viewer: PlayerId }) {
   }
 
   const stats = summarise(match.history);
-  const myChoice = match.awaitingFirstChoiceFrom === viewer;
   const matchOver = match.matchWinner !== null;
+  /*
+   * Who has the play-or-draw decision, and whether this client can make it.
+   *
+   * Online that is only ever you. In the solo modes this client holds both seats,
+   * so when the other seat lost it has to be answered here too — otherwise a
+   * best of three against a goldfish stops dead after game one, waiting for a
+   * player who is also you and has no screen of their own.
+   */
+  const chooser = match.awaitingFirstChoiceFrom;
+  const myChoice = chooser !== null && controls(chooser);
+  const forThem = chooser !== null && chooser !== viewer;
+  const chooseFirst = (onPlay: PlayerId) => chooser && connection?.chooseFirst(chooser, onPlay);
 
   return (
     <div className="overlay">
@@ -953,11 +984,17 @@ function GameOver({ viewer }: { viewer: PlayerId }) {
           </div>
         ) : myChoice ? (
           <>
-            <div className="prompt">You lost that one, so you choose for game {match.gameNumber + 1}.</div>
+            <div className="prompt">
+              {forThem
+                ? `They lost that one, so the choice for game ${match.gameNumber + 1} is theirs — and you are holding both seats.`
+                : `You lost that one, so you choose for game ${match.gameNumber + 1}.`}
+            </div>
             <div className="actions" style={{ justifyContent: 'center' }}>
-              <button onClick={() => chooseFirst(opponent)}>Draw first</button>
-              <button className="primary" onClick={() => chooseFirst(viewer)}>
-                Play first
+              <button onClick={() => chooseFirst(forThem ? viewer : opponent)}>
+                {forThem ? 'They draw first' : 'Draw first'}
+              </button>
+              <button className="primary" onClick={() => chooseFirst(chooser!)}>
+                {forThem ? 'They play first' : 'Play first'}
               </button>
             </div>
           </>
@@ -1007,14 +1044,9 @@ function useFollowActingSeat(enabled: boolean) {
     // this seat is still named as the priority player but cannot do anything.
     // Testing priority alone deadlocks the table — the view never moves to the seat
     // that actually has the open prompt.
-    const stillMine =
-      mine.choice?.kind === 'simultaneousSecret'
-        ? !mine.choice.iHaveLockedIn
-        : Boolean(mine.choice) || canAct(mine, viewSeat);
-    const needsThem =
-      theirs.choice?.kind === 'simultaneousSecret'
-        ? !theirs.choice.iHaveLockedIn
-        : Boolean(theirs.choice) || canAct(theirs, other);
+    // The opening hand is the same shape, which is why this is one predicate.
+    const stillMine = seatHasSomethingToDo(mine, viewSeat);
+    const needsThem = seatHasSomethingToDo(theirs, other);
 
     if (!stillMine && needsThem) setViewSeat(other);
   }, [views, viewSeat, enabled, controls, setViewSeat, connection]);

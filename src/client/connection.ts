@@ -1,7 +1,7 @@
 import { Game, type Intent } from '@engine/game';
 import { MAINDECK } from '@engine/deck';
 import { redact, type PlayerView } from '@engine/redact';
-import { MatchTracker, type MatchState } from '@engine/match';
+import { MatchTracker, seriesLength, type MatchState } from '@engine/match';
 import { stageScenario, type ScenarioSpec } from '@engine/scenario';
 import type { ChoiceResponse, GameEvent, PlayerId } from '@engine/types';
 import type { DeckEntry } from '@engine/state';
@@ -134,6 +134,8 @@ export interface LocalOptions {
   skipMulligans?: boolean;
   /** Stage a specific board instead of dealing opening hands. */
   scenario?: ScenarioSpec;
+  /** Length of the series: 1, 3 or 5. A drill ignores it — it is one position. */
+  bestOf?: number;
 }
 
 export class LocalConnection extends BaseConnection {
@@ -147,7 +149,9 @@ export class LocalConnection extends BaseConnection {
     super();
     this.mySeats = opts.seats;
     // A drill is a single position, not a series.
-    this.tracker = opts.scenario ? null : new MatchTracker(opts.startingPlayer);
+    this.tracker = opts.scenario
+      ? null
+      : new MatchTracker(opts.startingPlayer, seriesLength(opts.bestOf));
     this.game = Game.create({
       gameId: `local-${opts.seed}`,
       seed: opts.seed,
@@ -613,6 +617,8 @@ export interface RemoteOptions {
   url: string;
   room: string;
   playerName: string;
+  /** Only used by whoever opens the room; a joiner takes what is already set. */
+  bestOf?: number;
 }
 
 type ServerMsg =
@@ -659,6 +665,7 @@ export class RemoteConnection extends BaseConnection {
         JSON.stringify({
           t: 'join',
           room: this.opts.room,
+          bestOf: this.opts.bestOf,
           name: this.opts.playerName,
           token: this.savedToken(),
         }),

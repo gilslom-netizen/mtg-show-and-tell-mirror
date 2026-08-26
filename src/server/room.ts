@@ -6,7 +6,7 @@ import { redactDraft, type DraftView } from '../draft/redact.js';
 import type { DraftAction, DraftState } from '../draft/types.js';
 import type { DeckEntry } from '../engine/state.js';
 import { Game, type Intent } from '../engine/game.js';
-import { MatchTracker, newMatchState, type MatchState } from '../engine/match.js';
+import { MatchTracker, newMatchState, seriesLength, type MatchState } from '../engine/match.js';
 import { frontFace } from '../engine/oracle.js';
 import { redact, redactEvents, type PlayerView } from '../engine/redact.js';
 import type { ChoiceResponse, GameEvent, PlayerId } from '../engine/types.js';
@@ -57,7 +57,7 @@ export interface RoomOptions {
 export function freshMeta(code: string, opts: RoomOptions = {}): RoomMeta {
   const startingPlayer: PlayerId = Math.random() < 0.5 ? 'p1' : 'p2';
   const format = opts.format === 'draft' ? 'draft' : 'classic';
-  const bestOf = [1, 3, 5].includes(opts.bestOf ?? 3) ? (opts.bestOf ?? 3) : 3;
+  const bestOf = seriesLength(opts.bestOf);
   return {
     code,
     seed: Math.floor(Math.random() * 2 ** 31),

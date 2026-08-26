@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { Game, type Intent } from '../engine/game.js';
 import { MAINDECK } from '../engine/deck.js';
-import { MatchTracker } from '../engine/match.js';
+import { MatchTracker, seriesLength } from '../engine/match.js';
 import { redact, redactEvents } from '../engine/redact.js';
 import type { ChoiceResponse, PlayerId } from '../engine/types.js';
 import { handleApiRequest } from './node-api.js';
@@ -25,7 +25,7 @@ const PORT = Number(process.env.PORT ?? 8787);
 const DATA_DIR = join(process.cwd(), 'data', 'matches');
 
 type ClientMsg =
-  | { t: 'join'; room: string; name?: string; token?: string }
+  | { t: 'join'; room: string; name?: string; token?: string; bestOf?: number }
   | { t: 'intent'; intent: Intent }
   | { t: 'choice'; choiceId: string; response: ChoiceResponse }
   | { t: 'cancel' }
@@ -49,7 +49,7 @@ interface Room {
   game: Game;
   seats: Partial<Record<PlayerId, Seat>>;
   log: LoggedAction[];
-  /** Best-of-three bookkeeping across games in this room. */
+  /** Series bookkeeping across games in this room. */
   match: MatchTracker;
 }
 
@@ -73,6 +73,7 @@ function persist(room: Room): void {
           code: room.code,
           seed: room.seed,
           startingPlayer: room.startingPlayer,
+          bestOf: room.match.state.bestOf,
           tokens: Object.fromEntries(
             Object.entries(room.seats).map(([s, v]) => [s, { token: v!.token, name: v!.name }]),
           ),
@@ -106,6 +107,8 @@ function restore(code: string): Room | null {
     const saved = JSON.parse(readFileSync(file, 'utf8')) as {
       seed: number;
       startingPlayer: PlayerId;
+      /** Absent on rooms persisted before the series length was configurable. */
+      bestOf?: number;
       tokens: Record<string, { token: string; name: string }>;
       log: LoggedAction[];
     };
@@ -126,7 +129,7 @@ function restore(code: string): Room | null {
     for (const [s, v] of Object.entries(saved.tokens)) {
       seats[s as PlayerId] = { token: v.token, name: v.name, socket: null };
     }
-    const match = new MatchTracker(saved.startingPlayer);
+    const match = new MatchTracker(saved.startingPlayer, seriesLength(saved.bestOf));
     match.noteResult(game);
     return {
       code,
@@ -142,7 +145,12 @@ function restore(code: string): Room | null {
   }
 }
 
-function getOrCreateRoom(code: string): Room {
+/**
+ * Whoever opens the room picks how long the series is; the second player joins
+ * into whatever is already set up there. Same rule as the HTTP rooms, so the
+ * lobby's choice means the same thing on either transport.
+ */
+function getOrCreateRoom(code: string, bestOf?: number): Room {
   const existing = rooms.get(code);
   if (existing) return existing;
   const restored = restore(code);
@@ -159,7 +167,7 @@ function getOrCreateRoom(code: string): Room {
     game: newGame(seed, startingPlayer),
     seats: {},
     log: [],
-    match: new MatchTracker(startingPlayer),
+    match: new MatchTracker(startingPlayer, seriesLength(bestOf)),
   };
   rooms.set(code, room);
   return room;
@@ -284,7 +292,7 @@ wss.on('connection', (socket) => {
     if (msg.t === 'join') {
       const code = String(msg.room ?? '').trim().toUpperCase().slice(0, 12);
       if (!code) return fail('A room code is required');
-      room = getOrCreateRoom(code);
+      room = getOrCreateRoom(code, msg.bestOf);
 
       // Reconnecting to a seat you already hold.
       const bySeat = (['p1', 'p2'] as PlayerId[]).find(

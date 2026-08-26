@@ -50,6 +50,22 @@ export function combatCanMatter(view: PlayerView): boolean {
 }
 
 /** Whether the player should be stopped here rather than passed for automatically. */
+/**
+ * Whether a seat still has something of its own to answer.
+ *
+ * Two of this game's questions are held jointly by both seats — the opening hand
+ * and a Show and Tell style secret — and a seat that has already answered still
+ * carries the question in its view, waiting on the other one. Reading that as
+ * "this seat is busy" is what used to leave lab mode parked on "waiting for your
+ * opponent", who is also you, one seat away and never followed to.
+ */
+export function seatHasSomethingToDo(view: PlayerView, seat: PlayerId): boolean {
+  const c = view.choice;
+  if (c?.kind === 'simultaneousSecret') return !c.iHaveLockedIn;
+  if (c?.kind === 'mulligan') return !c.iHaveDecided;
+  return Boolean(c) || canAct(view, seat);
+}
+
 export function shouldStop(view: PlayerView, settings: Settings, autoPass: AutoPassMode): boolean {
   const actions = meaningful(view);
   // Nothing to do — the engine passes for us anyway.

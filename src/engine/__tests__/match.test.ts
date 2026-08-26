@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MatchTracker, summarise } from '../match.js';
+import { MatchTracker, newMatchState, seriesLength, summarise } from '../match.js';
 import { testGame } from './harness.js';
 
 /** Best-of-three bookkeeping. */
@@ -69,6 +69,58 @@ describe('match tracker', () => {
     t.state.winner = 'draw';
     expect(m.noteResult(t.game)).toBe(false);
     expect(m.state.history).toHaveLength(0);
+  });
+});
+
+describe('series length', () => {
+  it('takes only 1, 3 or 5, and reads anything else as a best of three', () => {
+    expect(seriesLength(1)).toBe(1);
+    expect(seriesLength(3)).toBe(3);
+    expect(seriesLength(5)).toBe(5);
+    // Nothing else has a rule anywhere in the code, so it becomes the default
+    // rather than a series that needs 2 wins out of 4, or 1 out of 0.
+    expect(seriesLength(2)).toBe(3);
+    expect(seriesLength(0)).toBe(3);
+    expect(seriesLength(4)).toBe(3);
+    expect(seriesLength(undefined)).toBe(3);
+    expect(newMatchState('p1', 7).bestOf).toBe(3);
+    expect(new MatchTracker('p1', 7).state.bestOf).toBe(3);
+  });
+
+  it('best of one is over after one game, with nobody asked to choose', () => {
+    const m = new MatchTracker('p1', 1);
+    expect(m.state.bestOf).toBe(1);
+    m.noteResult(finishedGame('p2', 'g1'));
+
+    expect(m.isOver()).toBe(true);
+    expect(m.state.matchWinner).toBe('p2');
+    // No game two, so there is no play-or-draw decision to hand anyone.
+    expect(m.state.awaitingFirstChoiceFrom).toBeNull();
+    expect(m.chooseFirst('p1', 'p1')).toBeNull();
+    expect(m.state.gameNumber).toBe(1);
+  });
+
+  it('best of five needs three wins and keeps asking until then', () => {
+    const m = new MatchTracker('p1', 5);
+    const win = (who: 'p1' | 'p2', n: number) => {
+      m.noteResult(finishedGame(who, `g${n}`));
+      if (!m.isOver()) m.chooseFirst(m.state.awaitingFirstChoiceFrom!, 'p1');
+    };
+
+    win('p1', 1);
+    win('p2', 2);
+    expect(m.state.gameNumber).toBe(3);
+    win('p1', 3);
+    // Two wins is a finished best of three and only halfway through a best of five.
+    expect(m.isOver()).toBe(false);
+    expect(m.state.gameNumber).toBe(4);
+    win('p2', 4);
+    expect(m.isOver()).toBe(false);
+    win('p1', 5);
+
+    expect(m.isOver()).toBe(true);
+    expect(m.state.matchWinner).toBe('p1');
+    expect(m.state.history).toHaveLength(5);
   });
 });
 

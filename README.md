@@ -141,8 +141,11 @@ a splash always has a manabase. Then the deckbuilder: one pool, two columns,
 one click to move a card. It opens again between games, which is the
 sideboarding this format never had.
 
-Series length is chosen in the lobby: best of 1, 3 (default) or 5, for drafted
-and classic rooms alike.
+Series length is chosen in the lobby: best of 1, 3 (default) or 5. It applies to
+everything you start from there — drafted rooms, classic rooms and the solo modes
+alike. Online it belongs to whoever opens the room, so the second player joins into
+the length that is already set. A drill is the one exception: it is a single staged
+position rather than a series.
 
 > **What is not finished.** The drafted cards are in the card database so they
 > can be drafted, shown and deckbuilt with, but a card needs an engine script

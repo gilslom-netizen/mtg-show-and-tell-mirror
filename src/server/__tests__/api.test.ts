@@ -90,6 +90,27 @@ describe('serverless online api', () => {
     expect((b.snap as { ready: boolean }).ready).toBe(true);
   });
 
+  it('runs the series at the length the room was opened with', async () => {
+    const a = await post({ room: 'LONG5', name: 'alice', bestOf: 5 });
+    expect((a.body.match as { bestOf: number }).bestOf).toBe(5);
+
+    // The second player joins into whatever is already set up, whatever their own
+    // lobby says — the length belongs to the room, not to each client.
+    const b = await post({ room: 'LONG5', name: 'bob', bestOf: 1 });
+    expect((b.body.match as { bestOf: number }).bestOf).toBe(5);
+  });
+
+  it('opens a best of one, and reads an impossible length as a best of three', async () => {
+    const one = await post({ room: 'SHORT1', name: 'alice', bestOf: 1 });
+    expect((one.body.match as { bestOf: number }).bestOf).toBe(1);
+
+    const odd = await post({ room: 'ODD', name: 'alice', bestOf: 4 });
+    expect((odd.body.match as { bestOf: number }).bestOf).toBe(3);
+
+    const none = await post({ room: 'PLAIN', name: 'alice' });
+    expect((none.body.match as { bestOf: number }).bestOf).toBe(3);
+  });
+
   it('seats two players and refuses a third', async () => {
     const a = await joinAs('ROOM1', 'alice');
     const b = await joinAs('ROOM1', 'bob');
@@ -147,6 +168,57 @@ describe('serverless online api', () => {
     expect(view.mode).toBe('playing');
     expect(view.hand).toHaveLength(7);
     expect(view.players.p2.handCount).toBe(7);
+  });
+
+  it('counts a finished game once, however many times it is polled', async () => {
+    const a = await joinAs('SERIES', 'alice');
+    const b = await joinAs('SERIES', 'bob');
+
+    // Keep both hands so there is a real game to lose.
+    for (let i = 0; i < 6; i++) {
+      for (const p of [a, b]) {
+        const snap = await get({ room: 'SERIES', token: p.token, since: '-1', rev: '-1' });
+        const view = snap.body.view as { choice?: { id: string; kind: string } };
+        if (view.choice?.kind === 'mulligan') {
+          await post({
+            room: 'SERIES',
+            token: p.token,
+            action: {
+              t: 'choice',
+              choiceId: view.choice.id,
+              response: { kind: 'yesNo', value: true },
+            },
+          });
+        }
+      }
+    }
+
+    await post({ room: 'SERIES', token: a.token, action: { t: 'intent', intent: { t: 'concede' } } });
+
+    /*
+     * Every request rebuilds the game from its log and wraps the stored match in a
+     * fresh tracker, so a guard held in tracker memory is empty on arrival. Polling
+     * a finished game used to record the same win on every poll — two polls and one
+     * concession took a best of three.
+     */
+    for (let i = 0; i < 5; i++) {
+      await get({ room: 'SERIES', token: a.token, since: '-1', rev: '-1' });
+      await get({ room: 'SERIES', token: b.token, since: '-1', rev: '-1' });
+    }
+
+    const snap = await get({ room: 'SERIES', token: b.token, since: '-1', rev: '-1' });
+    const match = snap.body.match as {
+      wins: Record<PlayerId, number>;
+      history: unknown[];
+      matchWinner: PlayerId | null;
+      awaitingFirstChoiceFrom: PlayerId | null;
+    };
+    expect(match.wins).toEqual({ p1: 0, p2: 1 });
+    expect(match.history).toHaveLength(1);
+    // One game of a best of three is not a match, and the loser still gets to
+    // choose play or draw for game two.
+    expect(match.matchWinner).toBeNull();
+    expect(match.awaitingFirstChoiceFrom).toBe('p1');
   });
 
   it('never sends a player the opponent hand or any library order', async () => {

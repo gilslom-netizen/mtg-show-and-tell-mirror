@@ -152,8 +152,10 @@ export class Game {
     let guard = 0;
 
     while (guard++ < ADVANCE_GUARD) {
-      if (s.pendingChoice) return;
+      // A finished game is finished even with a question still on screen — a
+      // concession ends things mid-mulligan, mid-resolution, anywhere.
       if (s.winner !== null) return;
+      if (s.pendingChoice) return;
 
       // 1. Finish whatever process is running.
       if (this.current) {
@@ -234,12 +236,21 @@ export class Game {
   submitIntent(player: PlayerId, intent: Intent): void {
     const s = this.state;
     if (s.winner !== null) return;
-    if (s.pendingChoice) throw new Error('A choice is pending');
+    /*
+     * CR 104.3a — a player may concede at any time. That has to hold with a
+     * question on screen too, which is most of a game of this deck: mulliganing,
+     * ordering triggers, halfway through an Atraxa. Conceding is checked before
+     * the pending-choice guard for exactly that reason, and the question is then
+     * dropped along with whatever was resolving behind it.
+     */
     if (intent.t === 'concede') {
       this.playerLoses(player, 'concede');
+      s.pendingChoice = null;
+      this.current = null;
       this.advance();
       return;
     }
+    if (s.pendingChoice) throw new Error('A choice is pending');
     if (s.priorityPlayer !== player) throw new Error(`${player} does not have priority`);
 
     // Every non-pass intent must match something the engine itself considers legal.

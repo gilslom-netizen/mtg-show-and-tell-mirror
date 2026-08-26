@@ -32,17 +32,44 @@ export interface MatchState {
   /** The loser of the last game, while they are choosing play or draw. */
   awaitingFirstChoiceFrom: PlayerId | null;
   matchWinner: PlayerId | null;
+  /**
+   * The game whose result is already in `history`.
+   *
+   * This lives in the state rather than on the tracker because the serverless path
+   * has no tracker between requests: every request rebuilds the game from its log
+   * and wraps the stored state in a fresh tracker. A guard held in memory is empty
+   * on arrival, so each poll of a finished game counted the same win again — two
+   * polls and a single concession took a best of three.
+   *
+   * Absent on rooms stored before this field existed.
+   */
+  lastRecordedGameId?: string | null;
+}
+
+/** The series lengths this format offers. */
+export const SERIES_LENGTHS = [1, 3, 5] as const;
+
+/**
+ * The one place a series length is validated.
+ *
+ * Every path that can start a series — the lobby's solo modes, the HTTP room, the
+ * socket room — funnels through here, so an unknown value can only ever mean
+ * best of three rather than something the rest of the code has no rule for.
+ */
+export function seriesLength(bestOf: number | undefined): number {
+  return SERIES_LENGTHS.includes(bestOf as (typeof SERIES_LENGTHS)[number]) ? bestOf! : 3;
 }
 
 export function newMatchState(onPlay: PlayerId, bestOf = 3): MatchState {
   return {
-    bestOf,
+    bestOf: seriesLength(bestOf),
     gameNumber: 1,
     wins: { p1: 0, p2: 0 },
     history: [],
     onPlay,
     awaitingFirstChoiceFrom: null,
     matchWinner: null,
+    lastRecordedGameId: null,
   };
 }
 
@@ -52,11 +79,9 @@ function needed(bestOf: number): number {
 
 export class MatchTracker {
   state: MatchState;
-  /** Guards against recording the same finished game twice. */
-  private recordedGameId: string | null = null;
 
   constructor(onPlay: PlayerId, bestOf = 3) {
-    this.state = newMatchState(onPlay, bestOf);
+    this.state = newMatchState(onPlay, seriesLength(bestOf));
   }
 
   /**
@@ -66,8 +91,8 @@ export class MatchTracker {
   noteResult(game: Game): boolean {
     const s = game.state;
     if (s.winner === null || s.winner === 'draw') return false;
-    if (this.recordedGameId === s.gameId) return false;
-    this.recordedGameId = s.gameId;
+    if (this.state.lastRecordedGameId === s.gameId) return false;
+    this.state.lastRecordedGameId = s.gameId;
 
     const winner = s.winner;
     const loser: PlayerId = winner === 'p1' ? 'p2' : 'p1';
@@ -97,7 +122,7 @@ export class MatchTracker {
     this.state.awaitingFirstChoiceFrom = null;
     this.state.gameNumber++;
     this.state.onPlay = onPlay;
-    this.recordedGameId = null;
+    this.state.lastRecordedGameId = null;
     return onPlay;
   }
 

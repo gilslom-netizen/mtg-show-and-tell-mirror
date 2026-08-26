@@ -120,6 +120,27 @@ describe('engine basics', () => {
     expect(t.state.players.p1.manaPool.U).toBe(0);
   });
 
+  it('lets a player concede with a question still on screen (CR 104.3a)', () => {
+    // Most of a game of this deck has something pending — a mulligan, an Atraxa
+    // halfway through, a trigger being ordered. Conceding has to work anyway, or
+    // a solo series can get stuck between games with no way to end one.
+    const t = testGame();
+    t.p1.hand('Brainstorm');
+    t.p1.manaBase(1);
+    t.begin();
+    t.p1.cast('Brainstorm');
+    t.resolveStack();
+    expect(t.state.pendingChoice).not.toBeNull();
+
+    t.game.submitIntent('p1', { t: 'concede' });
+
+    expect(t.state.winner).toBe('p2');
+    expect(t.state.endReason).toBe('conceded');
+    // The question goes with the game, rather than being left on screen for a
+    // board nobody is playing on any more.
+    expect(t.state.pendingChoice).toBeNull();
+  });
+
   it('advances through a full turn cycle without stalling', () => {
     const t = testGame();
     t.p1.hand('Island');
