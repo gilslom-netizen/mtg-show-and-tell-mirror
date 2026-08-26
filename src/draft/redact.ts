@@ -135,3 +135,20 @@ export function redactDraft(state: DraftState, viewer: PlayerId): DraftView {
     done: state.phase === 'done',
   };
 }
+
+/**
+ * Whether the opponent has already answered this pile by passing.
+ *
+ * Withdrawing is a bid of zero and it is an answer, but with nothing standing it
+ * leaves the auction looking exactly like one nobody has spoken in yet: highest
+ * bid zero, no bidder. The two states play completely differently. Once they are
+ * out, any bid takes the pile unopposed at the number you name — so the only bid
+ * worth making is the minimum — and withdrawing in turn does not hand them the
+ * pile for one, it throws all four cards out of the draft. The bidding panel
+ * reads this to say so; before it did, it showed the opener's prompt to a player
+ * who was not opening anything.
+ */
+export function opponentHasPassed(view: DraftView): boolean {
+  const opponent: PlayerId = view.viewer === 'p1' ? 'p2' : 'p1';
+  return view.highestBid === 0 && view.withdrawn.includes(opponent);
+}

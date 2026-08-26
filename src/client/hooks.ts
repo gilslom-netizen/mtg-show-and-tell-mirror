@@ -489,6 +489,13 @@ export function useHotkeys(viewer: PlayerId) {
           setAutoPass('myNextTurn');
           break;
         case 'Escape':
+          // A card held open is the smallest thing Escape can undo, so it goes
+          // first: closing the reader should not also cancel the cast you were
+          // reading it for.
+          if (useStore.getState().pinnedOracleId !== null) {
+            useStore.getState().togglePinnedCard(null);
+            break;
+          }
           cancel();
           setAutoPass('off');
           break;

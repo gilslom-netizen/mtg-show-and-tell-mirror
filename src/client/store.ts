@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Intent } from '@engine/game';
 import type { PlayerView } from '@engine/redact';
-import type { ChoiceResponse, GameEvent, IID, PlayerId } from '@engine/types';
+import type { ChoiceResponse, GameEvent, IID, OracleId, PlayerId } from '@engine/types';
 import type {
   CardPool,
   Connection,
@@ -151,6 +151,16 @@ interface StoreState {
   actedFromDraft: DraftView | null;
 
   hoveredIid: IID | null;
+  /**
+   * The card held open in the reading panel, and the one merely under the pointer.
+   *
+   * Both are oracle ids rather than instance ids because the draft has no game to
+   * resolve an instance against — its cards are dealt by the auction, not by the
+   * engine — and a reader that worked on the table but not on the pile you are
+   * bidding for would be the wrong half.
+   */
+  pinnedOracleId: OracleId | null;
+  hoveredOracleId: OracleId | null;
   /** Cards highlighted because the pointer is over a log line. */
   highlightIids: IID[];
   /** Set while the Show and Tell reveal animation plays. */
@@ -193,6 +203,9 @@ interface StoreState {
   setForceStop(v: boolean): void;
   setHoldPriority(v: boolean): void;
   setHovered(iid: IID | null): void;
+  /** Hold a card open in the reader. Passing the one already pinned closes it. */
+  togglePinnedCard(oracleId: OracleId | null): void;
+  setHoveredOracle(oracleId: OracleId | null): void;
   setHighlight(iids: IID[]): void;
   clearReveal(): void;
   toggle(panel: 'logOpen' | 'settingsOpen' | 'helpOpen'): void;
@@ -236,6 +249,8 @@ export const useStore = create<StoreState>((set, get) => ({
   actedFrom: { p1: null, p2: null },
   actedFromDraft: null,
   hoveredIid: null,
+  pinnedOracleId: null,
+  hoveredOracleId: null,
   highlightIids: [],
   revealing: null,
   error: null,
@@ -589,6 +604,14 @@ export const useStore = create<StoreState>((set, get) => ({
   },
   setHovered(iid) {
     set({ hoveredIid: iid });
+  },
+
+  togglePinnedCard(oracleId) {
+    set((s) => ({ pinnedOracleId: oracleId !== null && s.pinnedOracleId === oracleId ? null : oracleId }));
+  },
+
+  setHoveredOracle(oracleId) {
+    set({ hoveredOracleId: oracleId });
   },
   setHighlight(iids) {
     set({ highlightIids: iids });

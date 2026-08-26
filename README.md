@@ -137,6 +137,16 @@ withdraws; the other player raises or withdraws. Whoever is left takes the pile
 and pays their bid — if both withdraw, the pile is gone. The winner keeps two
 cards and throws the other two away.
 
+Right-click any card to hold it open in the reader beside the table, so you can
+weigh a pile up while still looking at the purses and the piles-left count. The
+same right-click reads a card during a game.
+
+If your opponent opens by passing, the panel says so — "they bid 0" — and offers
+the two moves that are actually left: take the pile for one, since nobody is
+there to outbid you, or withdraw as well and send all four cards out of the
+draft. It no longer shows you the opener's prompt for an auction you are not
+opening.
+
 The screen carries the numbers that make a bid a decision rather than a guess:
 piles left, cards left, and what an average remaining pile is worth (both purses
 divided by the piles still to buy). Spend well above that and you are betting

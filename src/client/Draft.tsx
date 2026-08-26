@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { frontFace } from '@engine/oracle';
 import type { OracleId, PlayerId } from '@engine/types';
-import { CardFace } from './CardView';
+import { CardFace, OracleCardDetail } from './CardView';
 import { useStore } from './store';
-import type { DraftView } from '../draft/redact';
+import { opponentHasPassed, type DraftView } from '../draft/redact';
 import { MAINDECK } from '@engine/deck';
 
 /**
@@ -43,7 +43,13 @@ function DraftCardFace({
   }
   const face = frontFace(oracleId);
   return (
-    <div className={`draft-card is-${size}`}>
+    <div
+      className={`draft-card is-${size}`}
+      // The draft's cards are its own instances, not the engine's, so the reader
+      // beside the table follows them by oracle id rather than by instance.
+      onMouseEnter={() => useStore.getState().setHoveredOracle(oracleId)}
+      onMouseLeave={() => useStore.getState().setHoveredOracle(null)}
+    >
       <CardFace
         card={{
           iid: -1,
@@ -69,6 +75,45 @@ function DraftCardFace({
       {badge && <span className="draft-card-badge">{badge}</span>}
       <div className="draft-card-name">{face.name}</div>
     </div>
+  );
+}
+
+/**
+ * The card you are reading while you decide what a pile is worth.
+ *
+ * Bidding on a pile means reading four cards you may never have seen, at a size
+ * the pile itself cannot afford to show them at. Hovering fills this in; a
+ * right-click holds one open, so you can look back at the table, the purses and
+ * the piles-left count without losing the card you were weighing up.
+ */
+function DraftReader() {
+  const pinned = useStore((s) => s.pinnedOracleId);
+  const hovered = useStore((s) => s.hoveredOracleId);
+  const togglePinnedCard = useStore((s) => s.togglePinnedCard);
+  const showing = pinned ?? hovered;
+
+  return (
+    <aside className="draft-reader" data-testid="draft-reader">
+      {showing ? (
+        <>
+          <OracleCardDetail oracleId={showing} className="is-inline" />
+          <div className="draft-reader-foot">
+            {pinned ? (
+              <button data-testid="unpin-card" onClick={() => togglePinnedCard(null)}>
+                Unpin
+              </button>
+            ) : (
+              <span className="bid-note">Right-click to hold it open.</span>
+            )}
+          </div>
+        </>
+      ) : (
+        <p className="bid-note">
+          Point at a card to read it. Right-click one to hold it open here while you
+          look at the rest of the table.
+        </p>
+      )}
+    </aside>
   );
 }
 
@@ -125,6 +170,10 @@ function BidControls({ draft, onBid }: { draft: DraftView; onBid: (n: number) =>
   const min = draft.minimumBid;
   const max = draft.myCoins;
   const [amount, setAmount] = useState(min);
+  // They opened by passing: a different auction from an empty one, and the amount
+  // box has nothing left to ask — above the minimum you would only be outbidding
+  // yourself. See opponentHasPassed.
+  const theyPassed = opponentHasPassed(draft);
 
   // A new auction, or the opponent raising, moves the floor under the box.
   useEffect(() => {
@@ -140,6 +189,35 @@ function BidControls({ draft, onBid }: { draft: DraftView; onBid: (n: number) =>
             ? 'They are choosing which two to keep…'
             : 'Waiting for their bid…'}
         </span>
+      </div>
+    );
+  }
+
+  if (theyPassed) {
+    return (
+      <div className="bid-bar" data-testid="they-passed">
+        <div className="bid-passed">
+          <b>They bid 0</b>
+          <span>They passed on this pile — they are out of the bidding for it.</span>
+        </div>
+        <div className="bid-quick">
+          <button
+            className="primary"
+            data-testid="bid-take-unopposed"
+            disabled={min > max}
+            onClick={() => onBid(min)}
+          >
+            Take the pile for {min}
+          </button>
+          <button data-testid="bid-withdraw" onClick={() => onBid(0)}>
+            Withdraw
+          </button>
+        </div>
+        <div className="bid-note">
+          {min > max
+            ? 'You have no coins left, so withdrawing is your only move — and the pile goes with it.'
+            : `Nobody is left to outbid you, so ${min} buys it. Withdraw as well and nobody takes it: all four cards leave the draft.`}
+        </div>
       </div>
     );
   }
@@ -344,18 +422,21 @@ export function DraftScreen({ viewer }: { viewer: PlayerId }) {
         </div>
       </header>
 
-      <main className="draft-main">
+      <div className="draft-body">
+        <main className="draft-main">
         {/* While you are picking, the panel below shows all four cards larger —
             keeping the table above it as well would be the same pile twice, and
             pushes the confirm button off the bottom of the screen. */}
-        {myPick ? null : <PileTable draft={draft} />}
+          {myPick ? null : <PileTable draft={draft} />}
 
-        {myPick ? (
-          <PickControls draft={draft} onKeep={(iids) => sendDraft({ t: 'keep', iids }, viewer)} />
-        ) : (
-          <BidControls draft={draft} onBid={(amount) => sendDraft({ t: 'bid', amount }, viewer)} />
-        )}
-      </main>
+          {myPick ? (
+            <PickControls draft={draft} onKeep={(iids) => sendDraft({ t: 'keep', iids }, viewer)} />
+          ) : (
+            <BidControls draft={draft} onBid={(amount) => sendDraft({ t: 'bid', amount }, viewer)} />
+          )}
+        </main>
+        <DraftReader />
+      </div>
 
       <footer className="draft-bottom">
         <button data-testid="open-picks" onClick={() => setOpen('picks')}>

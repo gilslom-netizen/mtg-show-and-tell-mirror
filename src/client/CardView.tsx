@@ -131,6 +131,7 @@ export const CardFace = memo(function CardFace({
   const hovered = useStore((s) => s.hoveredIid);
   const highlight = useStore((s) => s.highlightIids);
   const setHovered = useStore((s) => s.setHovered);
+  const togglePinnedCard = useStore((s) => s.togglePinnedCard);
   const [artBroken, setArtBroken] = useState(false);
 
   if (!card) {
@@ -173,9 +174,20 @@ export const CardFace = memo(function CardFace({
       className={classes}
       style={style}
       onClick={disabledReason ? undefined : onClick}
+      /*
+       * Right-click holds the card open in the reader, the way every Magic client
+       * zooms a card. Left-click is spoken for — it casts, it targets, it keeps a
+       * card out of a pile — so reading and doing never have to fight over it, and
+       * a card you cannot click at all is still one you can read.
+       */
+      onContextMenu={(e) => {
+        if (card.isToken) return;
+        e.preventDefault();
+        togglePinnedCard(card.oracleId);
+      }}
       onMouseEnter={() => setHovered(card.iid)}
       onMouseLeave={() => setHovered(null)}
-      title={face.name}
+      title={`${face.name} — right-click to read`}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick && !disabledReason ? 0 : undefined}
       onKeyDown={(e) => {
@@ -324,9 +336,35 @@ export function OracleCardDetail({
   return <CardDetail face={frontFace(oracleId)} full={oracle(oracleId)} className={className} />;
 }
 
+/**
+ * The reader beside the table.
+ *
+ * A pinned card wins over whatever is under the pointer: pinning is a deliberate
+ * "keep this here while I look at the board", and losing it the moment the mouse
+ * crossed a creature on the way would defeat the point.
+ */
 export function CardPreview({ viewer }: { viewer: PlayerId }) {
+  const pinned = useStore((s) => s.pinnedOracleId);
   const hovered = useStore((s) => s.hoveredIid);
   const view = useStore((s) => s.views[viewer]);
+  const togglePinnedCard = useStore((s) => s.togglePinnedCard);
+
+  if (pinned) {
+    return (
+      <div className="preview-pinned">
+        <OracleCardDetail oracleId={pinned} />
+        <button
+          className="preview-unpin"
+          data-testid="unpin-card"
+          onClick={() => togglePinnedCard(null)}
+          title="Stop holding this card open (Esc)"
+        >
+          Unpin
+        </button>
+      </div>
+    );
+  }
+
   if (!hovered || !view) return null;
   const card = view.cards[hovered];
   if (!card) return null;

@@ -1320,6 +1320,39 @@ kbd {
   width: 100%;
   display: block;
 }
+
+/* A pinned card is one you are meant to be able to reach — the hover preview is
+   deliberately click-through, this one is not. Same box, same place. */
+.preview-pinned {
+  position: fixed;
+  right: 8px;
+  top: 54px;
+  width: clamp(260px, 22vw, 340px);
+  max-height: calc(100vh - 150px);
+  overflow: auto;
+  z-index: 41;
+}
+.preview-pinned .preview {
+  position: static;
+  width: 100%;
+  max-height: none;
+  pointer-events: auto;
+}
+.preview-unpin {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 11px;
+  padding: 3px 8px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text);
+  cursor: pointer;
+}
+.preview-unpin:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
 .preview .preview-text {
   padding: 10px 12px;
   font-size: 12.5px;
@@ -1736,6 +1769,44 @@ button.linkish:hover {
   color: var(--text-faint);
 }
 
+/* The table and the reader beside it. The reader is a fixed column so the pile
+   never reflows as a card comes and goes from it. */
+.draft-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.draft-reader {
+  border-left: 1px solid var(--border);
+  background: var(--bg-raised);
+  padding: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.draft-reader .bid-note {
+  margin: 0;
+}
+.draft-reader-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 1000px) {
+  /* Too narrow for both: the pile is the thing you cannot do without. */
+  .draft-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .draft-reader {
+    display: none;
+  }
+}
+
 .draft-main {
   display: flex;
   flex-direction: column;
@@ -1863,6 +1934,24 @@ button.linkish:hover {
   flex-wrap: wrap;
   justify-content: center;
 }
+/* Their zero is an answer, so it is stated like one rather than left as an
+   empty auction the reader has to infer. */
+.bid-passed {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  text-align: center;
+}
+.bid-passed b {
+  font-size: 15px;
+  color: var(--theirs);
+}
+.bid-passed span {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
 .bid-quick button {
   min-width: 44px;
 }
