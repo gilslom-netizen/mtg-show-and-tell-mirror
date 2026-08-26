@@ -22,6 +22,35 @@ export function otherPlayer(p: PlayerId): PlayerId {
   return p === 'p1' ? 'p2' : 'p1';
 }
 
+/**
+ * How many mulligans cost you nothing.
+ *
+ * The Commander rule, and it belongs here for the same reason it exists there: in
+ * a format where one card decides the game, a hand with none of it is not a game.
+ * Both players run the same sixty, so a free look costs neither of them anything
+ * relative to the other — what it buys is fewer games that were over before they
+ * started.
+ */
+export const FREE_MULLIGANS = 1;
+
+/**
+ * Cards that go to the bottom after keeping, London-style.
+ *
+ * One number, derived in one place, because three of them read it: the engine
+ * bottoms this many, the client says so on the button, and the agent judges the
+ * best `7 - this` of what it is looking at. They were three separate subtractions
+ * of `mulligansTaken` before, which is exactly the shape of thing that gets fixed
+ * in two places out of three.
+ */
+export function cardsToBottom(mulligansTaken: number): number {
+  return Math.max(0, mulligansTaken - FREE_MULLIGANS);
+}
+
+/** What a hand would be worth after this many mulligans: seven, less the bottoming. */
+export function handSizeAfter(mulligansTaken: number): number {
+  return 7 - cardsToBottom(mulligansTaken);
+}
+
 export function makePlayerState(id: PlayerId): PlayerState {
   return {
     id,

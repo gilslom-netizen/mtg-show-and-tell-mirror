@@ -101,35 +101,68 @@ describe('the opening hand', () => {
     );
   });
 
-  it('runs the London bottoming and starts the game', () => {
-    const game = opening();
+  /** Mulligan until this many have been taken, then keep. p2 always keeps. */
+  function playOut(game: Game, p1Mulligans: number): void {
     let guard = 0;
     while (game.state.mode === 'mulligan' && guard++ < 20) {
       const c = game.state.pendingChoice;
       if (!c) break;
       if (c.kind === 'mulligan') {
-        // p1 takes one mulligan, then both keep.
         for (const p of [...c.awaiting]) {
-          const keep = !(p === 'p1' && game.state.players.p1.mulligansTaken === 0);
+          const keep = !(p === 'p1' && game.state.players.p1.mulligansTaken < p1Mulligans);
           game.submitChoice(p, c.id, { kind: 'yesNo', value: keep });
         }
       } else if (c.kind === 'chooseCards') {
-        game.submitChoice(c.player, c.id, { kind: 'cards', iids: [c.options[0].iid] });
+        game.submitChoice(c.player, c.id, {
+          kind: 'cards',
+          iids: c.options.slice(0, c.min).map((o) => o.iid),
+        });
       } else {
         break;
       }
     }
+  }
+
+  /**
+   * The first mulligan is free, as in Commander.
+   *
+   * Both players run the same sixty cards, so a free look costs neither of them
+   * anything relative to the other. What it buys is fewer games decided by an
+   * opening hand rather than by anything either player did.
+   */
+  it('costs nothing the first time: a new seven, and no card on the bottom', () => {
+    const game = opening();
+    playOut(game, 1);
+
     expect(game.state.mode).toBe('playing');
-    // p1 mulliganed once and put a card on the bottom, so they keep six. p2 kept
-    // their opening seven untouched. p2's hand is asserted as "seven or more"
-    // rather than exactly seven because the engine's own auto-pass — which fires
-    // when a player has nothing at all to do — may already have run p1's turn out
-    // and given p2 their draw, depending on whether this seed's six has a land in
-    // it. `turn` counts rounds, not player-turns, so either way it is still 1.
-    expect(game.state.zones.p1.hand).toHaveLength(6);
     expect(game.state.players.p1.mulligansTaken).toBe(1);
+    expect(game.state.zones.p1.hand).toHaveLength(7);
+    // Nothing was ever asked, because there was nothing to put back.
+    expect(game.state.log.some((l) => /bottom/i.test(l.text))).toBe(false);
+    expect(game.state.log.some((l) => /free mulligan/i.test(l.text))).toBe(true);
     expect(game.state.turn).toBe(1);
+    // p2 kept their opening seven untouched. "Seven or more" rather than exactly
+    // seven because the engine's own auto-pass may already have run p1's turn out
+    // and given p2 their draw; `turn` counts rounds, not player-turns, either way.
     expect(game.state.players.p2.mulligansTaken).toBe(0);
     expect(game.state.zones.p2.hand.length).toBeGreaterThanOrEqual(7);
+  });
+
+  it('starts costing cards from the second one, London-style', () => {
+    const game = opening();
+    playOut(game, 2);
+
+    expect(game.state.mode).toBe('playing');
+    expect(game.state.players.p1.mulligansTaken).toBe(2);
+    expect(game.state.zones.p1.hand).toHaveLength(6);
+    expect(game.state.log.some((l) => /mulligans to 6/.test(l.text))).toBe(true);
+  });
+
+  it('bottoms one fewer than it used to, all the way down', () => {
+    // The rule as a table, because off-by-one here is the whole feature: taking
+    // three mulligans to reach five is not the same game as reaching four.
+    const game = opening();
+    playOut(game, 4);
+    expect(game.state.zones.p1.hand).toHaveLength(4);
   });
 });

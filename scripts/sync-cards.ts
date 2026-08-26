@@ -13,6 +13,11 @@ import { join } from 'node:path';
  *   npm run sync:cards          # report differences, write nothing
  *   npm run sync:cards -- --write
  *
+ * House changes to cards live in data/errata.json, deliberately not here: this file
+ * stays exactly what Wizards printed, so a diff against Scryfall means Wizards moved
+ * something rather than that we did. The errata are applied on top when the oracle
+ * index is built, which is also why a re-sync never quietly undoes one.
+ *
  * This always pulls whichever printing Scryfall calls "preferred" for a name —
  * usually the most recent one — including its art. data/printings.json pins a
  * specific printing per card for its art instead (see scripts/set-art.ts), so

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { PlayerView, ChoiceView } from '@engine/redact';
 import type { ChoiceResponse, IID, PlayerId, TargetRef } from '@engine/types';
+import { cardsToBottom, handSizeAfter } from '@engine/state';
 import { CardFace } from './CardView';
 import { cardTitle, targetName } from './ui';
 import { useStore } from './store';
@@ -567,7 +568,10 @@ function MulliganDialog({
   choice: Extract<ChoiceView, { kind: 'mulligan' }>;
   onAnswer: Answer;
 }) {
-  const bottoming = choice.mulligansTaken;
+  const bottoming = cardsToBottom(choice.mulligansTaken);
+  // What shipping this hand would leave you with — seven, while the free one is
+  // still going. Reading "Mulligan to 7" off the button is the whole feature.
+  const next = handSizeAfter(choice.mulligansTaken + 1);
   return (
     <div className="overlay">
       <div className="dialog">
@@ -598,7 +602,7 @@ function MulliganDialog({
           <span className={choice.opponentDecided ? 'is-done' : ''}>
             Opponent {choice.opponentDecided ? 'has decided' : 'is deciding'}
             {choice.opponentMulligansTaken > 0 &&
-              ` · down to ${7 - choice.opponentMulligansTaken}`}
+              ` · down to ${handSizeAfter(choice.opponentMulligansTaken)}`}
           </span>
         </div>
 
@@ -609,7 +613,7 @@ function MulliganDialog({
         ) : (
           <div className="actions">
             <button onClick={() => onAnswer({ kind: 'yesNo', value: false })}>
-              Mulligan to {6 - choice.mulligansTaken}
+              {next === 7 ? 'Free mulligan' : `Mulligan to ${next}`}
             </button>
             <button className="primary" onClick={() => onAnswer({ kind: 'yesNo', value: true })}>
               Keep {view.hand.length - bottoming}

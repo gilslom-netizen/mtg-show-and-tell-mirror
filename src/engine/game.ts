@@ -25,10 +25,12 @@ import {
   battlefield,
   cardName,
   cardsIn,
+  cardsToBottom,
   createGameState,
   currentFace,
   getPower,
   getToughness,
+  handSizeAfter,
   hasKeyword,
   isMainPhase,
   isPermanentCard,
@@ -1567,7 +1569,7 @@ export class Game {
           s.players[p].keptHand = true;
           // The London bottoming has not happened yet, so the kept size is the
           // hand minus what they are about to put back.
-          const kept = s.zones[p].hand.length - s.players[p].mulligansTaken;
+          const kept = s.zones[p].hand.length - cardsToBottom(s.players[p].mulligansTaken);
           logLine(s, `keeps ${kept}`, { player: p });
         } else {
           for (const iid of [...s.zones[p].hand]) moveCardRaw(s, iid, 'library');
@@ -1575,14 +1577,15 @@ export class Game {
           this.events.push({ t: 'shuffle', player: p });
           s.players[p].mulligansTaken++;
           this.draw(p, 7);
-          logLine(s, `mulligans to ${7 - s.players[p].mulligansTaken}`, { player: p });
+          const to = handSizeAfter(s.players[p].mulligansTaken);
+          logLine(s, to === 7 ? 'takes the free mulligan' : `mulligans to ${to}`, { player: p });
         }
       }
     }
 
-    // London mulligan: bottom N after keeping.
+    // London mulligan: bottom N after keeping, the free ones costing nothing.
     for (const p of order) {
-      const n = Math.min(s.players[p].mulligansTaken, s.zones[p].hand.length);
+      const n = Math.min(cardsToBottom(s.players[p].mulligansTaken), s.zones[p].hand.length);
       if (n === 0) continue;
       const chosen = yield* this.chooseCardsInternal({
         player: p,

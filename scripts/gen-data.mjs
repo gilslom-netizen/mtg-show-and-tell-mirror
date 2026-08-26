@@ -37,5 +37,6 @@ const written = [
   ['decklist.gen.ts', 'decklist.json', 'DECKLIST'],
   ['oracle-cards.gen.ts', 'oracle-cards.json', 'ORACLE_DATA'],
   ['draft.gen.ts', 'draft.json', 'DRAFT_DATA'],
+  ['errata.gen.ts', 'errata.json', 'ERRATA_DATA'],
 ].map(([file, json, name]) => `${file} (${emit(file, json, name, '')} bytes)`);
 console.log(`Wrote ${written.join(', ')} to src/engine/generated/.`);

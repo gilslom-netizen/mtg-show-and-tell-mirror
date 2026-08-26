@@ -1,11 +1,19 @@
+import { ERRATA_DATA } from './generated/errata.gen.js';
 import { ORACLE_DATA as raw } from './generated/oracle-cards.gen.js';
 import type { CardType, Color, OracleCard, OracleFace, OracleId } from './types.js';
 
 /**
- * Static card database, built from the frozen Scryfall snapshot in data/oracle-cards.json.
+ * Static card database, built from the frozen Scryfall snapshot in data/oracle-cards.json
+ * and the house changes in data/errata.json.
  *
  * Card text is never typed by hand anywhere in this repo — everything reads from here.
  * `npm run sync:cards` refetches and fails loudly if any oracle text changed upstream.
+ *
+ * The errata are a separate layer rather than edits to the snapshot, and the reason is
+ * the sync: it compares against Scryfall and reports every difference, so a house change
+ * written into the snapshot would either be reported as drift for ever or be quietly
+ * overwritten the next time somebody ran it. Kept apart, the snapshot stays exactly what
+ * Wizards printed and the deliberate deviations stay in one file you can read end to end.
  */
 
 interface RawFace {
@@ -135,15 +143,78 @@ function buildCard(c: RawCard): OracleCard {
   };
 }
 
+interface Erratum {
+  name: string;
+  why: string;
+  mana_cost?: string;
+  oracle_text?: string;
+  type_line?: string;
+  power?: string;
+  toughness?: string;
+}
+
+const errata = new Map<string, Erratum>(
+  (ERRATA_DATA as { cards: Erratum[] }).cards.map((e) => [e.name, e]),
+);
+
+/**
+ * The card as this format plays it.
+ *
+ * Mana value is recomputed from the cost rather than carried over or restated, so a
+ * cheaper Lier is a three drop everywhere at once — to the payment solver, to a Mana
+ * Drain reading its mana value, and to the agent's hand ranking. Stating it twice is
+ * how those three come to disagree.
+ */
+function withErrata(c: RawCard): RawCard {
+  const e = errata.get(c.name);
+  if (!e) return c;
+  const next: RawCard = { ...c };
+  if (e.mana_cost !== undefined) {
+    next.mana_cost = e.mana_cost;
+    next.cmc = manaValueOf(e.mana_cost);
+  }
+  if (e.oracle_text !== undefined) next.oracle_text = e.oracle_text;
+  if (e.type_line !== undefined) next.type_line = e.type_line;
+  if (e.power !== undefined) next.power = e.power;
+  if (e.toughness !== undefined) next.toughness = e.toughness;
+  return next;
+}
+
 const cards: Record<OracleId, OracleCard> = {};
 const byName: Record<string, OracleCard> = {};
 
 for (const c of (raw as { cards: RawCard[] }).cards) {
-  const card = buildCard(c);
+  const card = buildCard(withErrata(c));
   cards[card.oracleId] = card;
   byName[card.name.toLowerCase()] = card;
   // MDFCs are also addressable by their front face name alone.
   byName[card.name.split('//')[0].trim().toLowerCase()] = card;
+}
+
+/*
+ * A name that matches nothing is a mistake, not a no-op.
+ *
+ * The failure mode this exists for is silent: rename a card upstream, or mistype an
+ * apostrophe, and the erratum simply stops applying — the card goes back to its
+ * printed cost and nothing anywhere says so. Better to refuse to start.
+ */
+const unmatched = [...errata.keys()].filter((name) => !byName[name.toLowerCase()]);
+if (unmatched.length > 0) {
+  throw new Error(`data/errata.json names cards that are not in the pool: ${unmatched.join(', ')}`);
+}
+
+/** The house changes, for anything that wants to show or check them. */
+export const ERRATA: readonly Erratum[] = (ERRATA_DATA as { cards: Erratum[] }).cards;
+
+/**
+ * Why this card is not the card you remember, or null when it is.
+ *
+ * Worth showing rather than leaving people to notice: somebody who knows Eternal
+ * Witness costs {1}{G}{G} and reads {2}{G} here has no way to tell a house rule
+ * from a bug, and will reasonably assume the bug.
+ */
+export function errataFor(name: string): Erratum | null {
+  return errata.get(name) ?? null;
 }
 
 export const ORACLE: Readonly<Record<OracleId, OracleCard>> = cards;

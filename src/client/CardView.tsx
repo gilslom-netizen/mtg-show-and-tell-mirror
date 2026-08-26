@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { faceOf, frontFace, oracle } from '@engine/oracle';
+import { errataFor, faceOf, frontFace, oracle } from '@engine/oracle';
 import type { CardView as CardData } from '@engine/redact';
 import type { OracleFace, OracleId, PlayerId } from '@engine/types';
 import { ManaCost } from './mana';
@@ -313,6 +313,11 @@ export function CardDetail({
           {face.power !== null && ` · ${face.power}/${face.toughness}`}
         </div>
         <div className="oracle">{face.oracleText}</div>
+        {errataFor(face.name) && (
+          <div className="oracle errata">
+            House change · {errataFor(face.name)!.why}
+          </div>
+        )}
         {full?.layout === 'modal_dfc' && (
           <div className="oracle" style={{ marginTop: 8, opacity: 0.75 }}>
             ── {full.faces![1].name} ──{'\n'}

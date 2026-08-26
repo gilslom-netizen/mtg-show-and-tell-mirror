@@ -2,6 +2,7 @@ import type { Intent, LegalAction } from '../engine/game.js';
 import type { MatchState } from '../engine/match.js';
 import type { CardView, ChoiceView, PlayerView } from '../engine/redact.js';
 import type { ChoiceResponse, IID, OracleId, PlayerId, TargetRef } from '../engine/types.js';
+import { handSizeAfter } from '../engine/state.js';
 import type { Agent } from './agent.js';
 import {
   Basket,
@@ -604,11 +605,15 @@ export class HeuristicAgent implements Agent {
    *
    * The mulligan is decision number one and it moves about 15% of the result in a
    * combo deck, which makes it worth more than most of the rest of this file. The
-   * London rule means the hand is always seven cards and `mulligansTaken` of them go
-   * back, so what is being judged is the best `7 - n` of what is showing.
+   * London rule means the hand is always seven cards and some of them go back, so
+   * what is being judged is the best `7 - bottomed` of what is showing.
+   *
+   * The first mulligan is free, which changes this rather than just shifting it: a
+   * seven-card hand that fails the seven-card standard is shipped for another seven
+   * at no cost at all, so the strict test applies twice rather than once.
    */
   private keepHand(r: Read, choice: ChoiceOf<'mulligan'>): boolean {
-    const keep = Math.max(1, 7 - choice.mulligansTaken);
+    const keep = Math.max(1, handSizeAfter(choice.mulligansTaken));
     // Five is the floor. Below it the hand loses to itself, whatever is in it.
     if (keep <= 4) return true;
 

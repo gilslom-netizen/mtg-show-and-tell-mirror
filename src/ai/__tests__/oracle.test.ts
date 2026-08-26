@@ -70,21 +70,36 @@ describe('the oracle agent', () => {
    * two agents diverge at all, which is what a hole that had quietly stopped being
    * wired up would hide behind an answer of "perfect information is worth nothing".
    */
+  /*
+   * Over several seeds, not one.
+   *
+   * This used to assert divergence on a single game, which is a claim about that
+   * shuffle rather than about the agent: two agents playing the same deck agree
+   * often enough that any change to the format — a free mulligan, say — can land
+   * on a seed where they happen to play identically, and the test then fails for a
+   * reason that has nothing to do with what it is testing. Same lesson as the
+   * Wilson interval in the arena: the answer is more games.
+   */
   it('plays a different game from the same search guessing', () => {
-    const withTruth = playGame({
-      p1: new OracleAgent(),
-      p2: new HeuristicAgent(),
-      seed: 62001,
-      budgetMs: 60_000,
+    const seeds = [62001, 62002, 62003, 62004];
+    const differ = seeds.filter((seed) => {
+      const withTruth = playGame({
+        p1: new OracleAgent(),
+        p2: new HeuristicAgent(),
+        seed,
+        budgetMs: 60_000,
+      });
+      const guessing = playGame({
+        p1: new PimcAgent({ determinizations: 1 }),
+        p2: new HeuristicAgent(),
+        seed,
+        budgetMs: 60_000,
+      });
+      return JSON.stringify(withTruth.actions) !== JSON.stringify(guessing.actions);
     });
-    const guessing = playGame({
-      p1: new PimcAgent({ determinizations: 1 }),
-      p2: new HeuristicAgent(),
-      seed: 62001,
-      budgetMs: 60_000,
-    });
-    expect(JSON.stringify(withTruth.actions)).not.toBe(JSON.stringify(guessing.actions));
-  }, 60_000);
+    // Most of them, and never none: knowing the hand has to reach the decisions.
+    expect(differ.length).toBeGreaterThanOrEqual(seeds.length - 1);
+  }, 120_000);
 
   it('never sees the truth through the view, only through the hole', () => {
     // Belt and braces on ע1: the view handed to the oracle is redacted like anyone
