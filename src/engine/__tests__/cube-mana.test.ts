@@ -31,7 +31,14 @@ describe('what taps for mana without a script', () => {
 
   it('still lets every land tap, including one that prints no text at all', () => {
     expect(produced('Island')).toEqual(['U']);
-    expect(produced('Cavern of Souls').length).toBeGreaterThan(0);
+    /*
+     * Cavern of Souls used to keep its produced_mana here, which was the free
+     * half of a card whose whole point is the restriction: "spend this mana only
+     * to cast a creature spell of the chosen type" had been dropped on the
+     * floor. Any 'spend only' clause now mutes the automatic derivation, and
+     * Cavern waits for a script that keeps the leash on.
+     */
+    expect(produced('Cavern of Souls')).toEqual([]);
     // The land face of a modal DFC inherits it from the card.
     expect(oracleByName('Waterlogged Teachings').faces![1].producedMana.slice().sort()).toEqual(['B', 'U']);
   });
@@ -80,6 +87,8 @@ describe('paying a Phyrexian cost in a real game', () => {
     expect(t.p1.canCast('Gitaxian Probe')).toBe(true);
 
     t.p1.cast('Gitaxian Probe');
+    // The Probe has a real target now — payment happens after it is chosen.
+    t.targetPlayer('p2');
     expect(t.state.players.p1.life).toBe(18);
   });
 
@@ -90,6 +99,7 @@ describe('paying a Phyrexian cost in a real game', () => {
     t.p1.conjure('Gitaxian Probe');
 
     t.p1.cast('Gitaxian Probe');
+    t.targetPlayer('p2');
     expect(t.state.players.p1.life).toBe(20);
     expect(t.state.cards[t.state.zones.p1.battlefield[0]].tapped).toBe(true);
   });

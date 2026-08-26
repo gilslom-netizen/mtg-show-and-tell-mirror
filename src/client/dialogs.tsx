@@ -580,6 +580,12 @@ function MulliganDialog({
           Opening hand
           {choice.mulligansTaken > 0 && ` · mulligan ${choice.mulligansTaken}`}
         </h2>
+        {/* The single most keep-relevant fact after the cards themselves. */}
+        <div className={`play-draw ${view.startingPlayer === viewer ? 'is-play' : 'is-draw'}`}>
+          {view.startingPlayer === viewer
+            ? 'You are on the play — you skip your first draw.'
+            : 'You are on the draw.'}
+        </div>
         <div className="prompt">
           {choice.iHaveDecided
             ? 'Decision locked in. Waiting for your opponent…'

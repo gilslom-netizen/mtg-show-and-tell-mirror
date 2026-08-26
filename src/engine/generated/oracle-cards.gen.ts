@@ -1704,7 +1704,8 @@ export const ORACLE_DATA = {
       },
       "scryfall_uri": "https://scryfall.com/card/one/57/jace-the-perfected-mind?utm_source=api",
       "oracle_id": "03dafab4-841f-41cb-8f2e-8188f5177837",
-      "image_uri": "https://cards.scryfall.io/normal/front/6/4/64e6a8d1-ae75-45bd-af62-9a622620cb5c.jpg?1783918061"
+      "image_uri": "https://cards.scryfall.io/normal/front/6/4/64e6a8d1-ae75-45bd-af62-9a622620cb5c.jpg?1783918061",
+      "loyalty": "5"
     },
     {
       "name": "Jace's Erasure",
@@ -2325,7 +2326,8 @@ export const ORACLE_DATA = {
       },
       "scryfall_uri": "https://scryfall.com/card/cmm/853/narset-parter-of-veils?utm_source=api",
       "oracle_id": "ab26fbe2-e808-48b9-8d0d-3fbb6c3d554f",
-      "image_uri": "https://cards.scryfall.io/normal/front/8/c/8c39f9b4-02b9-4d44-b8d6-4fd02ebbb0c5.jpg?1783933458"
+      "image_uri": "https://cards.scryfall.io/normal/front/8/c/8c39f9b4-02b9-4d44-b8d6-4fd02ebbb0c5.jpg?1783933458",
+      "loyalty": "5"
     },
     {
       "name": "Narset's Reversal",
@@ -2942,7 +2944,8 @@ export const ORACLE_DATA = {
       },
       "scryfall_uri": "https://scryfall.com/card/blb/230/ral-crackling-wit?utm_source=api",
       "oracle_id": "3c970f43-17da-4187-a084-efd53b579067",
-      "image_uri": "https://cards.scryfall.io/normal/front/a/c/acfde780-899a-4c5b-a39b-f4a3ff129103.jpg?1783910791"
+      "image_uri": "https://cards.scryfall.io/normal/front/a/c/acfde780-899a-4c5b-a39b-f4a3ff129103.jpg?1783910791",
+      "loyalty": "4"
     },
     {
       "name": "Reanimate",
@@ -3512,7 +3515,8 @@ export const ORACLE_DATA = {
       },
       "scryfall_uri": "https://scryfall.com/card/war/220/tamiyo-collector-of-tales?utm_source=api",
       "oracle_id": "75d56a0a-2f64-4e80-b83e-85942d3e6dd7",
-      "image_uri": "https://cards.scryfall.io/normal/front/7/6/76776b24-a2e1-4590-88e7-8a421baf2fc4.jpg?1783933384"
+      "image_uri": "https://cards.scryfall.io/normal/front/7/6/76776b24-a2e1-4590-88e7-8a421baf2fc4.jpg?1783933384",
+      "loyalty": "5"
     },
     {
       "name": "Tamiyo, Inquisitive Student // Tamiyo, Seasoned Scholar",
@@ -3584,7 +3588,8 @@ export const ORACLE_DATA = {
             "G",
             "U"
           ],
-          "image_uri": "https://cards.scryfall.io/normal/back/2/a/2a717b98-cdac-416d-bf6c-f6b6638e65d1.jpg?1783911236"
+          "image_uri": "https://cards.scryfall.io/normal/back/2/a/2a717b98-cdac-416d-bf6c-f6b6638e65d1.jpg?1783911236",
+          "loyalty": "2"
         }
       ],
       "image_uri": "https://cards.scryfall.io/normal/front/2/a/2a717b98-cdac-416d-bf6c-f6b6638e65d1.jpg?1783911236"

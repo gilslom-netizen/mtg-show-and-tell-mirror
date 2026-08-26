@@ -1,4 +1,4 @@
-import { getScript } from './cards/index.js';
+import { getScript, unimplementedReason } from './cards/index.js';
 import {
   addEffect as addEffectToState,
   attachNextSpellShield,
@@ -1607,6 +1607,7 @@ export class Game {
         from: 'hand',
       });
       for (const iid of chosen) moveCardRaw(s, iid, 'library', { position: 'bottom' });
+      logLine(s, `puts ${n} card${n === 1 ? '' : 's'} on the bottom`, { player: p });
     }
 
     s.mode = 'playing';
@@ -2085,6 +2086,19 @@ export class Game {
           from: 'library',
         });
         for (const iid of toGy) game.emit(moveCardRaw(s, iid, 'graveyard'));
+        /*
+         * The decision is public even though the card is not: the graveyard is
+         * open information, so "binned one" or "kept it on top" is something the
+         * opponent is entitled to - and was reading off nothing. The rule for
+         * every hidden choice in this engine: say THAT you chose, never WHAT.
+         */
+        logLine(
+          s,
+          toGy.length === 0
+            ? `surveils ${top.length}: keeps ${top.length === 1 ? 'it' : 'them'} on top`
+            : `surveils ${top.length}: ${toGy.length} to the graveyard, ${top.length - toGy.length} kept on top`,
+          { player },
+        );
       },
       amass: function* (player, subtype, n) {
         // CR 701.44 — add counters to an Army you control, creating one first if needed.
@@ -2244,6 +2258,10 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
   // Land drops.
   if (sorceryTiming && ps.landDropsUsed < ps.landDropsAllowed) {
     for (const c of cardsIn(state, player, 'hand')) {
+      // A card the engine cannot play yet is not offered at all - a Cavern of
+      // Souls that hits the battlefield and taps for nothing is worse than one
+      // the hand honestly refuses. See unimplementedReason.
+      if (unimplementedReason(c.oracleId)) continue;
       const card = oracle(c.oracleId);
       if (frontFace(c.oracleId).types.includes('Land')) {
         out.push({ intent: { t: 'playLand', iid: c.iid }, label: `Play ${cardName(c)}` });
@@ -2270,6 +2288,14 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
     // Lands are not spells — Omniscience cannot "cast" them and Borne Upon a Wind
     // does not let you play them at instant speed.
     if (face.types.includes('Land')) continue;
+    /*
+     * A spell with no script resolves into nothing: resolveSpell runs the script
+     * if there is one and shrugs if there is not. Offering it anyway is how a
+     * playtest lost a Thoughtseize and two mana to a card that silently did
+     * nothing - so an unimplemented card is simply not castable, the same way an
+     * unaffordable one is not.
+     */
+    if (unimplementedReason(c.oracleId)) continue;
 
     const timing = spellTiming(c.oracleId);
     const timingOk = timing === 'instant' || flashAll || sorceryTiming;
@@ -2364,6 +2390,8 @@ export function untappedManaSources(state: GameState, player: PlayerId): ManaSou
   const out: ManaSource[] = [];
   for (const c of battlefield(state, player)) {
     if (c.tapped) continue;
+    // producedManaOf already answers CR 302.6 — a summoning-sick mana creature
+    // reports no mana at all, so nothing here needs to ask again.
     const produces = producedManaOf(c);
     if (produces.length === 0) continue;
     out.push({ iid: c.iid, produces });

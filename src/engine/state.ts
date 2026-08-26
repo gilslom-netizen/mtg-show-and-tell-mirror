@@ -308,6 +308,7 @@ export function currentFace(card: CardInstance): OracleFace {
       keywords: [],
       producedMana: [],
       imageUri: null,
+    loyalty: null,
     };
   }
   if (card.zone === 'battlefield' || card.zone === 'stack') {

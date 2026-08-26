@@ -102,6 +102,12 @@ export interface PlayerView {
   mode: GameState['mode'];
   turn: number;
   activePlayer: PlayerId;
+  /**
+   * Who was on the play. Public information - it decided the first draw step -
+   * and a playtest showed the cost of hiding it: a player who did not know he
+   * was second read his own (perfectly legal) first draw as a bug.
+   */
+  startingPlayer: PlayerId;
   phase: Phase;
   step: Step;
   priorityPlayer: PlayerId | null;
@@ -330,6 +336,7 @@ export function redact(state: GameState, viewer: PlayerId): PlayerView {
     mode: state.mode,
     turn: state.turn,
     activePlayer: state.activePlayer,
+    startingPlayer: state.startingPlayer,
     phase: state.phase,
     step: state.step,
     priorityPlayer: state.priorityPlayer,

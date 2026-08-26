@@ -110,6 +110,7 @@ export function faceOfCard(card: CardData): OracleFace {
       keywords: [],
       producedMana: [],
       imageUri: null,
+      loyalty: null,
     };
   }
   return faceOf(card.oracleId, card.face);

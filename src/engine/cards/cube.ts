@@ -1,5 +1,5 @@
 import { frontFace } from '../oracle.js';
-import type { CardScript } from '../script-types.js';
+import type { CardScript, Ctx, Eff } from '../script-types.js';
 import type { PlayerId, TargetRef } from '../types.js';
 
 /**
@@ -25,6 +25,93 @@ import type { PlayerId, TargetRef } from '../types.js';
  * this trigger fires on every single card you draw. Two dialogs per draw is not a
  * more faithful card, it is an unplayable one.
  */
+/**
+ * Peek and Gitaxian Probe share their whole text: look at a hand, draw a card.
+ * The look is a real reveal to the caster only — presented as a zero-pick card
+ * choice, because that is the one primitive whose options the redactor already
+ * shows to exactly the player who was asked and nobody else.
+ */
+function* lookAtTheirHand(ctx: Ctx): Eff {
+  const t = ctx.targets[0];
+  if (!t || t.kind !== 'player') return;
+  const player = t.id as PlayerId;
+  const hand = ctx.hand(player);
+  ctx.log(`looks at ${player === ctx.controller ? 'their own' : "the opponent's"} hand`);
+  if (player === ctx.controller || hand.length === 0) return;
+  yield* ctx.chooseCards({
+    player: ctx.controller,
+    cards: hand.map((c) => c.iid),
+    min: 0,
+    max: 0,
+    prompt: 'Their hand — press Confirm when you have seen enough',
+    from: 'hand',
+  });
+}
+
+const TARGET_A_PLAYER = [
+  {
+    prompt: 'Look at target player’s hand',
+    candidates: (): TargetRef[] => [
+      { kind: 'player', id: 'p1' },
+      { kind: 'player', id: 'p2' },
+    ],
+  },
+];
+
+export const peek: CardScript = {
+  oracleId: 'peek',
+  targets: TARGET_A_PLAYER,
+  *resolve(ctx) {
+    yield* lookAtTheirHand(ctx);
+    ctx.draw(ctx.controller, 1);
+  },
+};
+
+export const gitaxianProbe: CardScript = {
+  oracleId: 'gitaxian_probe',
+  targets: TARGET_A_PLAYER,
+  *resolve(ctx) {
+    yield* lookAtTheirHand(ctx);
+    ctx.draw(ctx.controller, 1);
+  },
+};
+
+/**
+ * Eternal Witness — the errata version, {2}{G}. "You may return target card
+ * from your graveyard to your hand": the target is chosen as the trigger goes
+ * on the stack, and declining is choosing no target.
+ */
+export const eternalWitness: CardScript = {
+  oracleId: 'eternal_witness',
+  abilities: [
+    {
+      kind: 'triggered',
+      label: 'Return a card from your graveyard to your hand',
+      trigger: (ev, self) => ev.t === 'entersBattlefield' && ev.iid === self.iid,
+      targets: [
+        {
+          prompt: 'Return target card from your graveyard to your hand — or no target',
+          optional: true,
+          candidates: (state, controller): TargetRef[] =>
+            state.zones[controller].graveyard.map((iid) => ({
+              kind: 'card',
+              iid,
+              zone: 'graveyard',
+            })),
+        },
+      ],
+      *resolve(ctx) {
+        const t = ctx.targets[0];
+        if (!t || t.kind !== 'card') return;
+        const card = ctx.card(t.iid);
+        if (!card || card.zone !== 'graveyard') return;
+        ctx.log(`returns ${frontFace(card.oracleId).name} to hand`);
+        yield* ctx.moveTo(t.iid, 'hand');
+      },
+    },
+  ],
+};
+
 export const jacesErasure: CardScript = {
   oracleId: 'jaces_erasure',
   abilities: [

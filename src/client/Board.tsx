@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { LegalAction } from '@engine/game';
 import type { PlayerView } from '@engine/redact';
 import { isType } from '@engine/state';
+import { unimplementedReason } from '@engine/cards/index';
 import { frontFace, oracle } from '@engine/oracle';
 import type { IID, PlayerId } from '@engine/types';
 import { CardFace, CardPreview } from './CardView';
@@ -246,7 +247,13 @@ function Yards({ view, viewer, seat }: { view: PlayerView; viewer: PlayerId; sea
   const [open, setOpen] = useState<'graveyard' | 'exile' | null>(null);
   const gy = view.graveyard[seat];
   const ex = view.exile[seat];
-  if (gy.length === 0 && ex.length === 0) return null;
+  /*
+   * Always on screen, even at zero. This used to return null for an empty
+   * graveyard - so for the whole early game the button did not exist, and a
+   * playtester asked for "a way to click the yard and see what is in there"
+   * about a feature that was already built. A feature that only appears once
+   * you have needed it is a feature nobody discovers.
+   */
 
   return (
     <div className="row" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -466,6 +473,10 @@ function handActions(view: PlayerView, iid: IID): LegalAction[] {
 function whyNotPlayable(view: PlayerView, iid: IID): string | undefined {
   const c = view.cards[iid];
   if (!c) return undefined;
+  // Before timing and mana: a card the engine cannot resolve is never playable,
+  // and "not enough mana" would be a lie about it.
+  const gap = unimplementedReason(c.oracleId);
+  if (gap) return gap;
   if (!canAct(view, view.viewer)) return undefined;
   const face = frontFace(c.oracleId);
   const full = oracle(c.oracleId);

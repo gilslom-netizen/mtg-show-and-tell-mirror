@@ -67,11 +67,13 @@ export interface OracleFace {
   keywords: string[];
   producedMana: Color[];
   imageUri: string | null;
+  /** Printed starting loyalty, for planeswalker faces. */
+  loyalty: string | null;
 }
 
 export interface OracleCard extends OracleFace {
   oracleId: OracleId;
-  layout: 'normal' | 'modal_dfc';
+  layout: 'normal' | 'modal_dfc' | 'transform';
   /** Present only for modal DFCs. faces[0] is the front face. */
   faces: OracleFace[] | null;
 }

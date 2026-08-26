@@ -24,6 +24,7 @@ interface RawFace {
   oracle_text?: string;
   power?: string;
   toughness?: string;
+  loyalty?: string;
   colors?: string[];
   keywords?: string[];
   produced_mana?: string[];
@@ -112,10 +113,40 @@ export function manaValueOf(cost: string | null): number {
  * Lands keep the old rule, including the inherited fallback: a basic prints no
  * text at all, so there is nothing to match against.
  */
-function producedManaFor(f: RawFace, types: string[], fallback: string[]): string[] {
-  if (types.includes('Land')) return f.produced_mana ?? fallback;
-  if (!f.produced_mana) return [];
-  return /\{T\}: Add /.test(f.oracle_text ?? '') ? f.produced_mana : [];
+const BASIC_LAND_TYPES = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'];
+
+/**
+ * Whether this face's mana can be trusted straight from Scryfall's produced_mana.
+ *
+ * The old test was "does the text contain {T}: Add", which reads the words and
+ * ignores the sentence: an unimprinted Chrome Mox offered all five colours,
+ * because "{T}: Add one mana of any of the exiled card's colors" contains the
+ * magic string — and there is no exiled card. Cavern of Souls handed out
+ * unrestricted mana for the same reason, minus its whole "spend only on the
+ * chosen creature type" clause.
+ *
+ * So the question is now about the ability, not the string: the mana is derived
+ * automatically only when there is an Add line with no condition riding on it.
+ * Anything conditional — imprint, chosen colours, spend-only restrictions —
+ * waits for a real script instead of being quietly wrong.
+ */
+function producedManaFor(f: RawFace, types: string[], subtypes: string[], fallback: string[]): string[] {
+  const produced = f.produced_mana ?? (types.includes('Land') ? fallback : undefined);
+  if (!produced || produced.length === 0) return [];
+  const text = f.oracle_text ?? '';
+  // A restriction anywhere poisons the whole derivation: produced_mana is one flat
+  // list, so there is no way to keep the unrestricted half of a Cavern of Souls.
+  if (/spend this mana only/i.test(text)) return [];
+  // A basic land type is an intrinsic mana ability (CR 305.6) — the duals and
+  // surveil lands say their mana only in reminder text, and it is still real.
+  if (types.includes('Land') && subtypes.some((st) => BASIC_LAND_TYPES.includes(st))) {
+    return produced;
+  }
+  if (text === '') return produced;
+  const unconditional = text
+    .split('\n')
+    .some((line) => /^\{T\}: Add [^.]+\.$/.test(line.trim()) && !/exiled|chosen/i.test(line));
+  return unconditional ? produced : [];
 }
 
 function buildFace(
@@ -126,7 +157,7 @@ function buildFace(
   const { types, subtypes, supertypes } = parseTypeLine(f.type_line);
   // Scryfall reports produced_mana at card level for modal DFCs, so the land face
   // has to inherit it or Inundated Archive would tap for nothing.
-  const produced = producedManaFor(f, types, fallbackProducedMana);
+  const produced = producedManaFor(f, types, subtypes, fallbackProducedMana);
   return {
     name: f.name,
     manaCost: f.mana_cost && f.mana_cost.length > 0 ? f.mana_cost : null,
@@ -142,12 +173,17 @@ function buildFace(
     keywords: f.keywords ?? [],
     producedMana: produced as Color[],
     imageUri: f.image_uri ?? fallbackImage,
+    loyalty: f.loyalty ?? null,
   };
 }
 
 function buildCard(c: RawCard): OracleCard {
-  const isMdfc = c.layout === 'modal_dfc' && Array.isArray(c.card_faces);
-  const faces = isMdfc
+  // Two-faced layouts both carry their text on card_faces; the difference is how
+  // the back is reached. A modal DFC is played as either face from hand; a
+  // transforming card is always cast as its front and only transforms on the
+  // battlefield — Tamiyo, Inquisitive Student is the one in the pool.
+  const twoFaced = (c.layout === 'modal_dfc' || c.layout === 'transform') && Array.isArray(c.card_faces);
+  const faces = twoFaced
     ? c.card_faces!.map((f) => buildFace(f, c.image_uri ?? null, c.produced_mana ?? []))
     : null;
   const primary = faces ? faces[0] : buildFace(c, c.image_uri ?? null);
@@ -157,7 +193,7 @@ function buildCard(c: RawCard): OracleCard {
     // front face's — that is what Mana Drain reads off a Waterlogged Teachings spell.
     mv: faces ? faces[0].mv : c.cmc,
     oracleId: slugify(c.name),
-    layout: isMdfc ? 'modal_dfc' : 'normal',
+    layout: twoFaced ? (c.layout as 'modal_dfc' | 'transform') : 'normal',
     faces,
   };
 }

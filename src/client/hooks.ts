@@ -478,7 +478,10 @@ export function useHotkeys(viewer: PlayerId) {
         case ' ':
         case 'F2':
           e.preventDefault();
-          if (view && canAct(view, viewer)) send({ t: 'passPriority' }, viewer);
+          // Through requestPass, not straight to send: the floating-mana warning
+          // lives there, and a shortcut that skips the check the button performs
+          // is a check that does not exist.
+          useStore.getState().requestPass(viewer);
           break;
         case 'F6':
           e.preventDefault();

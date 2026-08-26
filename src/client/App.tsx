@@ -839,27 +839,28 @@ function BottomBar({ viewer }: { viewer: PlayerId }) {
   const hold = useStore((s) => s.holdPriority);
   const setHold = useStore((s) => s.setHoldPriority);
   const forceStop = useStore((s) => s.forceStop);
-  const warnFloating = useStore((s) => s.settings.warnOnFloatingMana);
-  const [confirmFloat, setConfirmFloat] = useState(false);
+  /*
+   * The floating-mana warning lives in the store, not here, because there are
+   * two ways to pass. This component owned the check and the spacebar did not,
+   * so the fast path skipped the safety net — see requestPass.
+   */
+  const confirmFloat = useStore((s) => s.passWarning);
+  const requestPass = useStore((s) => s.requestPass);
+  const confirmPass = useStore((s) => s.confirmPass);
+  const dismissPassWarning = useStore((s) => s.dismissPassWarning);
 
   const pool = view.players[viewer].manaPool;
   const floating = MANA_KINDS.reduce((n, k) => n + pool[k], 0);
   const myPriority = canAct(view, viewer);
 
-  const doPass = () => {
-    if (floating > 0 && warnFloating) {
-      setConfirmFloat(true);
-      return;
-    }
-    send({ t: 'passPriority' }, viewer);
-  };
+  const doPass = () => requestPass(viewer);
 
   // The warning is only meaningful while the mana is still there and the decision
   // is still yours; otherwise it would sit on screen saying "you have 0 unspent
   // mana" and block the board.
   useEffect(() => {
-    if (confirmFloat && (floating === 0 || !myPriority)) setConfirmFloat(false);
-  }, [confirmFloat, floating, myPriority]);
+    if (confirmFloat && (floating === 0 || !myPriority)) dismissPassWarning();
+  }, [confirmFloat, floating, myPriority, dismissPassWarning]);
 
   return (
     <div className="bottombar">
@@ -919,7 +920,7 @@ function BottomBar({ viewer }: { viewer: PlayerId }) {
       </button>
 
       {confirmFloat && (
-        <div className="overlay" onClick={() => setConfirmFloat(false)}>
+        <div className="overlay" onClick={() => dismissPassWarning()}>
           <div className="dialog" style={{ minWidth: 380 }} onClick={(e) => e.stopPropagation()}>
             <h2>You have {floating} unspent mana</h2>
             <div className="prompt">
@@ -927,14 +928,8 @@ function BottomBar({ viewer }: { viewer: PlayerId }) {
               usually the whole plan.
             </div>
             <div className="actions">
-              <button onClick={() => setConfirmFloat(false)}>Stay here</button>
-              <button
-                className="primary"
-                onClick={() => {
-                  setConfirmFloat(false);
-                  send({ t: 'passPriority' }, viewer);
-                }}
-              >
+              <button onClick={() => dismissPassWarning()}>Stay here</button>
+              <button className="primary" onClick={() => confirmPass(viewer)}>
                 Pass anyway
               </button>
             </div>

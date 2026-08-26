@@ -68,6 +68,17 @@ export type AutoPassMode = 'off' | 'endOfTurn' | 'myNextTurn';
 
 export interface KnownTopEntry {
   iid: IID;
+  /**
+   * The card's identity, remembered at the moment it was seen.
+   *
+   * This panel is the player's memory, not a live query - and it was written as
+   * a live query. The name was looked up in the current view on every render,
+   * and the moment redaction stopped including the card (it went back under the
+   * top of the library), the lookup returned "a card" and the memory read as
+   * two anonymous placeholders. What you learned does not expire because the
+   * card is face down again; that is the entire point of having learned it.
+   */
+  oracleId: OracleId;
   /** How the player came to know about this card. */
   via: 'brainstorm' | 'surveil' | 'sanctuary' | 'other';
 }
@@ -98,6 +109,16 @@ interface StoreState {
   forceStop: boolean;
   /** Hold priority on the next cast. */
   holdPriority: boolean;
+  /**
+   * A pass is waiting on the floating-mana warning.
+   *
+   * Shared state rather than a component's, because there are two ways to pass -
+   * the button and the spacebar - and the warning was implemented only in the
+   * button. The fast path skipped the safety check, which is exactly backwards:
+   * a playtester spaced through a phase and watched his mana evaporate. Any way
+   * of passing goes through requestPass, so any way of passing gets the warning.
+   */
+  passWarning: boolean;
 
   /**
    * The actions this client has taken, newest last, for the repeat detector.
@@ -202,6 +223,11 @@ interface StoreState {
   dismissRepeatNote(): void;
   setForceStop(v: boolean): void;
   setHoldPriority(v: boolean): void;
+  /** Pass priority, or raise the floating-mana warning if it applies. */
+  requestPass(seat?: PlayerId): void;
+  /** The warning's own buttons: go through with the pass, or stay. */
+  confirmPass(seat?: PlayerId): void;
+  dismissPassWarning(): void;
   setHovered(iid: IID | null): void;
   /** Hold a card open in the reader. Passing the one already pinned closes it. */
   togglePinnedCard(oracleId: OracleId | null): void;
@@ -241,6 +267,7 @@ export const useStore = create<StoreState>((set, get) => ({
   autoPass: 'off',
   forceStop: false,
   holdPriority: false,
+  passWarning: false,
   actionHistory: [],
   historySeat: null,
   repeat: null,
@@ -305,7 +332,11 @@ export const useStore = create<StoreState>((set, get) => ({
       p2: conn.view('p2'),
     };
     const events = conn.drainEvents();
-    const knownTop = applyEventsToKnownTop(get().knownTop, events);
+    const knownTop = applyEventsToKnownTop(
+      get().knownTop,
+      events,
+      (iid) => views.p1?.cards[iid]?.oracleId ?? views.p2?.cards[iid]?.oracleId,
+    );
     const reveal = detectShowAndTellReveal(events, views);
     const nextInfo = conn.info();
     const infoChanged =
@@ -421,8 +452,12 @@ export const useStore = create<StoreState>((set, get) => ({
       }
     }
 
-    // Learn the top of the library from choices the player just made.
-    const learned = knownTopFromChoice(choice, response);
+    // Learn the top of the library from choices the player just made. The name
+    // is captured now, while the view still contains the card - see KnownTopEntry.
+    const learned = knownTopFromChoice(choice, response)?.map((e) => ({
+      ...e,
+      oracleId: view?.cards[e.iid]?.oracleId ?? e.oracleId,
+    }));
     if (learned) {
       set((st) => ({
         knownTop: { ...st.knownTop, [s]: learned.concat(st.knownTop[s]).slice(0, 12) },
@@ -602,6 +637,25 @@ export const useStore = create<StoreState>((set, get) => ({
   setHoldPriority(v) {
     set({ holdPriority: v });
   },
+  requestPass(seat) {
+    const s = seat ?? get().viewSeat;
+    const view = get().views[s];
+    if (!view || !canAct(view, s)) return;
+    const pool = view.players[s].manaPool;
+    const floating = Object.values(pool).reduce((n, x) => n + x, 0);
+    if (floating > 0 && get().settings.warnOnFloatingMana) {
+      set({ passWarning: true });
+      return;
+    }
+    get().send({ t: 'passPriority' }, s);
+  },
+  confirmPass(seat) {
+    set({ passWarning: false });
+    get().send({ t: 'passPriority' }, seat ?? get().viewSeat);
+  },
+  dismissPassWarning() {
+    set({ passWarning: false });
+  },
   setHovered(iid) {
     set({ hoveredIid: iid });
   },
@@ -676,6 +730,8 @@ export const useStore = create<StoreState>((set, get) => ({
 function applyEventsToKnownTop(
   current: Record<PlayerId, KnownTopEntry[]>,
   events: GameEvent[],
+  /** Identity lookup at the moment of learning — the views forget, this must not. */
+  oracleIdOf: (iid: IID) => OracleId | undefined,
 ): Record<PlayerId, KnownTopEntry[]> {
   let next = current;
   const mutate = (p: PlayerId, fn: (list: KnownTopEntry[]) => KnownTopEntry[]) => {
@@ -694,7 +750,10 @@ function applyEventsToKnownTop(
         break;
       case 'zoneChange':
         if (ev.to === 'library' && ev.position === 'top') {
-          mutate(ev.owner, (list) => [{ iid: ev.iid, via: 'other' as const }, ...list]);
+          mutate(ev.owner, (list) => [
+            { iid: ev.iid, oracleId: oracleIdOf(ev.iid) ?? '', via: 'other' as const },
+            ...list,
+          ]);
         } else if (ev.from === 'library' && ev.to !== 'library') {
           mutate(ev.owner, (list) => list.filter((e) => e.iid !== ev.iid));
         }
@@ -718,7 +777,7 @@ function knownTopFromChoice(
   const isSurveil = /surveil/i.test(choice.prompt);
   if (!isSurveil) return null;
   const kept = choice.options.map((o) => o.iid).filter((iid) => !response.iids.includes(iid));
-  return kept.map((iid) => ({ iid, via: 'surveil' as const }));
+  return kept.map((iid) => ({ iid, oracleId: '', via: 'surveil' as const }));
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { oracle } from '@engine/oracle';
+import { frontFace, oracle } from '@engine/oracle';
 import type { PlayerView } from '@engine/redact';
 import { MANA_KINDS } from '@engine/mana';
 import type { ManaKind, ManaPool, PlayerId, Step } from '@engine/types';
@@ -59,8 +59,13 @@ export function PlayerBar({
   const hasPriority = view.priorityPlayer === seat;
   const drained = view.delayedMana.filter((d) => d.controller === seat);
   return (
-    <div className={`playerbar ${seatClass(seat, viewer)}`}>
+    <div className={`playerbar ${seatClass(seat, viewer)}${hasPriority ? ' has-priority' : ''}`}>
       <span className="seat-name">{seat === viewer ? 'You' : 'Opponent'}</span>
+      {/* Who was on the play is public and permanent - a playtester who could not
+          see it read his own legal first draw as a bug. */}
+      <span className="chip dim" title="Decided before the first mulligan">
+        {view.startingPlayer === seat ? 'on the play' : 'on the draw'}
+      </span>
       <span className={`stat life${p.life <= 5 ? ' low' : ''}`}>
         <b>{p.life}</b> life
       </span>
@@ -92,9 +97,15 @@ export function PlayerBar({
 }
 
 export function PhaseTrack({ view }: { view: PlayerView }) {
+  /*
+   * Big enough to play by. "I meant to surveil and did not understand what phase
+   * it was" is a quote from a real game - the phase existed on screen, in a chip
+   * sized for people who already knew where they were.
+   */
   return (
-    <span className="chip" title={`${view.phase} / ${view.step}`}>
-      Turn {view.turn} · {STEP_LABEL[view.step]}
+    <span className="phase-track" title={`${view.phase} / ${view.step}`}>
+      <span className="phase-turn">Turn {view.turn}</span>
+      <b>{STEP_LABEL[view.step]}</b>
     </span>
   );
 }
@@ -114,6 +125,7 @@ export function StackPanel({ view, viewer }: { view: PlayerView; viewer: PlayerI
             const name = c.isAbility
               ? `${c.abilitySourceName ?? labelFor(view, c.abilitySource)}: ${c.abilityLabel ?? 'ability'}`
               : cardTitle(view, iid);
+            const art = frontFace(c.oracleId)?.imageUri ?? null;
             return (
               <div
                 key={iid}
@@ -121,6 +133,9 @@ export function StackPanel({ view, viewer }: { view: PlayerView; viewer: PlayerI
                 onMouseEnter={() => setHighlight([iid, ...(c.abilitySource ? [c.abilitySource] : [])])}
                 onMouseLeave={() => setHighlight([])}
               >
+                {/* The card itself, not only its name - an ability shows the card
+                    it came from. Reading the stack should not require the log. */}
+                {art && <img className="stack-thumb" src={art} alt="" loading="lazy" />}
                 <div>
                   {name}
                   {c.castForFree && <span className="chip free" style={{ marginLeft: 6 }}>free</span>}
@@ -229,7 +244,9 @@ export function KnownTopPanel({ view, viewer }: { view: PlayerView; viewer: Play
               onMouseLeave={() => setHighlight([])}
             >
               <span className="idx">{i + 1}.</span>
-              <span>{cardTitle(view, e.iid)}</span>
+              {/* From the entry's own memory, never from the live view - the view
+                  forgets the card the moment redaction stops including it. */}
+              <span>{e.oracleId ? frontFace(e.oracleId).name : cardTitle(view, e.iid)}</span>
             </div>
           ))}
           <div className="entry">

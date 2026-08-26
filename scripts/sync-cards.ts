@@ -38,6 +38,7 @@ const KEEP = [
   'oracle_text',
   'power',
   'toughness',
+  'loyalty',
   'colors',
   'color_identity',
   'keywords',

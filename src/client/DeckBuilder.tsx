@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { frontFace, oracle } from '@engine/oracle';
 import type { DeckEntry } from '@engine/state';
 import type { OracleId, PlayerId } from '@engine/types';
-import { scriptedOracleIds } from '@engine/cards/index';
+import { unimplementedReason } from '@engine/cards/index';
 import { useStore } from './store';
 import { ManaCost } from './mana';
 import { OracleCardDetail } from './CardView';
@@ -251,17 +251,18 @@ export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
     return m;
   });
 
-  const scripted = useMemo(() => new Set(scriptedOracleIds()), []);
   // Sticky: the pane keeps showing the last card the pointer was over, so it
   // does not flash empty every time the mouse crosses a gap between rows.
   const [shown, setShown] = useState<OracleId | null>(null);
   const [sort, setSort] = useState<SortMode>(() => loadSort());
   useEffect(() => saveSort(sort), [sort]);
-  // A card is playable if the engine has a script for it — or if it is a basic
-  // land, which has no rules text to script beyond producing mana. Flagging
-  // Island as "not implemented" would be both wrong and alarming.
-  const isPlayable = (oracleId: OracleId): boolean =>
-    scripted.has(oracleId) || frontFace(oracleId).supertypes.includes('Basic');
+  /*
+   * The same question the engine's own gate asks, so the two can never disagree:
+   * "has a script" flagged Birds of Paradise (which works - the whole card is an
+   * unconditional mana ability) while passing Chrome Mox (which handed out five
+   * colours it had no right to). unimplementedReason knows the difference.
+   */
+  const isPlayable = (oracleId: OracleId): boolean => unimplementedReason(oracleId) === null;
 
   const rows: Row[] = useMemo(
     () =>

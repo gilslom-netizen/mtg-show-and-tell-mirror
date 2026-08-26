@@ -30,6 +30,8 @@ export const brainstorm: CardScript = {
       from: 'hand',
     });
     yield* putOnTopInOrder(ctx, chosen);
+    // Public fact, hidden content: the library gained two known-to-them cards.
+    ctx.log(`puts ${chosen.length} card${chosen.length === 1 ? '' : 's'} back on top`);
   },
 };
 
@@ -66,8 +68,16 @@ export const ponder: CardScript = {
       yield* putOnTopInOrder(ctx, ordered);
     }
 
+    /*
+     * The choice is public even though the cards are not - the opponent watched
+     * the library either get shuffled or stay put, and is entitled to know which.
+     * This line was missing, and a playtest spent a minute arguing about it.
+     */
     if (yield* ctx.yesNo(ctx.controller, 'Shuffle your library?')) {
       ctx.shuffleLibrary(ctx.controller);
+      ctx.log('shuffles their library');
+    } else {
+      ctx.log('keeps the top three in their chosen order');
     }
 
     // A real draw, so an opposing Orcish Bowmasters does trigger.
@@ -105,6 +115,7 @@ export const digThroughTime: CardScript = {
       from: 'library',
     });
     for (const iid of chosen) yield* ctx.moveTo(iid, 'hand');
+    ctx.log(`takes ${take} of the top ${top.length} into hand`);
 
     const rest = top.filter((iid) => !chosen.includes(iid));
     if (rest.length === 0) return;
@@ -140,6 +151,7 @@ export const rakshasasBargain: CardScript = {
       from: 'library',
     });
     for (const iid of chosen) yield* ctx.moveTo(iid, 'hand');
+    ctx.log(`takes ${take} of the top ${top.length} into hand`);
     // The rest fuel Delve — this is the deck's main graveyard engine.
     for (const iid of top.filter((i) => !chosen.includes(i))) {
       yield* ctx.moveTo(iid, 'graveyard');
@@ -191,7 +203,10 @@ export const planarGenesis: CardScript = {
         prompt: 'Choose a card to put into your hand',
         from: 'library',
       });
-      if (pick.length > 0) yield* ctx.moveTo(pick[0], 'hand');
+      if (pick.length > 0) {
+        yield* ctx.moveTo(pick[0], 'hand');
+        ctx.log('takes a card into hand instead of a land');
+      }
       used = pick[0] ?? null;
     }
 

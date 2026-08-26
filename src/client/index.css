@@ -2247,3 +2247,76 @@ button.primary.is-cta {
   color: var(--text-dim);
   font-style: italic;
 }
+
+/* --- playtest round: things that existed but could not be seen ------------- */
+
+/* The phase, sized to play by rather than to decorate. */
+.phase-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 15px;
+  white-space: nowrap;
+}
+.phase-track .phase-turn {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.phase-track b {
+  letter-spacing: 0.02em;
+}
+
+/* The whole row of whoever holds priority, not a chip you have to hunt for. */
+.playerbar.has-priority {
+  outline: 2px solid var(--select);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--panel) 88%, var(--select));
+}
+
+.chip.dim {
+  opacity: 0.65;
+}
+
+/* The stack shows the cards, not just their names. */
+.stack-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.stack-thumb {
+  width: 34px;
+  border-radius: 3px;
+  flex: none;
+  display: block;
+}
+
+/* Play or draw, on the mulligan where it decides the keep. */
+.play-draw {
+  margin: 2px 0 8px;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+.play-draw.is-play {
+  color: var(--text);
+}
+
+/* Their standing bid: as loud as the box you type yours into. */
+.bid-theirs {
+  font-size: 15px;
+  color: var(--text-dim);
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+.bid-theirs.is-live {
+  color: var(--text);
+  border: 1px solid var(--theirs);
+  background: color-mix(in srgb, var(--panel) 85%, var(--theirs));
+}
+.bid-theirs b {
+  font-size: 22px;
+  margin: 0 2px;
+}

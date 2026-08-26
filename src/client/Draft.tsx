@@ -229,6 +229,18 @@ function BidControls({ draft, onBid }: { draft: DraftView; onBid: (n: number) =>
 
   return (
     <div className="bid-bar">
+      {/* Their standing bid, as loud as the input box. A playtester mistook the
+          default in his own amount box for the opponent's bid - the real number
+          was a small line of text at the bottom. */}
+      <div className={`bid-theirs${draft.highestBid > 0 ? ' is-live' : ''}`} data-testid="their-bid">
+        {draft.highestBid > 0 ? (
+          <>
+            They bid <b>{draft.highestBid}</b>
+          </>
+        ) : (
+          <>No bid yet — you open</>
+        )}
+      </div>
       <div className="bid-main">
         <label className="bid-field">
           <span>Your bid</span>
@@ -400,12 +412,15 @@ export function DraftScreen({ viewer }: { viewer: PlayerId }) {
         <h1>Draft</h1>
         <div className="draft-stats">
           <div className="stat-tile">
-            <b>{draft.pile ? `${draft.pile.number} / ${draft.pilesTotal}` : '—'}</b>
-            <span>pile</span>
+            <b>{draft.pile ? `${draft.pile.number} of ${draft.pilesTotal}` : '—'}</b>
+            <span>this pile</span>
           </div>
           <div className="stat-tile">
+            {/* Counts the pile on the table. Two numbers this close bred a real
+                argument about the average pile value - label them so neither can
+                be mistaken for the other. */}
             <b>{draft.pilesRemaining}</b>
-            <span>piles left</span>
+            <span>piles left (incl. this)</span>
           </div>
           <div className="stat-tile">
             <b>{draft.cardsRemaining}</b>
@@ -432,7 +447,19 @@ export function DraftScreen({ viewer }: { viewer: PlayerId }) {
           {myPick ? (
             <PickControls draft={draft} onKeep={(iids) => sendDraft({ t: 'keep', iids }, viewer)} />
           ) : (
-            <BidControls draft={draft} onBid={(amount) => sendDraft({ t: 'bid', amount }, viewer)} />
+            <BidControls
+              /*
+               * Rebuilt from scratch every pile. The amount box is useState(min),
+               * which runs once for the component's whole life - so a 4 typed two
+               * piles ago sat in the box looking like a default, and a playtester
+               * read it as the opponent's standing bid. A key makes React tear the
+               * component down between auctions, which is exactly what an auction
+               * deserves: no state carried over.
+               */
+              key={draft.pile?.number ?? 0}
+              draft={draft}
+              onBid={(amount) => sendDraft({ t: 'bid', amount }, viewer)}
+            />
           )}
         </main>
         <DraftReader />
