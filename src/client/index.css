@@ -47,7 +47,13 @@
   /* Mana pips */
   --mana-W: #f5f0d8;
   --mana-U: #77b7e0;
-  --mana-B: #9b8ba3;
+  /* Black was a pale mauve, which is what the printed symbol's *circle* looks
+     like — but the circle is only pale because the skull on it is black, and
+     these pips carry a letter instead. Next to a blue U and a green G it just
+     read as "some light colour". Dark enough to be black, with a light letter
+     on it and enough lift left to stay a disc against dark card art. */
+  --mana-B: #332d3a;
+  --mana-B-ink: #ece8f2;
   --mana-R: #e08a72;
   --mana-G: #7fbf8e;
   --mana-C: #b9c0cc;
@@ -599,31 +605,41 @@ input[type='number'] {
      longer still: two tidy rows beat a cost that lies about itself.
   */
   max-width: calc(100% - 6px);
-  flex-wrap: wrap;
+  /* Never two rows: a cost broken across lines stops looking like a cost. The
+     sizing below makes one row fit instead. */
+  flex-wrap: nowrap;
   justify-content: flex-end;
-  row-gap: 1px;
+  gap: 1px;
 }
 /*
-   Sized against the card rather than in fixed pixels, because the card itself is
-   fluid: a battlefield card is 0.66 of a base that ranges 112–168px, so the same
-   five pips fit comfortably at one window width and overflow at another. `min()`
-   keeps the normal cost at its printed size and only shrinks the long ones.
+   Sized to fit one row exactly, because the card itself is fluid: a battlefield
+   card is 0.66 of a base that ranges 112–168px, so the same five pips sit
+   comfortably at one window width and not at another.
+
+   The arithmetic is the point. A row of N pips needs N*size + (N-1)*1px of gap,
+   inside a box that is the card less 6px of offset and 6px of its own padding —
+   so size = (card-w - 12 - (N-1)) / N, and the extra 1px absorbs sub-pixel
+   rounding, giving (card-w - (12 + N)) / N. Guessing at a fraction of the card
+   width instead is what put Atraxa's cost on two lines: the pips fitted, the
+   gaps and the padding did not. `min()` keeps a normal cost at printed size.
 */
 .mana-cost.card-cost[data-count='4'] {
-  --pip-size: min(17px, calc(var(--card-w) * 0.2));
+  --pip-size: min(17px, calc((var(--card-w) - 16px) / 4));
 }
 .mana-cost.card-cost[data-count='5'] {
-  --pip-size: min(17px, calc(var(--card-w) * 0.16));
+  --pip-size: min(17px, calc((var(--card-w) - 17px) / 5));
 }
 .mana-cost.card-cost[data-count='6'] {
-  --pip-size: min(15px, calc(var(--card-w) * 0.13));
-  gap: 1px;
+  --pip-size: min(16px, calc((var(--card-w) - 18px) / 6));
 }
-.mana-cost.card-cost[data-count='7'],
-.mana-cost.card-cost[data-count='8'],
+.mana-cost.card-cost[data-count='7'] {
+  --pip-size: min(14px, calc((var(--card-w) - 19px) / 7));
+}
+.mana-cost.card-cost[data-count='8'] {
+  --pip-size: min(13px, calc((var(--card-w) - 20px) / 8));
+}
 .mana-cost.card-cost[data-count='9'] {
-  --pip-size: min(13px, calc(var(--card-w) * 0.11));
-  gap: 1px;
+  --pip-size: min(12px, calc((var(--card-w) - 21px) / 9));
 }
 
 .card-badge.cost.is-free {
@@ -957,6 +973,44 @@ input[type='number'] {
 .pip-label {
   display: block;
   transform: translateY(-0.5px);
+}
+/*
+   A pip looks the same wherever it is put.
+   The label is a plain <span>, so any container that styles its spans repainted
+   the letter inside the circle: `.mode-option span` is dim grey-blue, which is
+   what made the land-tapping menu's pips look nothing like the identical pips on
+   a card. Two classes beat one class and an element, so these hold.
+*/
+.pip .pip-label,
+.pip .pip-half {
+  color: inherit;
+  font-size: inherit;
+  line-height: 1;
+}
+
+/*
+   Where a black half sits, the letter on it flips to light. The gradient runs
+   135deg, so the first colour is the top-left corner (`.is-first`) and the
+   second is the bottom-right (`.is-second`) — and {2/B} is the odd one out,
+   carrying B as its second colour with no `c2-` class to say so.
+*/
+.pip.c-B:not(.pip-hybrid) {
+  color: var(--mana-B-ink);
+  /*
+     Every other pip is pale and reads against anything. A black one on black
+     card art is a 1.5:1 disc, which is a hole rather than a symbol — so it
+     keeps the shared inner shading and adds a hairline to draw its own edge.
+  */
+  box-shadow:
+    inset 0 -1px 2px rgba(0, 0, 0, 0.32),
+    inset 0 1px 1px rgba(255, 255, 255, 0.22),
+    0 0 0 1px rgba(228, 222, 238, 0.45),
+    0 1px 1px rgba(0, 0, 0, 0.35);
+}
+.pip.pip-hybrid.c-B[class*='c2-'] .pip-half.is-first,
+.pip.pip-hybrid.c-B:not([class*='c2-']) .pip-half.is-second,
+.pip.pip-hybrid[class*='c2-B'] .pip-half.is-second {
+  color: var(--mana-B-ink);
 }
 
 .pip.c-W { --pip-bg: var(--mana-W); }
@@ -1633,12 +1687,19 @@ button.linkish:hover {
   font-size: 14px;
   line-height: 1.3;
 }
-.mode-option span {
+/*
+   The option's second line, and only that.
+   Unscoped, this reached every span inside the button — and a mana pip *is* a
+   span, so `.mode-option span` outranked `.pip`'s own colour and painted the
+   letter inside the circle dim grey-blue. "U" on a blue disc at 1.14:1 is not a
+   letter. The description is always a direct child; a pip never is.
+*/
+.mode-option > span {
   font-size: 11.5px;
   line-height: 1.5;
   color: var(--text-dim);
 }
-.mode-option.is-picked span {
+.mode-option.is-picked > span {
   color: var(--text);
 }
 
