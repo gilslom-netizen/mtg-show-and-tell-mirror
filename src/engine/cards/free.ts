@@ -24,10 +24,12 @@ function blueInHand(state: GameState, player: PlayerId, self: CardInstance): Car
   );
 }
 
-function noncreatureSpells(state: GameState): TargetRef[] {
+function noncreatureSpells(state: GameState, self: CardInstance): TargetRef[] {
   return state.stack
     .map((iid) => state.cards[iid])
-    .filter((c) => c && !c.isAbility && !currentFace(c).types.includes('Creature'))
+    .filter(
+      (c) => c && !c.isAbility && c.iid !== self.iid && !currentFace(c).types.includes('Creature'),
+    )
     .map((c): TargetRef => ({ kind: 'spell', iid: c.iid }));
 }
 
@@ -70,7 +72,7 @@ export const commandeer: CardScript = {
       prompt: 'Gain control of target noncreature spell',
       // Either player's. Taking your own spell back is legal and pointless; the
       // rules do not stop you and neither does this.
-      candidates: (state) => noncreatureSpells(state),
+      candidates: (state, _c, self) => noncreatureSpells(state, self),
     },
   ],
   *resolve(ctx) {
@@ -110,10 +112,9 @@ export const forceOfNegation: CardScript = {
   targets: [
     {
       prompt: 'Counter target noncreature spell',
-      candidates: (state, controller) =>
-        noncreatureSpells(state).filter(
-          (t) => t.kind === 'spell' && state.cards[t.iid]?.controller !== controller,
-        ),
+      // No "you don't control" on the card, whatever the free cost implies about
+      // when you cast it — Force of Negation counters any noncreature spell.
+      candidates: (state, _c, self) => noncreatureSpells(state, self),
     },
   ],
   *resolve(ctx) {
@@ -147,10 +148,10 @@ export const mindbreakTrap: CardScript = {
     {
       prompt: 'Exile any number of target spells',
       count: 'any',
-      candidates: (state) =>
+      candidates: (state, _c, self) =>
         state.stack
           .map((iid) => state.cards[iid])
-          .filter((c) => c && !c.isAbility)
+          .filter((c) => c && !c.isAbility && c.iid !== self.iid)
           .map((c): TargetRef => ({ kind: 'spell', iid: c.iid })),
     },
   ],
@@ -182,10 +183,10 @@ export const pactOfNegation: CardScript = {
   targets: [
     {
       prompt: 'Counter target spell',
-      candidates: (state, controller) =>
+      candidates: (state, _c, self) =>
         state.stack
           .map((iid) => state.cards[iid])
-          .filter((c) => c && !c.isAbility && c.controller !== controller)
+          .filter((c) => c && !c.isAbility && c.iid !== self.iid)
           .map((c): TargetRef => ({ kind: 'spell', iid: c.iid })),
     },
   ],

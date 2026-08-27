@@ -19,10 +19,14 @@ export const manaDrain: CardScript = {
   targets: [
     {
       prompt: 'Counter target spell',
-      candidates: (state, controller): TargetRef[] =>
+      candidates: (state, _c, self): TargetRef[] =>
         state.stack
           .map((iid) => state.cards[iid])
-          .filter((c) => c && !c.isAbility && c.controller !== controller)
+          // "Counter target spell" — including your own, which is how you buy
+          // {C} equal to your own seven-drop's mana value. Everything but the
+          // Drain itself: countering yourself with yourself is legal and useless,
+          // and offering it turns a one-candidate auto-target into a question.
+          .filter((c) => c && !c.isAbility && c.iid !== self.iid)
           .map((c) => ({ kind: 'spell', iid: c.iid })),
     },
   ],

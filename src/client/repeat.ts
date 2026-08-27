@@ -104,6 +104,44 @@ export function waitingForAQuietBoard(
 }
 
 /**
+ * A short name for whatever is being asked.
+ *
+ * Shared with the minimised-decision bar, so a run that stops and a decision you
+ * put aside describe the same prompt the same way.
+ */
+export function describePrompt(choice: ChoiceView): string {
+  switch (choice.kind) {
+    case 'simultaneousSecret':
+      return choice.myPrompt;
+    case 'mulligan':
+      return 'Keep this hand or mulligan';
+    case 'orderTriggers':
+      return 'Order the triggers';
+    case 'declareAttackers':
+      return 'Declare attackers';
+    case 'declareBlockers':
+      return 'Declare blockers';
+    default:
+      return choice.prompt;
+  }
+}
+
+/**
+ * Prompts that mean the turn has moved on rather than that the loop changed.
+ *
+ * Combat and the next mulligan are not part of any loop: reaching one means the
+ * stack emptied and play carried on without the round coming back — almost
+ * always because the opponent answered something.
+ */
+export function isTurnStructurePrompt(choice: ChoiceView): boolean {
+  return (
+    choice.kind === 'declareAttackers' ||
+    choice.kind === 'declareBlockers' ||
+    choice.kind === 'mulligan'
+  );
+}
+
+/**
  * Whether the run needs this priority for itself.
  *
  * The auto-pass layer asks before passing. Suppressing it whenever a run is

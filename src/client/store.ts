@@ -15,6 +15,8 @@ import type { DraftAction } from '../draft/types';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from './settings';
 import {
   MAX_REPEATS,
+  describePrompt,
+  isTurnStructurePrompt,
   responseFor,
   waitingForAQuietBoard,
   stepForChoice,
@@ -610,8 +612,19 @@ export const useStore = create<StoreState>((set, get) => ({
       }
       const response = responseFor(step, choice, view, run.seat);
       if (!response) {
+        /*
+         * Say what is actually in front of them.
+         *
+         * "The game asked something the run has no answer for" is true and
+         * useless: when the opponent answers a combo piece the stack empties,
+         * play carries on, and what the run trips over is the attack step —
+         * so it stopped on a loop that was over, with a message about a
+         * question. Naming the prompt turns that into an explanation.
+         */
         get().stopRepeat(
-          `Stopped — the game asked something the run has no answer for. Over to you.`,
+          isTurnStructurePrompt(choice)
+            ? `Stopped — the loop did not come round: the turn moved on to "${describePrompt(choice)}". Over to you.`
+            : `Stopped — the game is asking "${describePrompt(choice)}", which is not part of the loop. Over to you.`,
         );
         return;
       }

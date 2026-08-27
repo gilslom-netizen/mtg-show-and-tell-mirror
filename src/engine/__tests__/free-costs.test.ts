@@ -28,6 +28,18 @@ function cardsOn(t: TestGame, zone: 'exile' | 'graveyard', seat: PlayerId): stri
   return t.state.zones[seat][zone].map((iid) => t.state.cards[iid].oracleId);
 }
 
+/** Two of their spells on the stack, so a single-target spell has a real choice. */
+function theirTwoSpells(): TestGame {
+  const t = testGame({ startingPlayer: 'p2' });
+  t.p2.hand('Show and Tell', 'Brainstorm');
+  t.p2.manaBase(4);
+  t.begin();
+  t.p2.cast('Show and Tell', { hold: true });
+  t.p2.cast('Brainstorm');
+  t.p2.pass();
+  return t;
+}
+
 /** Their Show and Tell on the stack, and it is their turn. */
 function theirSpell(): TestGame {
   const t = testGame({ startingPlayer: 'p2' });
@@ -72,7 +84,9 @@ describe('an alternative cost', () => {
   });
 
   it('is paid after targets are chosen, as any cost is', () => {
-    const t = theirSpell();
+    // Two of their spells, because one is no longer a question: a single legal
+    // target is taken without asking, and a spell is not a target for itself.
+    const t = theirTwoSpells();
     t.p1.conjure('Commandeer');
     t.p1.hand('Brainstorm', 'Dig Through Time');
 
@@ -85,7 +99,8 @@ describe('an alternative cost', () => {
     t.chooseCards('Brainstorm', 'Dig Through Time');
 
     expect(cardsOn(t, 'exile', 'p1').sort()).toEqual(['brainstorm', 'dig_through_time']);
-    expect(t.state.stack).toHaveLength(2);
+    // Their two, plus the Commandeer that is taking one of them.
+    expect(t.state.stack).toHaveLength(3);
   });
 });
 
@@ -97,7 +112,7 @@ describe('Commandeer', () => {
     t.p1.hand('Omniscience');
 
     t.p1.cast('Commandeer', { alt: true });
-    t.targetIid(t.state.stack[0]);
+    // Their Show and Tell is the only spell it could take — nothing is asked.
     t.chooseCards('Brainstorm', 'Dig Through Time');
     t.resolveAll();
 
@@ -120,9 +135,12 @@ describe('Commandeer', () => {
 
     t.p1.cast('Ponder');
     t.p1.pass();
-    // Their Veil, then their Drain aimed at my Ponder — the only thing of mine.
+    // Their Veil, then their Drain. Aiming it is a decision now — their own Veil
+    // is a legal target too — so they say out loud that it is my Ponder.
     t.p2.cast('Veil of Summer');
     t.p2.cast('Mana Drain');
+    const ponder = t.state.stack.find((iid) => t.state.cards[iid].oracleId === 'ponder')!;
+    t.targetIid(ponder);
     t.p2.pass();
     expect(t.state.cards[t.state.stack[2]].oracleId).toBe('mana_drain');
 
@@ -134,13 +152,16 @@ describe('Commandeer', () => {
     t.resolveStack();
     expect(t.expectChoice().prompt).toMatch(/Choose new targets for Mana Drain/);
     t.yes();
+    /*
+     * Re-aimed as me, and now it is a real choice: "counter target spell" reaches
+     * my own Ponder as well as their Veil, so the game asks which. It used to
+     * have exactly one candidate and pick it silently.
+     */
+    const veil = t.state.stack.find((iid) => t.state.cards[iid].oracleId === 'veil_of_summer')!;
+    t.targetIid(veil);
     t.resolveAll();
 
-    /*
-     * The Drain is mine now, and "target spell you don't control" is asked again as
-     * me — so its only legal target is their Veil. One candidate, so nothing more is
-     * asked; my Ponder lives and their spell is the one that dies.
-     */
+    /* Their Veil is the one that dies; my Ponder lives. */
     expect(t.wasCountered('Veil of Summer')).toBe(true);
     expect(t.wasCountered('Ponder')).toBe(false);
     // And the ritual half of it pays me, not them.
@@ -222,10 +243,17 @@ describe('Mindbreak Trap', () => {
     const choice = t.expectChoice();
     if (choice.kind !== 'chooseTargets') throw new Error('expected targets');
     /*
-     * Any number: everything on the stack is on offer at once, the Trap included —
-     * targeting yourself is legal and pointless, which is the player's business.
+     * Any number: everything else on the stack is on offer at once.
+     *
+     * The Trap itself is not, which reverses an earlier decision here — "legal and
+     * pointless, the player's business" was fine for this card and wrong for the
+     * rest. A spell that is a target for itself gives every single-target counter
+     * a second candidate, so the game stops to ask a question it used to answer;
+     * and it made Pyroblast's "counter target spell" mode castable off an empty
+     * stack, pointing at itself. One rule everywhere is worth more than the play
+     * it costs: a spell is not a target for itself, every other spell is.
      */
-    expect(choice.count).toBe(5);
+    expect(choice.count).toBe(4);
     expect(choice.optional).toBe(true);
     const theirs = choice.candidates.filter(
       (c) => c.kind === 'spell' && t.state.cards[c.iid]?.controller === 'p2',

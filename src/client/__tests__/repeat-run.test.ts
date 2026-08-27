@@ -468,3 +468,184 @@ describe('running a repeat', () => {
     expect(stackSize()).toBe(before);
   });
 });
+
+/**
+ * The count you asked for, and the opponent's right to interrupt it.
+ *
+ * Two claims that pull against each other, which is why they are tested
+ * together. The run has to be exact — twelve means twelve, not eleven and not
+ * thirteen — and it has to leave every priority window the rules give the other
+ * player, including the ones they use to break the loop. A run that guaranteed
+ * its count by holding priority through the whole turn would pass the first and
+ * fail the second, and would not be Magic.
+ */
+const LOOP_VS_AN_ANSWER: ScenarioSpec = {
+  name: 'test',
+  description: 'test',
+  startingPlayer: 'p1',
+  p1: {
+    hand: ['Orcish Bowmasters'],
+    battlefield: ['Omniscience', 'Hullbreaker Horror', 'Orcish Bowmasters'],
+  },
+  // Enough life to survive the loop, and a real answer with the mana for it.
+  p2: {
+    life: 60,
+    hand: ['Mana Drain'],
+    battlefield: ['Watery Grave', 'Breeding Pool', 'Island', 'Hedge Maze'],
+  },
+};
+
+/** The opponent answering their own prompts, as a second player would. */
+function opponentAnswersOwnPrompts(): void {
+  const st = useStore.getState();
+  const view = st.views.p2;
+  const choice = view?.choice;
+  if (!view || !choice || choice.kind !== 'chooseTargets') return;
+  const mine = choice.candidates.find(
+    (c) => c.kind === 'spell' && view.cards[c.iid]?.controller === 'p1',
+  );
+  if (mine) st.respond({ kind: 'targets', targets: [mine] }, 'p2');
+}
+
+/**
+ * Pass for whoever can act, the opponent included.
+ *
+ * Not `autoPassTick`: that one honours the comfort stops, and an opponent
+ * holding a Mana Drain stops on every spell — which is a person deciding, not a
+ * deadlock. Here the opponent looks at each window and declines it, which is the
+ * only way to ask "does the run finish when nobody interferes?" of a table where
+ * somebody *could*.
+ */
+function passForAnyone(): boolean {
+  const st = useStore.getState();
+  for (const seat of ['p1', 'p2'] as const) {
+    const view = st.views[seat];
+    if (!view || view.winner !== null) continue;
+    if (!canAct(view, seat)) continue;
+    const run = st.repeat;
+    if (run && run.seat === seat && repeatNeedsPriority(run.steps, run.index, view)) continue;
+    st.send({ t: 'passPriority' }, seat, 'auto');
+    return true;
+  }
+  return false;
+}
+
+/** Drive everything to a standstill, optionally letting the opponent answer. */
+function runToStandstill(opts: { respondAtTick?: number } = {}): { ticks: number } {
+  let responded = opts.respondAtTick === undefined;
+  let ticks = 0;
+  for (; ticks < 4000; ticks++) {
+    const st = useStore.getState();
+    if (!st.repeat && st.views.p1!.stack.length === 0) break;
+    if (st.views.p1!.winner !== null) break;
+    policyTick();
+    opponentAnswersOwnPrompts();
+    useStore.getState().advanceRepeat();
+    if (
+      !responded &&
+      ticks >= (opts.respondAtTick ?? 0) &&
+      canAct(useStore.getState().views.p2!, 'p2') &&
+      useStore.getState().views.p1!.stack.length > 0
+    ) {
+      const v = useStore.getState().views.p2!;
+      const drain = v.legalActions.find(
+        (a) => a.intent.t === 'castSpell' && v.cards[a.intent.iid]?.oracleId === 'mana_drain',
+      );
+      if (drain) {
+        useStore.getState().send(drain.intent, 'p2');
+        responded = true;
+        opponentAnswersOwnPrompts();
+        continue;
+      }
+    }
+    passForAnyone();
+  }
+  return { ticks };
+}
+
+describe('repeating a combo an exact number of times', () => {
+  beforeEach(() => {
+    useStore.getState().detach();
+  });
+
+  /** Two turns of the loop by hand, then the pattern it produced. */
+  function primed(spec: ScenarioSpec) {
+    attachScenario(spec);
+    playOneLoop();
+    playOneLoop();
+    const pattern = detectPattern(useStore.getState().actionHistory);
+    if (!pattern) throw new Error('the loop was not recognised');
+    return pattern;
+  }
+
+  it.each([1, 2, 3, 5, 8, 12, 20, 30])(
+    'lands exactly %i when nobody interferes',
+    (n) => {
+      const pattern = primed(LOOP_VS_AN_ANSWER);
+      const before = useStore.getState().views.p1!.players.p2.life;
+      useStore.getState().startRepeat(pattern.steps, n, 'p1');
+      runToStandstill();
+
+      expect(useStore.getState().repeat).toBeNull();
+      expect(useStore.getState().repeatNote).toBeNull();
+      expect(before - useStore.getState().views.p1!.players.p2.life).toBe(n);
+    },
+  );
+
+  it('leaves the opponent a priority window in every round', () => {
+    const pattern = primed(LOOP_VS_AN_ANSWER);
+    useStore.getState().startRepeat(pattern.steps, 5, 'p1');
+
+    let windows = 0;
+    for (let tick = 0; tick < 4000; tick++) {
+      const st = useStore.getState();
+      if (!st.repeat && st.views.p1!.stack.length === 0) break;
+      if (st.views.p2!.priorityPlayer === 'p2' && !st.views.p2!.choice) windows++;
+      policyTick();
+      useStore.getState().advanceRepeat();
+      passForAnyone();
+    }
+    // The point is that they are offered at all: a run that held priority
+    // through its whole turn would show none of these.
+    expect(windows).toBeGreaterThanOrEqual(5);
+  });
+
+  /**
+   * The opponent uses one of those windows, at every point in the run there is
+   * one to use. Nothing here asserts that the combo still finishes — it cannot,
+   * once a piece of it is countered. What it asserts is that the run never hangs
+   * and never does more than it was asked.
+   */
+  it.each([0, 1, 2, 3, 4, 6, 8, 12, 20])(
+    'stops cleanly when the opponent answers at tick %i',
+    (at) => {
+      const pattern = primed(LOOP_VS_AN_ANSWER);
+      const asked = 6;
+      const before = useStore.getState().views.p1!.players.p2.life;
+      useStore.getState().startRepeat(pattern.steps, asked, 'p1');
+      runToStandstill({ respondAtTick: at });
+
+      const landed = before - useStore.getState().views.p1!.players.p2.life;
+      expect(useStore.getState().repeat).toBeNull();
+      expect(landed).toBeLessThanOrEqual(asked);
+      const note = useStore.getState().repeatNote;
+      // Either it got all the way through, or it says why it did not.
+      if (landed < asked) expect(note).toBeTruthy();
+    },
+  );
+
+  /**
+   * And the reason it gives is the one that happened. "The game asked something
+   * the run has no answer for" was technically true of the attack step and told
+   * nobody anything: what actually happened is that their counter emptied the
+   * stack and the turn carried on.
+   */
+  it('says the turn moved on, rather than blaming a question', () => {
+    const pattern = primed(LOOP_VS_AN_ANSWER);
+    useStore.getState().startRepeat(pattern.steps, 6, 'p1');
+    runToStandstill({ respondAtTick: 4 });
+
+    const note = useStore.getState().repeatNote;
+    expect(note).toMatch(/turn moved on|not part of the loop/);
+  });
+});

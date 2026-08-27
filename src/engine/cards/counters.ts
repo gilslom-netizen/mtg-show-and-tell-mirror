@@ -1,6 +1,6 @@
 import { currentFace } from '../state.js';
 import type { CardScript, Ctx, Eff } from '../script-types.js';
-import type { CardInstance, GameState, PlayerId, TargetRef } from '../types.js';
+import type { CardInstance, GameState, TargetRef } from '../types.js';
 
 /**
  * The cube's counterspells.
@@ -11,15 +11,32 @@ import type { CardInstance, GameState, PlayerId, TargetRef } from '../types.js';
  * writing them together makes the differences the only thing you read.
  */
 
-/** Spells on the stack this player does not control. */
-function theirSpells(
+/**
+ * Spells on the stack — anyone's.
+ *
+ * "Counter target spell" means target spell. Not one of these cards says "you
+ * don't control", and countering your own is a real play: Mana Drain on your own
+ * seven-drop for the mana, Memory Lapse to put your own card back on top,
+ * Reprieve to save something from a worse fate than a bounce. The list used to
+ * be the opponent's spells only, so none of that could be chosen at all.
+ *
+ * Hullbreaker Horror keeps its restriction, because Hullbreaker Horror is the
+ * one that actually prints it.
+ *
+ * The one spell left out is the one doing the targeting. Countering yourself is
+ * legal and worth nothing, and offering it costs a great deal: with it in the
+ * list every counterspell has two candidates instead of one, so the game stops
+ * to ask a question it used to answer for you — and Pyroblast's "counter target
+ * spell" mode became castable off an empty stack, pointing at itself.
+ */
+function spellsOnStack(
   state: GameState,
-  controller: PlayerId,
+  self: CardInstance | null,
   filter: (c: CardInstance) => boolean = () => true,
 ): TargetRef[] {
   return state.stack
     .map((iid) => state.cards[iid])
-    .filter((c) => c && !c.isAbility && c.controller !== controller && filter(c))
+    .filter((c) => c && !c.isAbility && c.iid !== self?.iid && filter(c))
     .map((c): TargetRef => ({ kind: 'spell', iid: c.iid }));
 }
 
@@ -55,7 +72,7 @@ function counterTargets(
   prompt: string,
   filter?: (c: CardInstance) => boolean,
 ): CardScript['targets'] {
-  return [{ prompt, candidates: (state, controller) => theirSpells(state, controller, filter) }];
+  return [{ prompt, candidates: (state, _c, self) => spellsOnStack(state, self, filter) }];
 }
 
 export const spellPierce: CardScript = {
@@ -96,8 +113,9 @@ export const flusterstorm: CardScript = {
  */
 export const mysticalDispute: CardScript = {
   oracleId: 'mystical_dispute',
-  costReduction: (state, controller) =>
-    theirSpells(state, controller, isBlue).length > 0 ? 2 : 0,
+  // "if it targets a blue spell" — whoever cast it. Your own blue spell is a
+  // legal target now, so it earns the discount the same way theirs does.
+  costReduction: (state, _c, self) => (spellsOnStack(state, self, isBlue).length > 0 ? 2 : 0),
   targets: counterTargets('Counter target spell unless its controller pays {3}'),
   *resolve(ctx) {
     yield* counterUnlessPaid(ctx, 3);
@@ -151,7 +169,7 @@ export const pyroblast: CardScript = {
         targets: [
           {
             prompt: 'Counter target spell',
-            candidates: (state, controller) => theirSpells(state, controller),
+            candidates: (state, _c, self) => spellsOnStack(state, self),
           },
         ],
       },

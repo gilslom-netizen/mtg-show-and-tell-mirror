@@ -808,8 +808,20 @@ export class HeuristicAgent implements Agent {
     }
 
     if (t.kind === 'spell') {
-      const id = r.view.cards[t.iid]?.oracleId;
-      return id ? threatOf(id, r) : 10;
+      const card = r.view.cards[t.iid];
+      /*
+       * Never my own, whatever it is.
+       *
+       * Counterspells target any spell now, the way they are printed — which
+       * means my own spells are in this list for the first time, and nothing
+       * here used to have to say no to them. Whoever resolves first wins this
+       * matchup, so countering my own spell is not a bad play, it is losing on
+       * purpose. The one exception a person might want, Narset's Reversal
+       * copying their own spell, is not a line this agent knows how to follow
+       * up, so it does not get to try it.
+       */
+      if (card?.controller === r.me) return -1000;
+      return card?.oracleId ? threatOf(card.oracleId, r) : 10;
     }
 
     if (t.kind === 'card') {

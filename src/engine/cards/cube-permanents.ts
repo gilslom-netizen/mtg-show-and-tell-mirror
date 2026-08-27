@@ -272,10 +272,10 @@ export const ashioksErasure: CardScript = {
       targets: [
         {
           prompt: 'Exile target spell',
-          candidates: (state, controller): TargetRef[] =>
+          candidates: (state): TargetRef[] =>
             state.stack
               .map((iid) => state.cards[iid])
-              .filter((c) => c && !c.isAbility && c.controller !== controller)
+              .filter((c) => c && !c.isAbility)
               .map((c): TargetRef => ({ kind: 'spell', iid: c.iid })),
         },
       ],

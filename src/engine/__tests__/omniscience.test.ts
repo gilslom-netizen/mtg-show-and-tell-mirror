@@ -143,8 +143,16 @@ describe('Omniscience', () => {
     t.p1.cast('Brainstorm', { free: true, hold: true });
     expect(t.state.priorityPlayer).toBe('p1');
     expect(t.state.stack).toHaveLength(1);
-    // Mana Drain has no legal target (only your own spell is on the stack).
-    expect(t.p1.canCast('Mana Drain')).toBe(false);
+    /*
+     * And the Drain is castable at it, which it did not used to be.
+     *
+     * "Counter target spell" is any spell, so your own Brainstorm is a legal
+     * target — Mana Drain on your own seven-drop for the mana is a real line,
+     * and it was unreachable while the candidate list was the opponent's spells
+     * only. What holding priority buys you is the window; what you do with it
+     * is your business.
+     */
+    expect(t.p1.canCast('Mana Drain')).toBe(true);
   });
 
   it('rejects a free cast when no Omniscience is on the battlefield', () => {

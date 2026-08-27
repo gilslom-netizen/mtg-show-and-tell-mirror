@@ -953,6 +953,23 @@ export class Game {
       symbols = [...symbols, ...parseCost(script.kicker.cost)];
     }
 
+    /*
+     * What the card says it costs less, applied where the payment is made.
+     *
+     * It was applied when deciding what to offer and nowhere else, so the game
+     * offered Mystical Dispute at {U} against a blue spell and then tried to
+     * take {2}{U} for it. With two lands untapped that is a cast that is offered,
+     * accepted, and silently put back — the same shape as the Chrome Mox one,
+     * from the same cause: one question, two answers.
+     *
+     * Before delve rather than after, so the delve prompt asks for the cards
+     * actually needed. The total is the same either way — both only ever come
+     * off the generic part, and it floors at zero.
+     */
+    if (script?.costReduction) {
+      symbols = reduceGeneric(symbols, script.costReduction(s, player, card));
+    }
+
     // Delve. Meaningless when casting for free — there is no cost to reduce —
     // so the prompt is skipped entirely rather than shown and ignored.
     if (script?.hasDelve && !opts.free) {

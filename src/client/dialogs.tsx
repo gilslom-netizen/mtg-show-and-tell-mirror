@@ -3,6 +3,7 @@ import type { PlayerView, ChoiceView } from '@engine/redact';
 import type { ChoiceResponse, IID, PlayerId, TargetRef } from '@engine/types';
 import { cardsToBottom, handSizeAfter } from '@engine/state';
 import { CardFace } from './CardView';
+import { describePrompt } from './repeat';
 import { cardTitle, targetName } from './ui';
 import { useStore } from './store';
 
@@ -73,25 +74,6 @@ function MinimisedBar({ prompt, onRestore }: { prompt: string; onRestore: () => 
   );
 }
 
-/** A short description of what is being asked, for the minimised bar. */
-function promptOf(choice: ChoiceView): string {
-  switch (choice.kind) {
-    case 'simultaneousSecret':
-      return choice.myPrompt;
-    case 'mulligan':
-      return 'Keep this hand or mulligan';
-    case 'orderTriggers':
-      return 'Order the triggers';
-    case 'declareAttackers':
-      return 'Declare attackers';
-    case 'declareBlockers':
-      return 'Declare blockers';
-    case 'distributeDamage':
-      return choice.prompt;
-    default:
-      return choice.prompt;
-  }
-}
 
 export function ChoiceLayer({ view, viewer }: { view: PlayerView; viewer: PlayerId }) {
   const choice = view.choice;
@@ -135,7 +117,7 @@ export function ChoiceLayer({ view, viewer }: { view: PlayerView; viewer: Player
   if (!choice) return null;
 
   if (minimised) {
-    return <MinimisedBar prompt={promptOf(choice)} onRestore={() => setMinimised(false)} />;
+    return <MinimisedBar prompt={describePrompt(choice)} onRestore={() => setMinimised(false)} />;
   }
 
   const answer = (r: ChoiceResponse) => respond(r, viewer);

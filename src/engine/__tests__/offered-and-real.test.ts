@@ -52,6 +52,42 @@ describe('an offered cast can be paid for', () => {
   });
 });
 
+describe('a discount the card prints is a discount you get', () => {
+  /**
+   * Mystical Dispute costs {2}{U}, or {U} against a blue spell. The discount was
+   * applied when deciding what to offer and nowhere else, so with two lands
+   * untapped the game offered the cast, took it, tried to charge the printed
+   * {2}{U}, could not, and put the card back — no message, no mana spent.
+   *
+   * Nothing had caught it because the discount only matters when you cannot
+   * afford the full price, which is exactly the position the card is for.
+   */
+  it('charges the reduced cost, not the printed one', () => {
+    const t = testGame({ startingPlayer: 'p1' });
+    t.p1.hand('Show and Tell');
+    t.p1.conjure('Mystical Dispute');
+    t.p1.manaBase(5);
+    t.begin();
+
+    // Show and Tell takes three of the five, leaving two — enough for {U}, not
+    // for {2}{U}.
+    t.p1.cast('Show and Tell', { hold: true });
+    const untapped = () =>
+      t.state.zones.p1.battlefield.filter((iid) => !t.state.cards[iid].tapped).length;
+    expect(untapped()).toBe(2);
+
+    expect(t.p1.canCast('Mystical Dispute')).toBe(true);
+    t.p1.cast('Mystical Dispute');
+
+    // On the stack, having cost one land rather than three.
+    expect(t.p1.handNames()).not.toContain('Mystical Dispute');
+    expect(t.state.cards[t.state.stack[t.state.stack.length - 1]].oracleId).toBe(
+      'mystical_dispute',
+    );
+    expect(untapped()).toBe(1);
+  });
+});
+
 describe('a modal spell only offers modes it can carry out', () => {
   /**
    * Pyroblast counters a blue spell or destroys a blue permanent. Casting checked
