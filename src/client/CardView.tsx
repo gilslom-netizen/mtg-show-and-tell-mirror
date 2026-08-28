@@ -325,6 +325,18 @@ export function CardDetail({
               <ManaCost cost={face.manaCost} size="small" />
             </span>
           )}
+          {/*
+            A cost is a badge and can be covered; a sentence in the text box is
+            not. Jace's Erasure is printed "mill a card" and played "mill two
+            cards", so the picture still says the wrong thing and no patch will
+            fix that in place. The flag says which half to believe, and the text
+            that counts is directly underneath.
+          */}
+          {errataFor(face.name) && (
+            <span className="preview-house-flag" title={errataFor(face.name)!.why}>
+              house rules
+            </span>
+          )}
         </div>
       )}
       <div className="preview-text">

@@ -1461,6 +1461,28 @@ kbd {
    viewport; the card's title bar is a fixed fraction of its own height, so the
    patch lands in the same place at every size.
 */
+/*
+   "Do not read the text box."
+   Along the bottom edge, over the artist credit — the one strip of a card that
+   says nothing about how it plays. On the title bar it covered the name, and
+   hiding what the card is called to say the text is wrong trades one confusion
+   for another. The power/toughness box is bottom-right, so this keeps left.
+*/
+.preview-house-flag {
+  position: absolute;
+  bottom: 2.6%;
+  left: 3.2%;
+  padding: 1px 7px 2px;
+  border-radius: 999px;
+  background: #0b0d13;
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .preview-cost-patch {
   position: absolute;
   top: 3.1%;
