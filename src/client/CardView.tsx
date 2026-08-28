@@ -297,12 +297,35 @@ export function CardDetail({
   return (
     <div className={`preview ${className}`.trim()}>
       {showArt && face.imageUri && !failedArt.has(face.imageUri) && (
-        <img
-          src={artUrl(face.imageUri, 'png')}
-          alt={face.name}
-          decoding="async"
-          onError={() => noteArtFailure(face.imageUri!)}
-        />
+        /*
+         * The printed cost, corrected in place.
+         *
+         * Three cards cost less here than Wizards printed them, and the picture
+         * is Wizards' — so the card said {3}{U}{U} in its own title bar while
+         * the text underneath said {1}{U}{U}. A playtester read both and
+         * reported the difference, which is the right thing to do about a card
+         * that contradicts itself.
+         *
+         * The patch sits where the printed cost sits, so there is only ever one
+         * cost on screen. The reason for the change is already spelled out
+         * under the rules text.
+         */
+        <div className="preview-art">
+          <img
+            src={artUrl(face.imageUri, 'png')}
+            alt={face.name}
+            decoding="async"
+            onError={() => noteArtFailure(face.imageUri!)}
+          />
+          {errataFor(face.name)?.mana_cost && (
+            <span
+              className="preview-cost-patch"
+              title="House cost — this card is cheaper here than it is in print. See the note under the rules text."
+            >
+              <ManaCost cost={face.manaCost} size="small" />
+            </span>
+          )}
+        </div>
       )}
       <div className="preview-text">
         <h4>

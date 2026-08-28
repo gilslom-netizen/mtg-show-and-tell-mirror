@@ -1448,9 +1448,34 @@ kbd {
   box-shadow: var(--shadow-lg);
   overflow: hidden;
 }
+.preview-art {
+  position: relative;
+}
 .preview img {
   width: 100%;
   display: block;
+}
+/*
+   The house cost, sitting exactly where the printed one does.
+   Percentages rather than pixels because the preview width is a clamp on the
+   viewport; the card's title bar is a fixed fraction of its own height, so the
+   patch lands in the same place at every size.
+*/
+.preview-cost-patch {
+  position: absolute;
+  top: 3.1%;
+  right: 3.2%;
+  display: flex;
+  align-items: center;
+  /* Wide enough to cover a longer printed cost than the one replacing it —
+     Ashiok's Erasure loses a symbol, and half a leftover pip is worse than
+     none. */
+  min-width: 27%;
+  justify-content: flex-end;
+  padding: 1px 5px 2px;
+  border-radius: 999px;
+  background: #0b0d13;
+  border: 1px solid var(--warn);
 }
 
 /* A pinned card is one you are meant to be able to reach — the hover preview is
