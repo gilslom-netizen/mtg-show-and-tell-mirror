@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { testGame, type TestGame } from './harness.js';
 import { redact } from '../redact.js';
+import { frontFace } from '../oracle.js';
+import { getScript } from '../cards/index.js';
 import { HeuristicAgent } from '../../ai/heuristic.js';
 import type { TargetRef } from '../types.js';
 
@@ -171,5 +173,61 @@ describe('the computer never counters its own spell', () => {
     expect(picked.kind).toBe('spell');
     if (picked.kind !== 'spell') return;
     expect(t.state.cards[picked.iid].controller).toBe('p1');
+  });
+});
+
+describe('what the card says is what it asks for', () => {
+  /**
+   * Miscast asked its opponent to pay {1}. The card next to the prompt reads
+   * {3}, and a playtester noticed the difference — a Spell Pierce tax on a card
+   * chosen for being much harder to pay through.
+   *
+   * The tax is written on the card, so the card is where the number comes from.
+   * This reads it back out of the oracle text and checks the prompt against it,
+   * which is the only version of this test that cannot drift the same way.
+   */
+  it.each([
+    ['Spell Pierce', 'spell_pierce'],
+    ['Miscast', 'miscast'],
+    ['Mystical Dispute', 'mystical_dispute'],
+    ['Flusterstorm', 'flusterstorm'],
+  ])('%s taxes the amount printed on it', (_name, oracleId) => {
+    const printed = frontFace(oracleId).oracleText.match(/pays \{(\d+)\}/);
+    if (!printed) throw new Error(`${oracleId} does not print a tax`);
+    const script = getScript(oracleId);
+    if (!script?.targets) throw new Error(`${oracleId} has no targets`);
+    const prompt = script.targets[0].prompt;
+    const asked = prompt.match(/pays \{(\d+)\}/);
+    expect(asked?.[1]).toBe(printed[1]);
+  });
+});
+
+describe("Narset's Reversal", () => {
+  /**
+   * "There is a rule that no card on the stack can target itself" — and the
+   * reason it matters here: copy it, hand the original back to your hand, cast
+   * it again, for ever. The counterspells in this file already refuse; this was
+   * the one card with its own candidate list, and it did not.
+   */
+  it('cannot copy itself', () => {
+    const t = testGame({ startingPlayer: 'p1' });
+    t.p1.hand('Brainstorm');
+    t.p1.conjure("Narset's Reversal");
+    t.p1.manaBase(5);
+    t.begin();
+    t.p1.cast('Brainstorm', { hold: true });
+    t.p1.cast("Narset's Reversal");
+
+    const onStack = t.state.stack.map((iid) => t.state.cards[iid].oracleId);
+    expect(onStack).toContain('narsets_reversal');
+    const reversal = t.state.stack.find(
+      (iid) => t.state.cards[iid].oracleId === 'narsets_reversal',
+    )!;
+    // One other spell up, so it is taken without asking — and it is the other one.
+    const chosen = t.state.cards[reversal].targets?.[0];
+    expect(chosen?.kind).toBe('spell');
+    if (chosen?.kind !== 'spell') return;
+    expect(chosen.iid).not.toBe(reversal);
+    expect(t.state.cards[chosen.iid].oracleId).toBe('brainstorm');
   });
 });

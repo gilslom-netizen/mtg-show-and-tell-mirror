@@ -750,6 +750,17 @@ function DeclareBlockersDialog({
     setSelecting(null);
   };
 
+  /*
+   * One attacker is not a question.
+   *
+   * The two clicks are "which creature blocks" and "what does it block", and a
+   * playtester said the second was not intuitive when there was only ever one
+   * answer to it — "it makes some sense but it still wasn't". It is right that
+   * you say which attacker when there are several; with one, saying it is a
+   * formality the game can carry out for you.
+   */
+  const onlyAttacker = choice.attackers.length === 1 ? choice.attackers[0] : null;
+
   const unblocked = choice.attackers.filter((a) => !Object.values(blocks).includes(a));
   const incoming = unblocked.reduce((n, a) => n + (view.cards[a]?.power ?? 0), 0);
 
@@ -759,9 +770,11 @@ function DeclareBlockersDialog({
         <MinimiseButton />
         <h2>Declare blockers</h2>
         <div className="prompt">
-          {selecting === null
-            ? 'Pick one of your creatures, then pick the attacker it blocks.'
-            : `Now pick the attacker ${cardTitle(view, selecting)} should block.`}
+          {onlyAttacker !== null
+            ? `Pick the creatures that block ${cardTitle(view, onlyAttacker)}. Pick one again to take it back.`
+            : selecting === null
+              ? 'Pick one of your creatures, then pick the attacker it blocks.'
+              : `Now pick the attacker ${cardTitle(view, selecting)} should block.`}
         </div>
 
         <div>
@@ -806,6 +819,10 @@ function DeclareBlockersDialog({
                       delete next[iid];
                       return next;
                     });
+                    return;
+                  }
+                  if (onlyAttacker !== null) {
+                    setBlocks((b) => ({ ...b, [iid]: onlyAttacker }));
                     return;
                   }
                   setSelecting(selecting === iid ? null : iid);

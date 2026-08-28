@@ -85,12 +85,15 @@ export const spellPierce: CardScript = {
 
 export const miscast: CardScript = {
   oracleId: 'miscast',
+  // {3}, which is what the card says. It asked for {1} — a Spell Pierce tax on a
+  // card that is meant to be much harder to pay through, and a prompt that
+  // contradicted the rules text printed next to it.
   targets: counterTargets(
-    'Counter target instant or sorcery spell unless its controller pays {1}',
+    'Counter target instant or sorcery spell unless its controller pays {3}',
     isInstantOrSorcery,
   ),
   *resolve(ctx) {
-    yield* counterUnlessPaid(ctx, 1);
+    yield* counterUnlessPaid(ctx, 3);
   },
 };
 
@@ -214,10 +217,19 @@ export const narsetsReversal: CardScript = {
   targets: [
     {
       prompt: 'Copy target instant or sorcery spell, then return it to its owner’s hand',
-      candidates: (state): TargetRef[] =>
+      candidates: (state, _c, self): TargetRef[] =>
         state.stack
           .map((iid) => state.cards[iid])
-          .filter((c) => c && !c.isAbility && !c.isCopy && isInstantOrSorcery(c))
+          /*
+           * Never itself. A playtester pointed the Reversal at the Reversal and
+           * said what would have happened if the return half had also worked:
+           * copy it, hand the original back, cast it again, for ever. The same
+           * rule the counterspells here follow — a spell is not a target for
+           * itself — and this was the one place still missing it.
+           */
+          .filter(
+            (c) => c && !c.isAbility && !c.isCopy && c.iid !== self.iid && isInstantOrSorcery(c),
+          )
           .map((c): TargetRef => ({ kind: 'spell', iid: c.iid })),
     },
   ],

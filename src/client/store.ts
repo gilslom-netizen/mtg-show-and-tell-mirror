@@ -192,6 +192,12 @@ interface StoreState {
   revealing: { p1: IID | null; p2: IID | null } | null;
 
   error: string | null;
+  /**
+   * A short message from the client itself, as opposed to an error from the
+   * connection. It exists because `error` is re-read from the connection on
+   * every refresh, so anything set locally there is gone within a frame.
+   */
+  notice: string | null;
   /** null while the art probe is still running. */
   artAvailable: boolean | null;
   logOpen: boolean;
@@ -246,6 +252,7 @@ interface StoreState {
   /** Lock a decklist in for the next game. */
   sendDeck(deck: DeckEntry[], seat?: PlayerId): void;
   dismissError(): void;
+  dismissNotice(): void;
   /** The view for the seat currently being displayed. */
   currentView(): PlayerView | null;
   /** Whether this client may act for the given seat. */
@@ -286,6 +293,7 @@ export const useStore = create<StoreState>((set, get) => ({
   highlightIids: [],
   revealing: null,
   error: null,
+  notice: null,
   artAvailable: null,
   logOpen: false,
   settingsOpen: false,
@@ -337,10 +345,29 @@ export const useStore = create<StoreState>((set, get) => ({
       p2: conn.view('p2'),
     };
     const events = conn.drainEvents();
+    /*
+     * Identity from the view as it was *before* these events.
+     *
+     * The lookup was the new view, which is precisely the one that has already
+     * forgotten: a card put on top of your library is face down again, so it is
+     * not in the view that describes the board after the move. Every card the
+     * tracker learned this way was recorded nameless and shown as "a card" — a
+     * memory panel that could not remember, which is what a playtester was
+     * looking at when he said the panel was wrong.
+     *
+     * The previous view still has it, in hand or in the graveyard, wherever it
+     * was a moment ago. The new view is the fallback for anything that arrives
+     * some other way.
+     */
+    const before = get().views;
     const knownTop = applyEventsToKnownTop(
       get().knownTop,
       events,
-      (iid) => views.p1?.cards[iid]?.oracleId ?? views.p2?.cards[iid]?.oracleId,
+      (iid) =>
+        before.p1?.cards[iid]?.oracleId ??
+        before.p2?.cards[iid]?.oracleId ??
+        views.p1?.cards[iid]?.oracleId ??
+        views.p2?.cards[iid]?.oracleId,
     );
     const reveal = detectShowAndTellReveal(events, views);
     const nextInfo = conn.info();
@@ -486,7 +513,20 @@ export const useStore = create<StoreState>((set, get) => ({
      */
     const seat = get().viewSeat;
     if (get().views[seat]?.winner !== null) return;
-    conn.cancel(seat);
+    /*
+     * Say so when there is nothing to take back.
+     *
+     * The button called this and threw the answer away, so a player who pressed
+     * it at a moment with no snapshot — after passing, or with the opponent's
+     * trigger on the stack — got no response at all and reported that Cancel
+     * does nothing. It was right not to undo; it was wrong not to say why.
+     */
+    if (!conn.cancel(seat)) {
+      set({
+        notice:
+          'Nothing to take back — undo only reaches an action of yours that nobody has answered yet.',
+      });
+    }
   },
 
   setAutoPass(mode) {
@@ -736,6 +776,10 @@ export const useStore = create<StoreState>((set, get) => ({
   dismissError() {
     get().connection?.clearError();
     set({ error: null });
+  },
+
+  dismissNotice() {
+    set({ notice: null });
   },
 
   currentView() {

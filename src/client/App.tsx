@@ -524,6 +524,8 @@ function Game({ viewer, mode }: { viewer: PlayerId; mode: Mode }) {
   const cardScale = useStore((s) => s.settings.cardScale);
   const error = useStore((s) => s.error);
   const dismissError = useStore((s) => s.dismissError);
+  const notice = useStore((s) => s.notice);
+  const dismissNotice = useStore((s) => s.dismissNotice);
   const settingsOpen = useStore((s) => s.settingsOpen);
   const helpOpen = useStore((s) => s.helpOpen);
 
@@ -556,6 +558,12 @@ function Game({ viewer, mode }: { viewer: PlayerId; mode: Mode }) {
         <div className="toast">
           {error}
           <button onClick={dismissError}>Dismiss</button>
+        </div>
+      )}
+      {!error && notice && (
+        <div className="toast">
+          {notice}
+          <button onClick={dismissNotice}>Dismiss</button>
         </div>
       )}
     </div>
@@ -975,6 +983,16 @@ function BottomBar({ viewer }: { viewer: PlayerId }) {
             <div className="prompt">
               It empties at the end of this phase. Mana Drain mana in particular is
               usually the whole plan.
+            </div>
+            {/*
+              Said out loud because a playtester went looking for a button to put
+              it back and reasonably could not find one: there is no such thing to
+              find. Lands do not untap because you changed your mind, and the only
+              way back is undo, which reaches an action nobody has answered yet.
+            */}
+            <div className="prompt" style={{ color: 'var(--text-dim)' }}>
+              There is no way to un-tap for it — that is the rules, not the client.
+              Esc takes back an action of yours that nobody has answered yet.
             </div>
             <div className="actions">
               <button onClick={() => dismissPassWarning()}>Stay here</button>

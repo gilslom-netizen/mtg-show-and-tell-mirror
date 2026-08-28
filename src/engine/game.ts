@@ -1270,6 +1270,52 @@ export class Game {
       this.sbaDirty = true;
     }
 
+    /*
+     * Costs paid out of a zone, which have to be chosen and so cannot live in
+     * `payActivationCost` — that is synchronous by design and must not grow a
+     * prompt, which is exactly why these two were declared, checked in
+     * `legalActions`, and then never taken.
+     *
+     * Psychic Frog is the card that shows what that costs: "Discard a card: put
+     * a +1/+1 counter on this creature" was free, so it was a creature with
+     * arbitrary power and a hand that never went down, and "exile three cards
+     * from your graveyard" gave it flying without touching the graveyard.
+     */
+    if (ability.cost.discard) {
+      const hand = s.zones[player].hand.filter((h) => h !== iid);
+      if (hand.length < ability.cost.discard) return;
+      const picked = yield* this.chooseCardsInternal({
+        player,
+        cards: hand,
+        min: ability.cost.discard,
+        max: ability.cost.discard,
+        prompt: `Discard ${ability.cost.discard === 1 ? 'a card' : `${ability.cost.discard} cards`} to activate ${cardName(source)}`,
+        from: 'hand',
+      });
+      if (picked.length < ability.cost.discard) return;
+      for (const d of picked) this.emit(moveCardRaw(s, d, 'graveyard'));
+      logLine(s, `discards ${picked.length === 1 ? 'a card' : `${picked.length} cards`}`, {
+        player,
+        iids: picked,
+      });
+    }
+
+    if (ability.cost.exileFromGraveyard) {
+      const yard = s.zones[player].graveyard;
+      if (yard.length < ability.cost.exileFromGraveyard) return;
+      const picked = yield* this.chooseCardsInternal({
+        player,
+        cards: [...yard],
+        min: ability.cost.exileFromGraveyard,
+        max: ability.cost.exileFromGraveyard,
+        prompt: `Exile ${ability.cost.exileFromGraveyard} cards from your graveyard to activate ${cardName(source)}`,
+        from: 'graveyard',
+      });
+      if (picked.length < ability.cost.exileFromGraveyard) return;
+      for (const e of picked) this.emit(moveCardRaw(s, e, 'exile'));
+      logLine(s, `exiles ${picked.length} cards from the graveyard`, { player, iids: picked });
+    }
+
     // Pay costs first. Mana abilities and land activations do not use the stack.
     if (!this.payActivationCost(player, source, ability.cost)) return;
 
@@ -2403,14 +2449,24 @@ export class Game {
       }
       this.sbaDirty = true;
     }
-    this.events.push({
-      t: 'damage',
-      sourceIid: opts.sourceIid,
-      target: opts.target,
-      amount: opts.amount,
-      deathtouch: Boolean(opts.deathtouch),
-      combat: Boolean(opts.combat),
-    });
+    /*
+     * Emitted, not pushed.
+     *
+     * `events.push` records the event for the animation layer; only `emit` also
+     * offers it to every permanent's trigger. Damage went the first way, so a
+     * card that triggers on dealing damage never triggered at all — Psychic
+     * Frog connected for one, the life total moved, and no card was drawn.
+     */
+    this.emit([
+      {
+        t: 'damage',
+        sourceIid: opts.sourceIid,
+        target: opts.target,
+        amount: opts.amount,
+        deathtouch: Boolean(opts.deathtouch),
+        combat: Boolean(opts.combat),
+      },
+    ]);
     logLine(
       s,
       `${opts.sourceIid && s.cards[opts.sourceIid] ? cardName(s.cards[opts.sourceIid]) : 'Combat'} deals ${

@@ -21,6 +21,170 @@ import { DEFAULT_SETTINGS } from './settings';
  * twice, a stable board and a strong seat colour are what make it readable.
  */
 
+/**
+ * Make a half fit the room it has.
+ *
+ * A playtester could not see his opponent's lands, and the arithmetic says why:
+ * at the default size one row of permanents and one row of lands need 260px, and
+ * half a 720px window is 209px. So the board did not fit before a single card
+ * was played — and what fell off was whichever row came last, the lands on the
+ * opponent's side and the creatures on yours.
+ *
+ * Meanwhile each row was using about two thirds of its width. "There is lots of
+ * space on the sides, no reason it should not spread across the whole row" is
+ * exactly right, and it is the way out: smaller cards fit more per line, so the
+ * wasted width buys back the height that was cutting the board in half.
+ *
+ * Measured rather than guessed at, because the card size is a clamp on the
+ * viewport, the lands are a fraction of the spells, and both are a user setting.
+ * The floor is there so a huge board goes back to scrolling rather than becoming
+ * a row of specks.
+ */
+/*
+ * Down to 0.46, which is where a land is still a coloured rectangle you can tell
+ * tapped from untapped — that is all a land is ever read for. Below it the board
+ * goes back to scrolling, because specks you cannot identify are worse than a
+ * scrollbar that says there is more.
+ */
+const FIT_STEPS = [1, 0.94, 0.88, 0.82, 0.76, 0.7, 0.64, 0.58, 0.52, 0.46];
+
+/** One row of the board, measured at full size. */
+export interface FitRow {
+  /** How many cards are in it. */
+  n: number;
+  /** Card width and height at `--fit: 1`. */
+  w: number;
+  h: number;
+  /** Gap between cards in the row. */
+  gap: number;
+}
+
+/**
+ * The largest scale at which every row fits the height available.
+ *
+ * Pure arithmetic, kept out of the hook so it can be checked against boards
+ * nobody wants to build by hand in a browser. Cards scale linearly and the
+ * number that fit on a line is a floor division, so a candidate's height is
+ * exact — no measuring per candidate, and no oscillating.
+ */
+export function heightOfRows(availW: number, rows: FitRow[], fit: number): number {
+  return rows.reduce((total, row) => {
+    const w = row.w * fit;
+    const perLine = Math.max(1, Math.floor((availW + row.gap) / (w + row.gap)));
+    return total + Math.ceil(row.n / perLine) * row.h * fit;
+  }, 0);
+}
+
+export function fitScale(availW: number, room: number, rows: FitRow[]): number {
+  if (availW <= 0 || room <= 0 || rows.length === 0) return 1;
+  return (
+    FIT_STEPS.find((fit) => heightOfRows(availW, rows, fit) <= room) ??
+    FIT_STEPS[FIT_STEPS.length - 1]
+  );
+}
+
+/** Measure one half at full size: what its rows need, and its fixed chrome. */
+function measureHalf(half: HTMLElement): { rows: FitRow[]; chrome: number; availW: number } {
+  const style = getComputedStyle(half);
+  const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+  const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+  const stackGap = parseFloat(style.rowGap) || 0;
+  const children = [...half.children] as HTMLElement[];
+  const rows: FitRow[] = [];
+  let fixed = 0;
+  for (const child of children) {
+    if (child.classList.contains('zone-row')) {
+      const first = child.firstElementChild as HTMLElement | null;
+      if (!first) continue;
+      const r = first.getBoundingClientRect();
+      rows.push({
+        n: child.children.length,
+        w: r.width,
+        h: r.height,
+        gap: parseFloat(getComputedStyle(child).columnGap) || 0,
+      });
+    } else {
+      fixed += child.getBoundingClientRect().height;
+    }
+  }
+  return {
+    rows,
+    chrome: padY + fixed + stackGap * Math.max(0, children.length - 1),
+    availW: half.clientWidth - padX,
+  };
+}
+
+/**
+ * Fit both halves into the table at once.
+ *
+ * Together rather than one at a time, because a half is sized by what is on it:
+ * making its cards bigger makes the half bigger, so measuring one on its own
+ * asks a question whose answer changes the question. Measured separately it
+ * settled on "everything fits" at full size while three cards sat below the
+ * fold.
+ *
+ * So the fixed quantity is the table, and the two boards share it in proportion
+ * to what they need — an empty opponent side gives its room away rather than
+ * holding it.
+ */
+function useFitBoard(
+  fieldRef: React.RefObject<HTMLDivElement | null>,
+  theirsRef: React.RefObject<HTMLDivElement | null>,
+  mineRef: React.RefObject<HTMLDivElement | null>,
+  signature: string,
+) {
+  useEffect(() => {
+    const field = fieldRef.current;
+    const halves = [theirsRef.current, mineRef.current].filter(
+      (h): h is HTMLDivElement => h !== null,
+    );
+    if (!field || halves.length === 0) return;
+
+    const measureAndFit = () => {
+      for (const half of halves) half.style.setProperty('--fit', '1');
+      const midline = field.querySelector('.midline') as HTMLElement | null;
+      const total = field.clientHeight - (midline?.getBoundingClientRect().height ?? 0);
+      if (total <= 0) return;
+
+      const measured = halves.map((half) => ({ half, ...measureHalf(half) }));
+      const needs = measured.map((m) => m.chrome + heightOfRows(m.availW, m.rows, 1));
+      const wanted = needs.reduce((a, b) => a + b, 0);
+
+      for (const [i, m] of measured.entries()) {
+        // Its own share of the table when the two together want more than there
+        // is; everything it asked for when they do not.
+        const cap = wanted <= total ? needs[i] : (total * needs[i]) / wanted;
+        m.half.style.setProperty('--fit', String(fitScale(m.availW, cap - m.chrome, m.rows)));
+      }
+    };
+
+    measureAndFit();
+    /*
+     * And again on the next frame: the first run can land before the grid has
+     * given the halves their real height, and nothing resizes afterwards to say
+     * otherwise.
+     */
+    const frame = requestAnimationFrame(measureAndFit);
+    const observer = new ResizeObserver(measureAndFit);
+    observer.observe(field);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [fieldRef, theirsRef, mineRef, signature]);
+}
+
+/** What the board holds, as one string: recompute when this changes. */
+function boardSignature(view: PlayerView, seat: PlayerId): string {
+  return view.battlefield[seat]
+    .map((iid) => {
+      const c = view.cards[iid];
+      if (!c) return '';
+      return !c.isToken && frontFace(c.oracleId).types.includes('Land') ? 'L' : 'N';
+    })
+    .join('');
+}
+
 export function Board({ viewer }: { viewer: PlayerId }) {
   const view = useStore((s) => s.views[viewer]);
   const logOpen = useStore((s) => s.logOpen);
@@ -28,10 +192,20 @@ export function Board({ viewer }: { viewer: PlayerId }) {
   const update = useStore((s) => s.updateSettings);
   const theirsRef = useRef<HTMLDivElement>(null);
   const mineRef = useRef<HTMLDivElement>(null);
+  const fieldRef = useRef<HTMLDivElement>(null);
   const handRef = useRef<HTMLDivElement>(null);
 
-  if (!view) return null;
   const opponent: PlayerId = viewer === 'p1' ? 'p2' : 'p1';
+  // Hooks run before the early return, so the signature is safe when there is
+  // no view yet.
+  useFitBoard(
+    fieldRef,
+    theirsRef,
+    mineRef,
+    view ? `${boardSignature(view, opponent)}|${boardSignature(view, viewer)}` : '',
+  );
+
+  if (!view) return null;
   const setLayout = (patch: Partial<typeof layout>) =>
     update({ layout: { ...layout, ...patch } });
 
@@ -52,6 +226,7 @@ export function Board({ viewer }: { viewer: PlayerId }) {
       >
         <div
           className="field"
+          ref={fieldRef}
           style={
             layout.fieldSplit === null
               ? undefined

@@ -245,14 +245,24 @@ input[type='number'] {
 
 /* The half-table tint is the primary "whose is this" signal. */
 .half {
+  /*
+     `--fit` is set per half by the board itself: the largest size at which every
+     row fits without a card falling off the bottom. 1 until it has to be less.
+     See useFitToHalf — the numbers behind it are that one row of permanents plus
+     one row of lands wants 260px, and half a 720px window is 209px.
+  */
+  --card-w: calc(var(--card-base) * var(--card-scale) * var(--fit, 1));
+  --card-h: calc(var(--card-w) * 1.396);
   /* The extra padding facing the midline is the gap between the two boards:
      with the halves nearly touching, a permanent at the bottom of theirs and one
      at the top of mine read as a single row. */
-  padding: 12px 18px;
+  padding: 10px 16px;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  /* Every pixel of chrome here comes straight off the card size, because the
+     board is scaled to whatever height is left over. */
+  gap: 8px;
   /* A board bigger than its half scrolls, and says so: a thin visible track is
      the difference between "there is more below" and "the client cut my card
      in half". */
@@ -261,11 +271,11 @@ input[type='number'] {
   scrollbar-color: var(--border-strong) transparent;
 }
 .half.theirs {
-  padding-bottom: 22px;
+  padding-bottom: 16px;
   background: linear-gradient(180deg, var(--theirs-glow) -60%, transparent 55%);
 }
 .half.mine {
-  padding-top: 22px;
+  padding-top: 16px;
   background: linear-gradient(0deg, var(--mine-glow) -60%, transparent 55%);
 }
 
@@ -396,7 +406,7 @@ input[type='number'] {
   /* Lands are scanned for colour and for tapped-or-not, never read. Keeping them
      small is what leaves room for the row above to be big enough to read — a
      half has to hold both rows without either being cut off. */
-  --card-w: calc(var(--card-base) * var(--card-scale) * 0.66);
+  --card-w: calc(var(--card-base) * var(--card-scale) * var(--fit, 1) * 0.66);
   --card-h: calc(var(--card-w) * 1.396);
 }
 
