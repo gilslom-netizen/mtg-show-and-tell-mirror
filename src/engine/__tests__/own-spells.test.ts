@@ -231,3 +231,155 @@ describe("Narset's Reversal", () => {
     expect(t.state.cards[chosen.iid].oracleId).toBe('brainstorm');
   });
 });
+
+describe('how many times a tax is asked', () => {
+  /**
+   * "He asked me if I want to pay 1... maybe check whether he does it three
+   * times or once." Once per counterspell — and a storm copy is its own
+   * counterspell, so a Flusterstorm that copied itself asks once per copy.
+   * That is the answer to the question, and it is worth holding still.
+   */
+  it('once for one counterspell', () => {
+    const t = testGame({ startingPlayer: 'p2' });
+    t.p2.hand('Brainstorm');
+    t.p2.manaBase(6); // enough left over to actually be able to pay
+    t.p1.conjure('Miscast');
+    t.p1.manaBase(3);
+    t.begin();
+    t.p2.cast('Brainstorm');
+    t.p2.pass();
+    t.p1.cast('Miscast');
+
+    let asked = 0;
+    for (let i = 0; i < 14; i++) {
+      const c = t.game.state.pendingChoice;
+      if (c?.kind === 'yesNo') {
+        expect(c.prompt).toMatch(/\{3\}/); // the amount the card prints
+        asked++;
+        t.no();
+        continue;
+      }
+      if (c?.kind === 'chooseCards') {
+        t.chooseNoCards();
+        continue;
+      }
+      if (c) break;
+      if (t.state.stack.length === 0) break;
+      const p = t.state.priorityPlayer;
+      if (!p) break;
+      t.game.submitIntent(p, { t: 'passPriority' });
+    }
+    expect(asked).toBe(1);
+    expect(t.wasCountered('Brainstorm')).toBe(true);
+  });
+
+  it('once per copy when the counterspell storms', () => {
+    const t = testGame({ startingPlayer: 'p2' });
+    t.p2.hand('Brainstorm', 'Ponder');
+    t.p2.manaBase(8);
+    t.p1.conjure('Flusterstorm');
+    t.p1.manaBase(4);
+    t.begin();
+    t.p2.cast('Ponder'); // one spell before it, so storm makes one copy
+    t.p2.pass();
+    t.p1.cast('Flusterstorm');
+
+    let asked = 0;
+    for (let i = 0; i < 25; i++) {
+      const c = t.game.state.pendingChoice;
+      if (c?.kind === 'yesNo') {
+        asked++;
+        t.no();
+        continue;
+      }
+      if (c?.kind === 'chooseTargets') {
+        t.answer({ kind: 'targets', targets: c.candidates.slice(0, 1) });
+        continue;
+      }
+      if (c?.kind === 'chooseCards') {
+        t.chooseNoCards();
+        continue;
+      }
+      if (c) break;
+      if (t.state.stack.length === 0) break;
+      const p = t.state.priorityPlayer;
+      if (!p) break;
+      t.game.submitIntent(p, { t: 'passPriority' });
+    }
+    // The original and its one copy, each a spell that taxes on its own.
+    expect(asked).toBe(2);
+  });
+});
+
+describe("Narset's Reversal, the part that already worked", () => {
+  /**
+   * "He asked me whether I want to choose separate targets or keep, and I
+   * clicked keep." "That is the sort of thing it's important works." It did, and
+   * it still does after the self-target fix — so it is written down.
+   */
+  function reversalOverADecay() {
+    const t = testGame({ startingPlayer: 'p2' });
+    t.p2.conjure('Abrupt Decay');
+    t.p2.manaBase(3);
+    t.p2.conjureOntoBattlefield('Snapcaster Mage');
+    t.p1.conjure("Narset's Reversal");
+    t.p1.conjureOntoBattlefield('Psychic Frog');
+    t.p1.manaBase(4);
+    t.begin();
+
+    t.p2.cast('Abrupt Decay');
+    const targets = t.expectChoice();
+    if (targets.kind !== 'chooseTargets') throw new Error('expected targets');
+    const frog = targets.candidates.find(
+      (c) => c.kind === 'permanent' && t.state.cards[c.iid].oracleId === 'psychic_frog',
+    );
+    t.answer({ kind: 'targets', targets: [frog!] });
+    t.p2.pass();
+    t.p1.cast("Narset's Reversal");
+    return t;
+  }
+
+  it('keeps the original targets when you decline', () => {
+    const t = reversalOverADecay();
+    t.resolveAll();
+    // The copy resolved with the target it was copied from: my own Frog dies.
+    expect(t.p1.battlefieldNames()).not.toContain('Psychic Frog');
+    expect(t.p2.battlefieldNames()).toContain('Snapcaster Mage');
+    // And the original goes back to its owner's hand rather than the graveyard.
+    expect(t.p2.handNames()).toContain('Abrupt Decay');
+  });
+
+  it('moves the copy onto a new target when you take the offer', () => {
+    const t = reversalOverADecay();
+    for (let i = 0; i < 20; i++) {
+      const c = t.game.state.pendingChoice;
+      if (!c) {
+        // The offer only comes when the Reversal resolves, which is several
+        // passes away — stopping at the first quiet moment answers nothing.
+        if (t.state.stack.length === 0) break;
+        const p = t.state.priorityPlayer;
+        if (!p) break;
+        t.game.submitIntent(p, { t: 'passPriority' });
+        continue;
+      }
+      if (c.kind === 'yesNo') {
+        expect(c.prompt).toMatch(/new targets/i);
+        t.yes();
+        continue;
+      }
+      if (c.kind === 'chooseTargets') {
+        const snap = c.candidates.find(
+          (x) => x.kind === 'permanent' && t.state.cards[x.iid].oracleId === 'snapcaster_mage',
+        );
+        expect(snap).toBeDefined();
+        t.answer({ kind: 'targets', targets: [snap ?? c.candidates[0]] });
+        continue;
+      }
+      break;
+    }
+    // Re-aimed: their creature dies instead of mine.
+    expect(t.p2.battlefieldNames()).not.toContain('Snapcaster Mage');
+    expect(t.p1.battlefieldNames()).toContain('Psychic Frog');
+    expect(t.p2.handNames()).toContain('Abrupt Decay');
+  });
+});
