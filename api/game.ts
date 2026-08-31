@@ -108,6 +108,12 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       });
       if ('error' in result) return void res.status(409).json({ error: result.error });
       const snap = await snapshot(store, code, result.seat);
+      // A join that answers 200 with no snapshot in it hands the client a seat
+      // it cannot use: no seat id, no token to poll with, and a waiting screen
+      // that waits for ever. The room going missing between taking the seat and
+      // reading it is a real (if rare) race on a store with a TTL — say so, and
+      // let the client retry, which it now does.
+      if (!snap) return void res.status(503).json({ error: 'The room went away — try again' });
       return void res.status(200).json({ ...snap, token: result.token, room: code });
     }
 

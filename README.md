@@ -423,6 +423,7 @@ suggests, because the work is bound by memory bandwidth rather than by CPU.
 | `invariants.test.ts` | 150 fuzzed games checking card conservation and determinism after **every** action |
 | `match.test.ts` | Best-of-three bookkeeping |
 | `room-code.test.ts` | Room codes normalise identically on both sides, so a code read aloud joins the right room |
+| `offline.test.ts` | A request that never reaches the server: the move says it was not sent, the join keeps trying, and neither throws |
 | `data-sync.test.ts` | The generated card data still matches `data/*.json` |
 | `priority-windows.test.ts` | Acting in the opponent's turn — the fetch in every step — and each form of passing |
 | `opening.test.ts` | The simultaneous mulligan, including that neither player can read the other's decision early |

@@ -374,6 +374,19 @@ export const useStore = create<StoreState>((set, get) => ({
     const infoChanged =
       JSON.stringify(nextInfo) !== JSON.stringify(get().connInfo);
 
+    /*
+     * A dropped connection re-arms the one-action-per-state guard.
+     *
+     * That guard exists to stop a second click going out while the first is
+     * still in the air — but an action that never reached the server is not in
+     * the air, it is gone. The guard only clears when a *new* view arrives, and
+     * a poll of an unchanged game brings none, so a move lost to a network blip
+     * locked the seat out of trying again until the opponent happened to do
+     * something. The offline banner said "nothing you have played is lost" while
+     * the board refused every click, which is the worst of both.
+     */
+    const dropped = nextInfo?.status === 'closed';
+
     // The seat this client actually holds; online that is the only one, and in
     // a local session it is whichever half of the table is being looked at.
     const mySeat = seats.length === 1 ? seats[0] : get().viewSeat;
@@ -388,6 +401,7 @@ export const useStore = create<StoreState>((set, get) => ({
       deckReady: conn.deckReady(),
       ...(infoChanged ? { connInfo: nextInfo } : {}),
       ...(reveal ? { revealing: reveal } : {}),
+      ...(dropped ? { actedFrom: { p1: null, p2: null }, actedFromDraft: null } : {}),
     });
   },
 

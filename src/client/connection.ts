@@ -677,6 +677,10 @@ export class HttpConnection extends BaseConnection {
   private version = -1;
   private rev = -1;
   private timer: number | null = null;
+  /** Set while a failed join is waiting to be tried again. */
+  private joinTimer: number | null = null;
+  /** Consecutive failed joins, for that retry's backoff. */
+  private joinAttempts = 0;
   private stopped = false;
   private inFlight = false;
   /** Consecutive polls that found nothing new. Drives the backoff. */
@@ -696,6 +700,14 @@ export class HttpConnection extends BaseConnection {
 
   constructor(private opts: HttpOptions) {
     super();
+    /*
+     * Registered here rather than after the join succeeds. It used to be added
+     * on the far side of the first request, so a join that failed left the tab
+     * with no way to notice it had come back to the foreground either.
+     */
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.onVisibility);
+    }
     void this.joinRoom();
   }
 
@@ -719,15 +731,45 @@ export class HttpConnection extends BaseConnection {
     }
   }
 
-  private async post(body: Record<string, unknown>): Promise<Snapshot | null> {
-    const res = await fetch('/api/game', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ room: this.opts.room, token: this.token ?? undefined, ...body }),
-    });
+  /**
+   * One request to the room, and never an exception.
+   *
+   * `fetch` rejects whenever the request does not reach the server at all — a
+   * dropped wifi, a phone changing network, a tab woken from sleep, an edge that
+   * resets the connection. Every caller here is a fire-and-forget `void this.act(…)`,
+   * so that rejection had nowhere to go: it surfaced as an unhandled rejection in
+   * the console and, on screen, as absolutely nothing. The move was gone, no
+   * error was shown, the offline banner stayed hidden because the status still
+   * said "open", and the board simply stopped answering clicks — which is exactly
+   * what a player reports as the site having died on them at random.
+   *
+   * A request that fails is a request that was not played. Say so, mark the
+   * connection closed so the banner appears, and let the poll loop pick the game
+   * back up the moment the network does.
+   */
+  private async post(
+    body: Record<string, unknown>,
+    unreachable = 'Could not reach the server, so that move was not sent. Nothing is lost — try it again once the connection is back.',
+  ): Promise<Snapshot | null> {
+    let res: Response;
+    try {
+      res = await fetch('/api/game', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room: this.opts.room, token: this.token ?? undefined, ...body }),
+      });
+    } catch {
+      this.status = 'closed';
+      this.error = unreachable;
+      this.notify();
+      return null;
+    }
     const json = (await res.json().catch(() => ({}))) as Snapshot & { error?: string };
     if (!res.ok) {
       this.error = json.error ?? `Request failed (${res.status})`;
+      // A 5xx is the server failing rather than the move being refused, and it
+      // belongs in the same bucket as an unreachable one.
+      if (res.status >= 500) this.status = 'closed';
       this.notify();
       return null;
     }
@@ -821,18 +863,45 @@ export class HttpConnection extends BaseConnection {
     if (typeof document !== 'undefined' && !document.hidden) this.wake();
   };
 
+  /**
+   * Take a seat in the room, and keep trying until one is taken.
+   *
+   * The join is the one request nothing else can recover from: the poll loop
+   * needs the seat and the token this call brings back, so it refuses to run
+   * without them. A single failed join therefore used to end the session before
+   * it began — "Connecting…" for ever, no poll, no banner, no message, and no
+   * way out but a reload, even after the network came straight back. A blip
+   * while the page is loading is exactly when a connection is least reliable.
+   */
   private async joinRoom(): Promise<void> {
+    if (this.stopped) return;
     this.token = this.loadToken() ?? null;
-    const snap = await this.post({
-      name: this.opts.playerName,
-      format: this.opts.format,
-      bestOf: this.opts.bestOf,
-    });
-    this.absorb(snap);
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', this.onVisibility);
+    const snap = await this.post(
+      {
+        name: this.opts.playerName,
+        format: this.opts.format,
+        bestOf: this.opts.bestOf,
+      },
+      'Could not reach the server to take your seat. Still trying — the room is kept for three days, so nothing is lost.',
+    );
+    if (!snap) {
+      this.scheduleJoinRetry();
+      return;
     }
+    this.joinAttempts = 0;
+    this.absorb(snap);
     this.schedulePoll();
+  }
+
+  /** Try the join again, waiting a little longer each time, up to ten seconds. */
+  private scheduleJoinRetry(): void {
+    if (this.stopped || this.joinTimer !== null || typeof window === 'undefined') return;
+    const wait = Math.min(10000, 1000 * 2 ** this.joinAttempts);
+    this.joinAttempts++;
+    this.joinTimer = window.setTimeout(() => {
+      this.joinTimer = null;
+      void this.joinRoom();
+    }, wait);
   }
 
   /**
@@ -1003,6 +1072,7 @@ export class HttpConnection extends BaseConnection {
   dispose(): void {
     this.stopped = true;
     if (this.timer !== null) window.clearTimeout(this.timer);
+    if (this.joinTimer !== null) window.clearTimeout(this.joinTimer);
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.onVisibility);
     }
@@ -1181,8 +1251,23 @@ export class RemoteConnection extends BaseConnection {
     return e;
   }
 
+  /**
+   * A move only counts if the socket is actually open.
+   *
+   * It used to drop the payload without a word when it was not, which reads on
+   * screen as a click that did nothing — the same silence the HTTP transport
+   * had. The reconnect will get the seat back and the server replays the log,
+   * so nothing is lost; but the move has to be made again, and only saying so
+   * makes that obvious.
+   */
   private send(payload: unknown): void {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(payload));
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(payload));
+      return;
+    }
+    this.error =
+      'Not connected right now, so that move was not sent. It reconnects on its own — try it again in a moment.';
+    this.notify();
   }
 
   submitIntent(_seat: PlayerId, intent: Intent): void {
