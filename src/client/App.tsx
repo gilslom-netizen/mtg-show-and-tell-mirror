@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
+import { unimplementedReason } from '@engine/cards/index';
+import { DECK_NAME, MAINDECK } from '@engine/deck';
+import { deckSize } from '@engine/decklist';
 import { MANA_KINDS } from '@engine/mana';
 import { canExtend, summarise, type MatchState } from '@engine/match';
 import { SCENARIOS, type ScenarioSpec } from '@engine/scenario';
+import type { DeckEntry } from '@engine/state';
+import { oracle } from '@engine/oracle';
 import type { PlayerId } from '@engine/types';
 import { Board } from './Board';
 import { probeCardArt } from './CardView';
@@ -29,6 +34,18 @@ import { canAct, useStore } from './store';
 import { PhaseTrack } from './ui';
 import { DraftScreen } from './Draft';
 import { DeckBuilder } from './DeckBuilder';
+import {
+  MIN_PLAYABLE_DECK,
+  canShareFiles,
+  copyText,
+  deckFilenameFor,
+  deckReadiness,
+  deckToText,
+  describeProblems,
+  downloadText,
+  readDeckFile,
+  shareDeck,
+} from './deck-file';
 // Imported directly rather than through the agent registry, which would drag the
 // search, the determinizer and the measuring instruments into the app bundle.
 import { HeuristicAgent } from '../ai/heuristic';
@@ -278,6 +295,18 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
     };
   }, [setOnlineCapability]);
 
+  /*
+   * A decklist loaded from a file, which both seats then play.
+   *
+   * Both, not one: the format is a mirror, so a deck brought in from outside
+   * replaces the sixty on *both* sides of the table. Handing it to one seat and
+   * leaving the stock list on the other would be a perfectly good game, but it
+   * would not be this one.
+   */
+  const [loadedDeck, setLoadedDeck] = useState<{ name: string; entries: DeckEntry[] } | null>(null);
+  const [deckNote, setDeckNote] = useState<string | null>(null);
+  const deckFileRef = useRef<HTMLInputElement>(null);
+
   const startLocal = (mode: Mode, scenario?: ScenarioSpec) => {
     const seed = Math.floor(Math.random() * 2 ** 31);
     const conn = new LocalConnection({
@@ -288,6 +317,8 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
       seats: mode === 'ai' ? ['p1'] : ['p1', 'p2'],
       opponent: mode === 'ai' ? AI_OPPONENT : undefined,
       scenario,
+      // A drill stages its own board, so a loaded list has nothing to do with it.
+      deck: scenario ? undefined : (loadedDeck?.entries ?? undefined),
       // The series length is the lobby's, whichever way you start a game. A drill
       // ignores it — it is one staged position, not a series.
       bestOf,
@@ -318,6 +349,42 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
     }
     onStart('online');
     attach(conn as Connection, 'p1');
+  };
+
+  const loadDeckFile = async (file: File | null | undefined) => {
+    if (!file) return;
+    try {
+      const loaded = await readDeckFile(file);
+      const ready = deckReadiness(
+        loaded.entries,
+        (id) => unimplementedReason(id as never) === null,
+        (id) => oracle(id as never).name,
+      );
+      if (ready.short > 0) {
+        // Refused rather than loaded: a short deck does not play badly, it decks
+        // out, and finding that out on turn five looks like a broken game.
+        setLoadedDeck(null);
+        setDeckNote(
+          `${file.name} has ${ready.size} cards — a deck needs at least ${MIN_PLAYABLE_DECK}. ` +
+            (describeProblems(loaded) ?? ''),
+        );
+        return;
+      }
+      setLoadedDeck({ name: loaded.name ?? 'Imported deck', entries: loaded.entries });
+      setDeckNote(
+        [
+          `Loaded ${ready.size} cards from ${file.name}.`,
+          ready.unplayable.length > 0
+            ? `${ready.unplayable.length} of them cannot be cast yet (${ready.unplayable.slice(0, 3).join(', ')}${ready.unplayable.length > 3 ? '…' : ''}).`
+            : null,
+          describeProblems(loaded),
+        ]
+          .filter(Boolean)
+          .join(' '),
+      );
+    } catch (e) {
+      setDeckNote((e as Error).message);
+    }
   };
 
   // Some hosts answer /api and still cannot hold a match reliably: on serverless
@@ -430,6 +497,111 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
           </p>
           {unreliable && <NoStoreWarning />}
           <ResumeList onResume={(code) => startOnline(code)} />
+        </section>
+
+        <section className="lobby-section">
+          <h2>The deck</h2>
+          <p className="lobby-note">
+            Export the list to keep it, edit it or send it to whoever you are playing
+            — it is written the way every deckbuilding site writes one, so it pastes
+            straight into Moxfield or Arena and back. Load one here and it replaces
+            the sixty for games started in this tab, on <b>both</b> sides of the
+            table: this format is a mirror, so a new list is a new mirror.
+          </p>
+
+          {loadedDeck ? (
+            <div className="deck-loaded" data-testid="loaded-deck">
+              <b>{loadedDeck.name}</b>
+              <span className="chip">{deckSize(loadedDeck.entries)} cards</span>
+              <span className="spacer" />
+              <button
+                data-testid="clear-deck"
+                onClick={() => {
+                  setLoadedDeck(null);
+                  setDeckNote(null);
+                }}
+              >
+                Back to the mirror
+              </button>
+            </div>
+          ) : (
+            <p className="lobby-note" data-testid="loaded-deck">
+              Playing <b>{DECK_NAME}</b> — the shared sixty.
+            </p>
+          )}
+
+          <div className="mode-grid is-two-up">
+            <input
+              ref={deckFileRef}
+              type="file"
+              accept=".txt,.dec,.dek,.mwdeck,text/plain"
+              data-testid="lobby-deck-input"
+              hidden
+              onChange={(e) => {
+                void loadDeckFile(e.target.files?.[0]);
+                e.target.value = '';
+              }}
+            />
+            <button
+              className="mode-option"
+              data-testid="lobby-import-deck"
+              onClick={() => deckFileRef.current?.click()}
+            >
+              <b>Load a decklist</b>
+              <span>
+                A text file, one card per line. Sixty cards or more; anything it does
+                not recognise is reported by line rather than silently dropped.
+              </span>
+            </button>
+            <button
+              className="mode-option"
+              data-testid="lobby-export-deck"
+              onClick={() => {
+                const name = loadedDeck?.name ?? DECK_NAME;
+                const entries = loadedDeck?.entries ?? MAINDECK;
+                if (!downloadText(deckFilenameFor(name), deckToText(entries, name)))
+                  setDeckNote('This browser would not save the file — copy the list instead.');
+              }}
+            >
+              <b>Export this decklist</b>
+              <span>
+                Saves a text file you can edit and load straight back in — the easiest
+                way to start from the mirror and change a few cards.
+              </span>
+            </button>
+          </div>
+
+          <div className="lobby-row">
+            <button
+              data-testid="lobby-copy-deck"
+              onClick={async () => {
+                const name = loadedDeck?.name ?? DECK_NAME;
+                const ok = await copyText(deckToText(loadedDeck?.entries ?? MAINDECK, name));
+                setDeckNote(ok ? 'Decklist copied.' : 'This browser would not let the page copy.');
+              }}
+            >
+              Copy the list
+            </button>
+            {canShareFiles() && (
+              <button
+                data-testid="lobby-share-deck"
+                onClick={() => {
+                  const name = loadedDeck?.name ?? DECK_NAME;
+                  void shareDeck(
+                    deckFilenameFor(name),
+                    deckToText(loadedDeck?.entries ?? MAINDECK, name),
+                  );
+                }}
+              >
+                Send it
+              </button>
+            )}
+            {deckNote && (
+              <span className="lobby-note" data-testid="deck-note">
+                {deckNote}
+              </span>
+            )}
+          </div>
         </section>
 
         <section className="lobby-section">

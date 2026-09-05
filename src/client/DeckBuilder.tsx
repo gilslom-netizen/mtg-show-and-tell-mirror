@@ -1,8 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { frontFace, oracle } from '@engine/oracle';
 import type { DeckEntry } from '@engine/state';
 import type { OracleId, PlayerId } from '@engine/types';
 import { unimplementedReason } from '@engine/cards/index';
+import {
+  canShareFiles,
+  copyText,
+  deckFilenameFor,
+  deckToText,
+  describeProblems,
+  downloadText,
+  readDeckFile,
+  shareDeck,
+} from './deck-file';
 import { useStore } from './store';
 import { ManaCost } from './mana';
 import { OracleCardDetail } from './CardView';
@@ -227,6 +237,54 @@ function saveSort(mode: SortMode): void {
   }
 }
 
+export interface FittedDeck {
+  deck: Map<OracleId, number>;
+  /** Cards the list asked for that this player does not own at all. */
+  missing: string[];
+  /** Copies dropped because the pool holds fewer than the list wanted. */
+  trimmed: number;
+}
+
+/**
+ * Fit an imported list to what this player actually has.
+ *
+ * A list from outside knows nothing about the draft that happened here, so the
+ * honest options are to refuse it or to take the part of it that is legal. It
+ * takes the legal part and says exactly what it could not take — refusing a
+ * sixty-card list over one card leaves somebody re-typing fifty-nine.
+ */
+export function fitToPool(entries: DeckEntry[], owned: Map<OracleId, number>): FittedDeck {
+  const deck = new Map<OracleId, number>();
+  const missing: string[] = [];
+  let trimmed = 0;
+  for (const e of entries) {
+    const have = owned.get(e.oracleId) ?? 0;
+    if (have === 0) {
+      missing.push(cardName(e.oracleId));
+      continue;
+    }
+    const take = Math.min(have, e.count);
+    trimmed += e.count - take;
+    if (take > 0) deck.set(e.oracleId, (deck.get(e.oracleId) ?? 0) + take);
+  }
+  return { deck, missing, trimmed };
+}
+
+/** What to tell somebody after a list has been fitted to their pool. */
+export function fitNote(fit: FittedDeck): string | null {
+  const bits: string[] = [];
+  if (fit.missing.length > 0) {
+    const shown = fit.missing.slice(0, 3).join(', ');
+    bits.push(
+      fit.missing.length <= 3
+        ? `Left out — not in your pool: ${shown}.`
+        : `Left out ${fit.missing.length} cards not in your pool, including ${shown}.`,
+    );
+  }
+  if (fit.trimmed > 0) bits.push(`${fit.trimmed} copies trimmed to what you own.`);
+  return bits.length > 0 ? bits.join(' ') : null;
+}
+
 export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
   const pool = useStore((s) => s.pool);
   const ready = useStore((s) => s.deckReady);
@@ -301,6 +359,34 @@ export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
 
   const entries: DeckEntry[] = [...deck].map(([oracleId, count]) => ({ oracleId, count }));
   const legal = size >= MIN_DECK;
+
+  // --- taking the list somewhere else, and bringing one back ----------------
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [note, setNote] = useState<string | null>(null);
+  // Just the deck's name: the count is on the next line of the file, and putting
+  // it in the name only made the saved filename read `show-and-tell-60-cards`.
+  const deckName = 'Show and Tell';
+
+  const loadFile = async (file: File | null | undefined) => {
+    if (!file) return;
+    try {
+      const loaded = await readDeckFile(file);
+      if (loaded.entries.length === 0) {
+        setNote(describeProblems(loaded) ?? `${file.name} has no cards in it.`);
+        return;
+      }
+      const fit = fitToPool(loaded.entries, owned);
+      setDeck(fit.deck);
+      const total = [...fit.deck.values()].reduce((n, c) => n + c, 0);
+      setNote(
+        [`Loaded ${total} cards from ${file.name}.`, fitNote(fit), describeProblems(loaded)]
+          .filter(Boolean)
+          .join(' '),
+      );
+    } catch (e) {
+      setNote((e as Error).message);
+    }
+  };
   const iAmReady = ready.includes(viewer);
   const opponent: PlayerId = viewer === 'p1' ? 'p2' : 'p1';
 
@@ -400,6 +486,54 @@ export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
           and the sixteen lands you were handed are all on the bench to start with.
         </span>
         <span className="spacer" />
+        <div className="build-file">
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".txt,.dec,.dek,.mwdeck,text/plain"
+            data-testid="import-deck-input"
+            hidden
+            onChange={(e) => {
+              void loadFile(e.target.files?.[0]);
+              // Cleared so picking the same file twice fires again.
+              e.target.value = '';
+            }}
+          />
+          <button data-testid="import-deck" onClick={() => fileRef.current?.click()}>
+            Import a list
+          </button>
+          <button
+            data-testid="export-deck"
+            disabled={size === 0}
+            title="Save this list as a text file"
+            onClick={() => {
+              const ok = downloadText(deckFilenameFor(deckName), deckToText(entries, deckName));
+              if (!ok) setNote('This browser would not save the file — copy the list instead.');
+            }}
+          >
+            Export
+          </button>
+          <button
+            data-testid="copy-deck"
+            disabled={size === 0}
+            title="Copy this list to the clipboard"
+            onClick={async () => {
+              const ok = await copyText(deckToText(entries, deckName));
+              setNote(ok ? 'Decklist copied.' : 'This browser would not let the page copy.');
+            }}
+          >
+            Copy
+          </button>
+          {canShareFiles() && (
+            <button
+              data-testid="share-deck"
+              disabled={size === 0}
+              onClick={() => void shareDeck(deckFilenameFor(deckName), deckToText(entries, deckName))}
+            >
+              Send
+            </button>
+          )}
+        </div>
         <button
           onClick={() => {
             const m = new Map<OracleId, number>();
@@ -410,6 +544,13 @@ export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
           Reset to the mirror
         </button>
       </footer>
+
+      {note && (
+        <div className="toast" data-testid="deck-file-note">
+          {note}
+          <button onClick={() => setNote(null)}>Dismiss</button>
+        </div>
+      )}
 
       {error && (
         <div className="toast">

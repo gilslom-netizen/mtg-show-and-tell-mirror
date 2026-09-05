@@ -350,18 +350,14 @@ wss.on('connection', (socket) => {
           break;
         }
         case 'answerExtend': {
-          const before = room.match.state.bestOf;
-          room.match.answerExtend(seat, msg.accept);
           /*
-           * An accepted extension starts a game, so it needs everything a new
-           * game needs: a fresh shuffle and an empty log. The play/draw choice
-           * is already pending on the loser, exactly as between any two games.
+           * An accepted extension reopens the series; it does not deal. Dealing
+           * here handed out a game nobody would play — on the play for whoever
+           * was on it last, because the loser has not chosen yet — and then
+           * `chooseFirst` dealt the real one over the top of it. The finished
+           * board stays up until that choice, exactly as between any two games.
            */
-          if (room.match.state.bestOf > before) {
-            room.seed = Math.floor(Math.random() * 2 ** 31);
-            room.game = newGame(room.seed, room.startingPlayer);
-            room.log = [];
-          }
+          room.match.answerExtend(seat, msg.accept);
           break;
         }
         case 'chooseFirst': {

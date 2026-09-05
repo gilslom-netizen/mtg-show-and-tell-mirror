@@ -169,6 +169,14 @@ export interface LocalOptions {
   /** Length of the series: 1, 3 or 5. A drill ignores it — it is one position. */
   bestOf?: number;
   /**
+   * The sixty both seats play, when it is not the mirror's own list.
+   *
+   * One list rather than two on purpose: this format *is* the mirror, so a deck
+   * loaded from a file is dealt to both players. Handing it to one seat only
+   * would be a different game with the same board.
+   */
+  deck?: DeckEntry[];
+  /**
    * Plays any seat the human is not.
    *
    * It lives on the connection rather than in a component because that is what it
@@ -230,7 +238,7 @@ export class LocalConnection extends BaseConnection {
     this.game = Game.create({
       gameId: `local-${opts.seed}`,
       seed: opts.seed,
-      deck: MAINDECK,
+      deck: opts.deck ?? MAINDECK,
       startingPlayer: opts.scenario?.startingPlayer ?? opts.startingPlayer,
       bare: Boolean(opts.skipMulligans || opts.scenario),
     });
@@ -468,7 +476,7 @@ export class LocalConnection extends BaseConnection {
     this.game = Game.create({
       gameId: `local-${this.opts.seed}-g${this.tracker.state.gameNumber}`,
       seed: this.opts.seed,
-      deck: MAINDECK,
+      deck: this.opts.deck ?? MAINDECK,
       startingPlayer: chosen,
     });
     this.game.advance();

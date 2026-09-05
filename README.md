@@ -163,6 +163,18 @@ a splash always has a manabase. Then the deckbuilder: one pool, two columns,
 one click to move a card. It opens again between games, which is the
 sideboarding this format never had.
 
+A decklist can be taken out of the app and brought back in. **Export** writes the
+list as plain text — a count and a name per line, the way every deckbuilding site
+writes one — so it pastes straight into Moxfield or Arena, or into a message to
+whoever you are about to play. **Load a decklist** in the lobby reads one back and
+deals it in place of the shared sixty, on both sides of the table, because a new
+list in a mirror format is a new mirror. Reading is forgiving of the lists people
+actually have: Arena's `4 Ancient Tomb (LEA) 233`, MTGO's `SB:` lines, `4x`,
+comment headers and Windows line endings all mean the same deck. A line it cannot
+read is reported by number rather than silently dropped, and a list carrying a
+house-ruled card says so in the file itself. The deckbuilder has the same three
+buttons, where an imported list is fitted to the cards that player actually owns.
+
 Series length is chosen in the lobby: best of 1, 3 (default) or 5. It applies to
 everything you start from there — drafted rooms, classic rooms and the solo modes
 alike. Online it belongs to whoever opens the room, so the second player joins into
@@ -422,6 +434,9 @@ suggests, because the work is bound by memory bandwidth rather than by CPU.
 | `redaction.test.ts` | Information leaks, as its own category |
 | `invariants.test.ts` | 150 fuzzed games checking card conservation and determinism after **every** action |
 | `match.test.ts` | Best-of-three bookkeeping |
+| `extend-series.test.ts` | Two more games after a decided match, over the replay-the-log path that used to score the last game again |
+| `decklist.test.ts` | Writing a list out and reading it back, including the shapes other sites emit and the counts that would hang a tab |
+| `deck-file.test.ts` | A picked file becoming the deck a game is dealt from, and an imported list fitted to a drafted pool |
 | `room-code.test.ts` | Room codes normalise identically on both sides, so a code read aloud joins the right room |
 | `offline.test.ts` | A request that never reaches the server: the move says it was not sent, the join keeps trying, and neither throws |
 | `data-sync.test.ts` | The generated card data still matches `data/*.json` |

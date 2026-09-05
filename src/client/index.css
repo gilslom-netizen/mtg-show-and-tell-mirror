@@ -1692,6 +1692,49 @@ button.linkish {
 button.linkish:hover {
   filter: brightness(1.2);
 }
+/* A row of secondary actions under a section: copy, send, and whatever the
+   last one of them had to say for itself. */
+.lobby-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lobby-row .lobby-note {
+  color: var(--text-dim);
+  flex: 1 1 220px;
+  min-width: 0;
+}
+/* The list currently loaded from a file, in place of the stock sixty. */
+.deck-loaded {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border: 1px solid var(--mine);
+  background: var(--mine-dim);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+/* Export, copy and import, kept together at the end of the builder's footer.
+   It holds its width against the sentence beside it: the other way round, the
+   three buttons wrapped onto a second line while the sentence still had room.
+   It wraps only when three small buttons genuinely will not fit in a row. */
+.build-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+/* A real minimum on the sentence, so a footer that will not fit wraps it onto a
+   line of its own rather than squeezing it into a six-word column — which cost
+   the card lists fifty-five pixels of height at tablet width. */
+.build-bottom > .bid-note {
+  flex: 1 1 260px;
+  min-width: 260px;
+}
 .lobby-foot {
   font-size: 11px;
   color: var(--text-faint);
@@ -2406,6 +2449,10 @@ button.linkish:hover {
   padding: 8px 18px;
   background: var(--bg-raised);
   border-top: 1px solid var(--border);
+  /* Where the row will not fit, the sentence takes a line of its own and the
+     buttons take the next — rather than the sentence being squeezed into a
+     column six words wide and pushing the footer up the screen. */
+  flex-wrap: wrap;
 }
 
 /* A picked option in the lobby, for the format and series-length choices. */

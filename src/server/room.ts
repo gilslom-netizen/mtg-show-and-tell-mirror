@@ -462,24 +462,23 @@ export async function applyAction(
     }
     case 'answerExtend': {
       const tracker = trackerFor(meta, game);
-      const before = tracker.state.bestOf;
       if (!tracker.answerExtend(seat, action.accept) && action.accept) {
         return { ok: false, error: 'There is no offer to accept' };
       }
       meta.match = tracker.state;
       /*
-       * An accepted extension starts a new game, so it needs everything a new
-       * game needs: a fresh shuffle, and — in a drafted room — both players back
-       * in the builder to sideboard. The play/draw choice is already pending on
-       * the loser, exactly as it would be between any two games.
+       * An accepted extension does not deal anything. It only reopens the
+       * series, which puts the play/draw choice back on the last game's loser —
+       * and `chooseFirst` already does everything a new game needs: a fresh
+       * shuffle, an empty log, and the builder again in a drafted room.
+       *
+       * Reshuffling here instead was the whole bug. A serverless room *is*
+       * `(seed, log)`, so a new seed against the old log is a finished game
+       * wearing a new game id: the very next poll replayed the concession that
+       * ended the series, did not recognise it as one already scored, and
+       * scored it again. Two more games were granted and immediately spent,
+       * every one of them recorded as a concession nobody made.
        */
-      if (tracker.state.bestOf > before) {
-        meta.seed = Math.floor(Math.random() * 2 ** 31);
-        if (meta.format === 'draft') {
-          meta.phase = 'build';
-          meta.ready = [];
-        }
-      }
       meta.rev++;
       await store.setMeta(code, meta);
       return { ok: true, events: [] };
