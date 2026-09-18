@@ -40,7 +40,7 @@ cannot end up in two different rooms — which is exactly what used to happen wh
 both of them left the box empty.
 
 ```bash
-npm test             # 363 tests, including 150 fuzzed games
+npm test             # 641 tests, including 150 fuzzed games
 npm run typecheck
 npm run check:serverless   # runs the API the way Vercel runs it
 npm run build              # typecheck + that check + the app build
@@ -126,8 +126,12 @@ the same instant. Redis decides the order and the engine is happy with either.
 
 ## Drafting
 
-The main way to play. Both players start with **24 coins** and bid for the card
-pool one pile at a time.
+The main way to play. Both players start with **24 coins** — or whatever the
+lobby's *Coins to bid with* is set to, which is chosen by whoever opens the room
+and is the same for both, because this is a mirror — and bid for the card pool
+one pile at a time. Fourteen piles are dealt whatever the purse is, so a smaller
+one makes every pile a harder choice and a larger one turns the auction into a
+bidding war.
 
 A pile is four cards: **two face up to both players, and one each that only its
 owner can see**. So you know three of the four, your opponent knows a different
@@ -227,6 +231,17 @@ Library order is never sent to anyone, not even to the library's owner. The clie
 rebuilds what the player legitimately saw instead.
 
 ### The client — `src/client`
+
+Everything a player controls is **one row**, and each half of the table gets the
+height its own board needs. Both of those used to be otherwise and both cost the
+same thing. Lands were a second row at two thirds the size, so five lands and two
+creatures took two lines to show seven cards that fit across a quarter of the
+width; and the two halves split the table equally, which is the wrong answer from
+turn one, since only the opponent's half carries a hand strip. Between them they
+produced the same complaint twice over — the busier board scrolling with its
+lands cut off, while the quieter one held a band of empty table under the player
+bar. A half with room to spare now grows into it, up to a point, rather than
+holding it empty.
 
 The comfort layer is the point, not the polish. Everything below has a visible
 control as well as a shortcut:

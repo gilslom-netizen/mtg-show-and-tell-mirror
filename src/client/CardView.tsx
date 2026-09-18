@@ -95,18 +95,25 @@ export function probeCardArt(timeoutMs = 3500): Promise<boolean> {
 
 export function faceOfCard(card: CardData): OracleFace {
   if (card.isToken) {
+    /*
+     * Built from what the view was sent rather than assumed. Assuming
+     * `Token Creature` and a 0/0 is what drew a Clue — an artifact with an
+     * ability and no power or toughness at all — as a creature with neither.
+     */
+    const types = card.tokenTypes ?? ['Creature'];
+    const creature = types.includes('Creature');
     return {
       name: card.tokenName ?? 'Token',
       manaCost: null,
       mv: 0,
-      typeLine: 'Token Creature',
-      types: ['Creature'],
+      typeLine: card.tokenTypeLine ?? 'Token',
+      types,
       subtypes: [],
       supertypes: [],
       colors: [],
-      oracleText: '',
-      power: String(card.power ?? 0),
-      toughness: String(card.toughness ?? 0),
+      oracleText: card.tokenText ?? '',
+      power: creature ? String(card.power ?? 0) : null,
+      toughness: creature ? String(card.toughness ?? 0) : null,
       keywords: [],
       producedMana: [],
       imageUri: null,

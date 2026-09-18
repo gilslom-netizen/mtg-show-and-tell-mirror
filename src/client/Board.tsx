@@ -45,8 +45,21 @@ import { DEFAULT_SETTINGS } from './settings';
  * tapped from untapped — that is all a land is ever read for. Below it the board
  * goes back to scrolling, because specks you cannot identify are worse than a
  * scrollbar that says there is more.
+ *
+ * Up to 1.3, which is the other half of the same idea and the newer one. A half
+ * only ever shrank to fit, so a board with two permanents on it sat in the top
+ * corner of a half-screen of nothing — the empty band under your own player bar
+ * that made the table look broken while the opponent's side was being cut off
+ * for want of the very room going to waste. Spare height now buys a bigger,
+ * more readable card instead of being held empty. The cap is there because a
+ * board with one land on it should still look like a board.
  */
-const FIT_STEPS = [1, 0.94, 0.88, 0.82, 0.76, 0.7, 0.64, 0.58, 0.52, 0.46];
+const FIT_STEPS = [
+  1.3, 1.2, 1.12, 1.06, 1, 0.94, 0.88, 0.82, 0.76, 0.7, 0.64, 0.58, 0.52, 0.46,
+];
+
+/** The smallest step, below which a board scrolls instead of shrinking further. */
+export const MIN_FIT = FIT_STEPS[FIT_STEPS.length - 1];
 
 /** One row of the board, measured at full size. */
 export interface FitRow {
@@ -78,9 +91,26 @@ export function heightOfRows(availW: number, rows: FitRow[], fit: number): numbe
 export function fitScale(availW: number, room: number, rows: FitRow[]): number {
   if (availW <= 0 || room <= 0 || rows.length === 0) return 1;
   return (
-    FIT_STEPS.find((fit) => heightOfRows(availW, rows, fit) <= room) ??
-    FIT_STEPS[FIT_STEPS.length - 1]
+    FIT_STEPS.find((fit) => heightOfRows(availW, rows, fit) <= room) ?? MIN_FIT
   );
+}
+
+/**
+ * A part of a half whose height scales with the cards but which never wraps.
+ *
+ * The opponent's hand strip is the only one, and counting it as fixed chrome was
+ * wrong in a way that showed: it is sized off `--card-w`, so it shrinks with the
+ * board, but it was measured once at full size and then subtracted from the room
+ * as though it would not. The half with a hand strip above it therefore always
+ * believed it had less room than it did — it shrank its cards further than it
+ * needed to *and* still ended up with a band of empty table under them, which is
+ * both halves of the complaint this fitting exists to answer.
+ *
+ * Modelled as a row of one card exactly as wide as nothing, so the line count is
+ * always one and the height is the strip's own, scaled.
+ */
+export function unwrappingRow(h: number): FitRow {
+  return { n: 1, w: 1, h, gap: 0 };
 }
 
 /** Measure one half at full size: what its rows need, and its fixed chrome. */
@@ -103,6 +133,8 @@ function measureHalf(half: HTMLElement): { rows: FitRow[]; chrome: number; avail
         h: r.height,
         gap: parseFloat(getComputedStyle(child).columnGap) || 0,
       });
+    } else if (child.classList.contains('hand-strip')) {
+      rows.push(unwrappingRow(child.getBoundingClientRect().height));
     } else {
       fixed += child.getBoundingClientRect().height;
     }
@@ -132,6 +164,8 @@ function useFitBoard(
   theirsRef: React.RefObject<HTMLDivElement | null>,
   mineRef: React.RefObject<HTMLDivElement | null>,
   signature: string,
+  /** False once the player has dragged the midline: their split wins over ours. */
+  autoSplit: boolean,
 ) {
   useEffect(() => {
     const field = fieldRef.current;
@@ -150,10 +184,31 @@ function useFitBoard(
       const needs = measured.map((m) => m.chrome + heightOfRows(m.availW, m.rows, 1));
       const wanted = needs.reduce((a, b) => a + b, 0);
 
+      /*
+       * Give each half the table in proportion to what is on it.
+       *
+       * The CSS could not: two `auto` tracks under `align-content: stretch`
+       * share the spare height equally, which is the wrong answer whenever the
+       * two boards differ — and in this format they differ from turn one, since
+       * only one side has an opponent's-hand strip above it. That equal split is
+       * what produced both halves of the same complaint at once: the busier side
+       * scrolling with its lands cut off, while the quieter one held a band of
+       * empty table nobody could put anything in.
+       *
+       * The proportions are measured at `--fit: 1`, which does not depend on the
+       * fit we are about to choose, so this settles in one pass.
+       */
+      if (autoSplit && wanted > 0) {
+        field.style.gridTemplateRows = `minmax(0, ${needs[0]}fr) auto minmax(0, ${
+          needs[needs.length - 1]
+        }fr)`;
+      }
+
       for (const [i, m] of measured.entries()) {
-        // Its own share of the table when the two together want more than there
-        // is; everything it asked for when they do not.
-        const cap = wanted <= total ? needs[i] : (total * needs[i]) / wanted;
+        // Its share of the table, whether that is more than it asked for or
+        // less: a half with room to spare grows into it rather than leaving a
+        // dead band under the player bar.
+        const cap = wanted > 0 ? (total * needs[i]) / wanted : total / measured.length;
         m.half.style.setProperty('--fit', String(fitScale(m.availW, cap - m.chrome, m.rows)));
       }
     };
@@ -171,7 +226,7 @@ function useFitBoard(
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [fieldRef, theirsRef, mineRef, signature]);
+  }, [fieldRef, theirsRef, mineRef, signature, autoSplit]);
 }
 
 /** What the board holds, as one string: recompute when this changes. */
@@ -203,6 +258,7 @@ export function Board({ viewer }: { viewer: PlayerId }) {
     theirsRef,
     mineRef,
     view ? `${boardSignature(view, opponent)}|${boardSignature(view, viewer)}` : '',
+    layout.fieldSplit === null,
   );
 
   if (!view) return null;
@@ -240,8 +296,7 @@ export function Board({ viewer }: { viewer: PlayerId }) {
           <div className="half theirs" ref={theirsRef}>
             <PlayerBar view={view} seat={opponent} viewer={viewer} />
             <OpponentHand view={view} seat={opponent} />
-            <ZoneRow view={view} viewer={viewer} seat={opponent} kind="nonland" />
-            <ZoneRow view={view} viewer={viewer} seat={opponent} kind="land" />
+            <PermanentRow view={view} viewer={viewer} seat={opponent} landsFirst={false} />
           </div>
 
           {/* The line between the two boards is also the handle that moves it. */}
@@ -261,8 +316,7 @@ export function Board({ viewer }: { viewer: PlayerId }) {
           </Splitter>
 
           <div className="half mine" ref={mineRef}>
-            <ZoneRow view={view} viewer={viewer} seat={viewer} kind="land" />
-            <ZoneRow view={view} viewer={viewer} seat={viewer} kind="nonland" />
+            <PermanentRow view={view} viewer={viewer} seat={viewer} landsFirst />
             <PlayerBar view={view} seat={viewer} viewer={viewer} />
           </div>
         </div>
@@ -322,27 +376,47 @@ function PhaseSummary({ view }: { view: PlayerView }) {
 // Zones
 // ---------------------------------------------------------------------------
 
-function ZoneRow({
+/** Whether this permanent is a land, which is what used to decide its row. */
+function isLandPermanent(view: PlayerView, iid: IID): boolean {
+  const c = view.cards[iid];
+  if (!c) return false;
+  return !c.isToken && frontFace(c.oracleId).types.includes('Land');
+}
+
+/**
+ * Everything one player controls, on one line for as long as one line holds it.
+ *
+ * Lands used to be a second row of their own, two thirds the size, and that cost
+ * more than it saved. Two rows are two chances to wrap, and a half is scaled to
+ * whatever both of them need: five lands and two creatures took two lines and
+ * 160px of height to show seven cards that fit across a quarter of the width.
+ * One row wraps once instead of twice, so the same board fits at a larger card
+ * size — which is the whole trade the fitting was making in the first place.
+ *
+ * Lands are ordered towards the midline on both sides, which is where they
+ * already sat: the mirror's reading is that the two boards face each other, and
+ * that survives the merge because it was only ever about order.
+ */
+function PermanentRow({
   view,
   viewer,
   seat,
-  kind,
+  landsFirst,
 }: {
   view: PlayerView;
   viewer: PlayerId;
   seat: PlayerId;
-  kind: 'land' | 'nonland';
+  /** True for the near half, whose lands sit at the top against the midline. */
+  landsFirst: boolean;
 }) {
-  const iids = view.battlefield[seat].filter((iid) => {
-    const c = view.cards[iid];
-    if (!c) return false;
-    const isLand = !c.isToken && frontFace(c.oracleId).types.includes('Land');
-    return kind === 'land' ? isLand : !isLand;
-  });
+  const all = view.battlefield[seat].filter((iid) => view.cards[iid]);
+  const lands = all.filter((iid) => isLandPermanent(view, iid));
+  const rest = all.filter((iid) => !isLandPermanent(view, iid));
+  const iids = landsFirst ? [...lands, ...rest] : [...rest, ...lands];
   if (iids.length === 0) return null;
 
   return (
-    <div className={`zone-row${kind === 'land' ? ' lands' : ''}`}>
+    <div className="zone-row">
       {iids.map((iid) => (
         <PermanentCard key={iid} view={view} viewer={viewer} iid={iid} />
       ))}

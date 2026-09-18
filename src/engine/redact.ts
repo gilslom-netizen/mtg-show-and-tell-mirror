@@ -3,6 +3,7 @@ import { currentFace } from './state.js';
 import type {
   ActiveEffect,
   CardInstance,
+  CardType,
   ChoiceRequest,
   GameEvent,
   CombatState,
@@ -41,6 +42,18 @@ export interface CardView {
   face: 'front' | 'back';
   isToken: boolean;
   tokenName?: string;
+  /**
+   * A token's printed line and reminder text.
+   *
+   * Sent because the client has no oracle entry to look a token up in and was
+   * therefore inventing one — every token was drawn as `Token Creature`, which
+   * is how a Clue came to show a type it does not have and a 0/0 it does not
+   * have either. A token on the battlefield is public to both players, so there
+   * is nothing here to redact.
+   */
+  tokenTypeLine?: string;
+  tokenTypes?: CardType[];
+  tokenText?: string;
   power?: number;
   toughness?: number;
   attacking?: boolean;
@@ -169,6 +182,9 @@ function viewCard(state: GameState, c: CardInstance): CardView {
   };
   if (c.isToken && c.token) {
     out.tokenName = c.token.name;
+    out.tokenTypeLine = face.typeLine;
+    out.tokenTypes = face.types;
+    if (face.oracleText) out.tokenText = face.oracleText;
   }
   if (face.power !== null) {
     out.power = (Number(face.power) || 0) + (c.counters['+1/+1'] ?? 0);

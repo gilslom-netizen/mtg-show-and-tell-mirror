@@ -2,6 +2,7 @@ import { currentFace } from '../state.js';
 import type { CardScript, Eff } from '../script-types.js';
 import type { CardInstance, GameState, PlayerId, TargetRef } from '../types.js';
 import { lookAtFourTakeOne } from './cube-creatures.js';
+import { CLUE_TOKEN } from './tokens.js';
 
 /**
  * The cube's planeswalkers.
@@ -246,14 +247,7 @@ export const tamiyoInquisitiveStudent: CardScript = {
       label: 'Investigate',
       trigger: (ev, self) => ev.t === 'attacks' && ev.iid === self.iid,
       *resolve(ctx) {
-        ctx.createToken(ctx.controller, {
-          name: 'Clue',
-          types: ['Artifact'],
-          subtypes: ['Clue'],
-          colors: [],
-          power: 0,
-          toughness: 0,
-        });
+        ctx.createToken(ctx.controller, CLUE_TOKEN);
         ctx.log('investigates');
         yield* nothing();
       },

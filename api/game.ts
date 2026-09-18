@@ -105,6 +105,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
         // Only used when this request is the one that creates the room.
         format: body.format === 'draft' ? 'draft' : 'classic',
         bestOf: typeof body.bestOf === 'number' ? body.bestOf : undefined,
+        coins: typeof body.coins === 'number' ? body.coins : undefined,
       });
       if ('error' in result) return void res.status(409).json({ error: result.error });
       const snap = await snapshot(store, code, result.seat);

@@ -4,6 +4,7 @@ import { applyDraftAction } from '../draft/draft.js';
 import { buildDraft, draftedCardPool, mergeEntries } from '../draft/session.js';
 import { redactDraft, type DraftView } from '../draft/redact.js';
 import type { DraftAction, DraftState } from '../draft/types.js';
+import { draftCoins } from '../engine/draft-pool.js';
 import type { DeckEntry } from '../engine/state.js';
 import { Game, type Intent } from '../engine/game.js';
 import { MatchTracker, newMatchState, seriesLength, type MatchState } from '../engine/match.js';
@@ -78,12 +79,17 @@ export interface RoomOptions {
   format?: 'classic' | 'draft';
   /** 1, 3 or 5. */
   bestOf?: number;
+  /** Coins each player bids with, defaulting to the format's own number. */
+  coins?: number;
 }
 
 export function freshMeta(code: string, opts: RoomOptions = {}): RoomMeta {
   const startingPlayer: PlayerId = Math.random() < 0.5 ? 'p1' : 'p2';
   const format = opts.format === 'draft' ? 'draft' : 'classic';
   const bestOf = seriesLength(opts.bestOf);
+  // Validated here rather than where it is spent, so the number written into the
+  // room is already one the auction has a rule for.
+  const coins = draftCoins(opts.coins);
   return {
     code,
     seed: Math.floor(Math.random() * 2 ** 31),
@@ -95,6 +101,7 @@ export function freshMeta(code: string, opts: RoomOptions = {}): RoomMeta {
     format,
     phase: format === 'draft' ? 'draft' : 'game',
     draftSeed: Math.floor(Math.random() * 2 ** 31),
+    coins,
     drafted: {},
     decks: {},
     ready: [],
@@ -146,6 +153,10 @@ export function draftFor(meta: RoomMeta, log: LoggedAction[]): DraftState {
     `${meta.code}-draft`,
     meta.draftSeed ?? meta.seed,
     log.flatMap((a) => (a.k === 'draft' ? [{ seat: a.seat, action: a.action }] : [])),
+    // The purse is part of the starting position, so it has to be handed to
+    // every rebuild: a replay that opened both players on the default would
+    // reject bids the draft had already accepted.
+    draftCoins(meta.coins),
   );
 }
 

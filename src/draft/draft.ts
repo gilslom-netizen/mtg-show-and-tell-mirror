@@ -1,7 +1,7 @@
 import { seedRng, shuffleArray, nextInt } from '../engine/rng.js';
 import { frontFace } from '../engine/oracle.js';
 import {
-  COINS_PER_PLAYER,
+  draftCoins,
   PICKS_PER_PILE,
   PILE_SIZE,
   draftPoolOracleIds,
@@ -67,7 +67,7 @@ export function createDraft(opts: CreateDraftOptions): DraftState {
   const undealt = ids.slice(0, dealable);
 
   const opener: PlayerId = nextInt(rng, 2) === 0 ? 'p1' : 'p2';
-  const coins = opts.coins ?? COINS_PER_PLAYER;
+  const coins = draftCoins(opts.coins);
 
   const state: DraftState = {
     draftId: opts.draftId,

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { unimplementedReason } from '@engine/cards/index';
 import { DECK_NAME, MAINDECK } from '@engine/deck';
 import { deckSize } from '@engine/decklist';
+import { COINS_PER_PLAYER, MAX_COINS, MIN_COINS } from '@engine/draft-pool';
 import { MANA_KINDS } from '@engine/mana';
 import { canExtend, summarise, type MatchState } from '@engine/match';
 import { SCENARIOS, type ScenarioSpec } from '@engine/scenario';
@@ -280,6 +281,17 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
   // Drafting is the main way to play; the mirror on its own is the other option.
   const [format, setFormat] = useState<'draft' | 'classic'>('draft');
   const [bestOf, setBestOf] = useState(3);
+  /*
+   * The purse both players open the draft with.
+   *
+   * Held as the typed text rather than as a number, so that clearing the field
+   * to type a new value does not snap it back to the default under the cursor.
+   * What is sent is the parsed value, and what is sent when it does not parse is
+   * nothing at all — the room then opens on the format's own number.
+   */
+  const [coinsText, setCoinsText] = useState(String(COINS_PER_PLAYER));
+  const coins = Number.parseInt(coinsText, 10);
+  const coinsValid = Number.isInteger(coins) && coins >= MIN_COINS && coins <= MAX_COINS;
 
   // Which online transport is available depends on where this is running: a
   // serverless host has the HTTP API, a laptop with `npm run server` has a socket.
@@ -332,7 +344,13 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
     // Format and length only take effect for whoever opens the room; the second
     // player joins into whatever is already set up there.
     const conn = online?.http
-      ? new HttpConnection({ room: code, playerName: 'player', format, bestOf })
+      ? new HttpConnection({
+          room: code,
+          playerName: 'player',
+          format,
+          bestOf,
+          coins: coinsValid ? coins : undefined,
+        })
       : new RemoteConnection({
           url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
           room: code,
@@ -465,6 +483,51 @@ function Lobby({ onStart }: { onStart: (m: Mode) => void }) {
             ))}
           </div>
         </section>
+
+        {format === 'draft' && (
+          <section className="lobby-section">
+            <h2>Coins to bid with</h2>
+            <p className="lobby-note">
+              What each player opens the draft with. Fourteen piles are dealt
+              whatever the purse is, so a smaller one makes every pile a harder
+              choice and a larger one turns the auction into a bidding war. Set by
+              whoever opens the room, and the same for both players — this is a
+              mirror.
+            </p>
+            <div className="segmented" data-testid="coins" role="group">
+              {[12, COINS_PER_PLAYER, 40].map((n) => (
+                <button
+                  key={n}
+                  className={`chip-choice${coins === n ? ' is-picked' : ''}`}
+                  data-testid={`coins-${n}`}
+                  aria-pressed={coins === n}
+                  onClick={() => setCoinsText(String(n))}
+                >
+                  {n}
+                  {n === COINS_PER_PLAYER ? ' (default)' : ''}
+                </button>
+              ))}
+              <input
+                type="number"
+                min={MIN_COINS}
+                max={MAX_COINS}
+                step={1}
+                value={coinsText}
+                data-testid="coins-input"
+                aria-label="Coins each player starts with"
+                aria-invalid={!coinsValid}
+                onChange={(e) => setCoinsText(e.target.value)}
+                style={{ width: 88 }}
+              />
+            </div>
+            {!coinsValid && (
+              <p className="lobby-note" data-testid="coins-warning">
+                A purse has to be a whole number between {MIN_COINS} and {MAX_COINS};
+                the room will open on {COINS_PER_PLAYER} instead.
+              </p>
+            )}
+          </section>
+        )}
 
         <section className="lobby-section is-primary">
           <h2>Room code</h2>

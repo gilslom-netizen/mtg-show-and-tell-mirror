@@ -22,8 +22,10 @@ export function buildDraft(
   draftId: string,
   seed: number,
   actions: DraftLoggedAction[],
+  /** Coins each player opened with. Part of the starting position, like the seed. */
+  coins?: number,
 ): DraftState {
-  const state = createDraft({ draftId, seed });
+  const state = createDraft({ draftId, seed, coins });
   for (const a of actions) {
     try {
       applyDraftAction(state, a.seat, a.action);

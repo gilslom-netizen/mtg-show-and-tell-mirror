@@ -12,6 +12,7 @@ import {
   type PlayerId,
   type PlayerState,
   type TargetRef,
+  type TokenSpec,
   type ZoneName,
   TURN_SEQUENCE,
 } from './types.js';
@@ -331,30 +332,54 @@ const FACE_DOWN_FACE: OracleFace = {
   loyalty: null,
 };
 
+/**
+ * A token's characteristics, built from its spec.
+ *
+ * The type line is derived rather than asserted. It used to read
+ * `Token Creature — <subtypes>` for every token there was, so a Clue — an
+ * artifact, and the only non-creature token in the pool — announced itself as a
+ * creature to anything that read the line instead of the types.
+ */
+export function tokenFace(spec: TokenSpec): OracleFace {
+  const creature = spec.types.includes('Creature');
+  const left = ['Token', ...spec.types].join(' ');
+  return {
+    name: spec.name,
+    manaCost: null,
+    mv: 0,
+    typeLine: spec.subtypes.length > 0 ? `${left} — ${spec.subtypes.join(' ')}` : left,
+    types: spec.types,
+    subtypes: spec.subtypes,
+    supertypes: [],
+    colors: spec.colors,
+    oracleText: spec.text ?? '',
+    // CR 208.3 — only a creature has power and toughness. A null here is what
+    // keeps a Clue from being drawn, buffed and killed as a 0/0.
+    power: creature ? String(spec.power ?? 0) : null,
+    toughness: creature ? String(spec.toughness ?? 0) : null,
+    keywords: [],
+    producedMana: [],
+    imageUri: null,
+    loyalty: null,
+  };
+}
+
+/**
+ * Which registry entry governs this object.
+ *
+ * A token carries the id of its script in its spec, because it has no oracle
+ * entry of its own to be looked up under — see TokenSpec.scriptId.
+ */
+export function scriptIdOf(card: CardInstance): OracleId {
+  return card.isToken ? (card.token?.scriptId ?? 'token') : card.oracleId;
+}
+
 export function currentFace(card: CardInstance): OracleFace {
   // CR 708.2 — face down on the battlefield: a 2/2 creature with no name, no
   // types beyond Creature, no abilities. The identity is still on the instance;
   // redaction decides who gets to know it.
   if (card.faceDown && card.zone === 'battlefield') return FACE_DOWN_FACE;
-  if (card.isToken && card.token) {
-    return {
-      name: card.token.name,
-      manaCost: null,
-      mv: 0,
-      typeLine: `Token Creature — ${card.token.subtypes.join(' ')}`,
-      types: card.token.types,
-      subtypes: card.token.subtypes,
-      supertypes: [],
-      colors: card.token.colors,
-      oracleText: '',
-      power: String(card.token.power),
-      toughness: String(card.token.toughness),
-      keywords: [],
-      producedMana: [],
-      imageUri: null,
-    loyalty: null,
-    };
-  }
+  if (card.isToken && card.token) return tokenFace(card.token);
   if (card.zone === 'battlefield' || card.zone === 'stack') {
     return faceOf(card.oracleId, card.face);
   }
@@ -428,14 +453,14 @@ function statOf(state: GameState, card: CardInstance, which: 'power' | 'toughnes
     }
   }
   // The card's own live static (delirium), by way of its script.
-  const script = getScriptRef?.(card.oracleId);
+  const script = getScriptRef?.(scriptIdOf(card));
   const self = script?.staticPt?.self;
   if (self) n += self(state, card)[which];
   // Auras attached to this card granting a static change.
   for (const iid of state.zones[card.controller].battlefield) {
     const aura = state.cards[iid];
     if (!aura || aura.attachedTo !== card.iid) continue;
-    const grant = getScriptRef?.(aura.oracleId)?.staticPt?.enchanted;
+    const grant = getScriptRef?.(scriptIdOf(aura))?.staticPt?.enchanted;
     if (grant) n += grant[which];
   }
   return n;

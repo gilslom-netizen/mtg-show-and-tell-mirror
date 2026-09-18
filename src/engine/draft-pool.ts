@@ -12,6 +12,32 @@ import type { OracleId } from './types.js';
  */
 
 export const COINS_PER_PLAYER: number = DRAFT_DATA.coinsPerPlayer;
+
+/** The range a room may set a purse to. */
+export const MIN_COINS = 1;
+export const MAX_COINS = 999;
+
+/**
+ * The one place a starting purse is validated.
+ *
+ * Every path that can open a draft goes through here, the way every path that
+ * can start a series goes through `seriesLength`, so a value that arrives over
+ * the wire from a hand-rolled request can only ever mean the default rather than
+ * something the auction has no rule for. A purse of zero is the case worth
+ * naming: both players would be unable to bid on the opening pile, so the draft
+ * would deal fourteen piles nobody could buy.
+ */
+export function draftCoins(coins: number | undefined): number {
+  if (
+    typeof coins === 'number' &&
+    Number.isInteger(coins) &&
+    coins >= MIN_COINS &&
+    coins <= MAX_COINS
+  ) {
+    return coins;
+  }
+  return COINS_PER_PLAYER;
+}
 export const PILE_SIZE: number = DRAFT_DATA.pileSize;
 export const PICKS_PER_PILE: number = DRAFT_DATA.picksPerPile;
 

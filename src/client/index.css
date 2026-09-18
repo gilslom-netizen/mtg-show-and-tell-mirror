@@ -228,6 +228,9 @@ input[type='number'] {
 
 .field {
   display: grid;
+  /* The rows are set from the two boards' measured heights — see useFitBoard.
+     This template is the starting point and the fallback for a half that has
+     not been measured yet. */
   /* Each half takes at least the height of what is on it and shares whatever is
      left over. With a plain 1fr the halves were fixed and a board with two full
      rows of the larger cards was cut off at the midline — the table scrolls as
@@ -402,13 +405,13 @@ input[type='number'] {
   flex: 0 0 auto;
   min-height: var(--card-h);
 }
-.zone-row.lands {
-  /* Lands are scanned for colour and for tapped-or-not, never read. Keeping them
-     small is what leaves room for the row above to be big enough to read — a
-     half has to hold both rows without either being cut off. */
-  --card-w: calc(var(--card-base) * var(--card-scale) * var(--fit, 1) * 0.66);
-  --card-h: calc(var(--card-w) * 1.396);
-}
+/*
+   Lands used to be a row of their own at two thirds the size. They are not any
+   more: a half is one row of permanents, so there is no second row to keep small
+   on behalf of the first, and one size is also what lets the fitting measure a
+   row from its first card. A land is still told apart at a glance by its art and
+   by whether it is tapped, which is all a land is ever read for.
+*/
 
 /* The opponent's hand is a count, not cards — it should not reserve card height. */
 .hand-strip {

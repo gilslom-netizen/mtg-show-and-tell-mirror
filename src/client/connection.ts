@@ -673,6 +673,8 @@ export interface HttpOptions {
   /** Only used by whoever opens the room; a joiner takes what is already set. */
   format?: 'classic' | 'draft';
   bestOf?: number;
+  /** Coins each player drafts with. Only read when this request opens the room. */
+  coins?: number;
 }
 
 export class HttpConnection extends BaseConnection {
@@ -889,6 +891,7 @@ export class HttpConnection extends BaseConnection {
         name: this.opts.playerName,
         format: this.opts.format,
         bestOf: this.opts.bestOf,
+        coins: this.opts.coins,
       },
       'Could not reach the server to take your seat. Still trying — the room is kept for three days, so nothing is lost.',
     );

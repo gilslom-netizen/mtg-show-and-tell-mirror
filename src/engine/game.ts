@@ -40,6 +40,7 @@ import {
   manaValueOfCard,
   moveCardRaw,
   otherPlayer,
+  scriptIdOf,
   shuffleLibrary,
   stepAt,
   targetExists,
@@ -540,7 +541,7 @@ export class Game {
   private collectTriggers(ev: GameEvent): void {
     const s = this.state;
     for (const card of battlefield(s)) {
-      const script = getScript(card.oracleId);
+      const script = getScript(scriptIdOf(card));
       if (!script?.abilities) continue;
       script.abilities.forEach((ab, idx) => {
         if (ab.kind !== 'triggered') return;
@@ -616,7 +617,7 @@ export class Game {
        * honest: nothing else notices when the enchanted permanent leaves.
        */
       for (const c of battlefield(s)) {
-        const script = getScript(c.oracleId);
+        const script = getScript(scriptIdOf(c));
         if (!script?.enchant) continue;
         const host = c.attachedTo === undefined ? undefined : s.cards[c.attachedTo];
         const legal =
@@ -642,7 +643,7 @@ export class Game {
 
       // 714.4 — a saga with every chapter done is sacrificed.
       for (const c of battlefield(s)) {
-        const script = getScript(c.oracleId);
+        const script = getScript(scriptIdOf(c));
         if (!script?.saga) continue;
         if ((c.counters['lore'] ?? 0) < script.saga.chapters) continue;
         // Only once its chapter abilities have left the stack.
@@ -771,7 +772,7 @@ export class Game {
   private advanceSagas(): void {
     const s = this.state;
     for (const c of battlefield(s, s.activePlayer)) {
-      const script = getScript(c.oracleId);
+      const script = getScript(scriptIdOf(c));
       if (!script?.saga) continue;
       c.counters['lore'] = (c.counters['lore'] ?? 0) + 1;
       this.events.push({ t: 'counterAdded', iid: c.iid, kind: 'lore', n: 1 });
@@ -788,7 +789,7 @@ export class Game {
     const s = this.state;
     const ap = s.activePlayer;
     for (const c of [...battlefield(s, ap)]) {
-      const script = getScript(c.oracleId);
+      const script = getScript(scriptIdOf(c));
       if (!script?.cumulativeUpkeep) continue;
       c.counters['age'] = (c.counters['age'] ?? 0) + 1;
       const age = c.counters['age'];
@@ -821,13 +822,23 @@ export class Game {
     const s = this.state;
     const source = s.cards[trig.sourceIid];
     if (!source) return;
-    const script = getScript(source.oracleId);
+    const script = getScript(scriptIdOf(source));
     const ability = script?.abilities?.[trig.abilityIndex];
     if (!ability || ability.kind !== 'triggered') return;
 
     const iid = s.nextIid++;
+    /*
+     * A token's ability carries the token's identity onto the stack.
+     *
+     * Without it the object is an ordinary card with the oracle id `'token'`,
+     * which no oracle entry and no script answers to — so a Clue's own ability
+     * resolved into nothing the moment the Clue was gone, which for a cost that
+     * sacrifices it is *always*. `scriptIdOf` and `currentFace` both read these
+     * two fields, so copying them is what makes the LKI fallback below work.
+     */
     const obj: CardInstance = {
       ...makeCard(iid, source.oracleId, trig.controller, 'stack'),
+      ...(source.isToken ? { isToken: true, token: source.token } : {}),
       isAbility: true,
       abilitySource: trig.sourceIid,
       abilityIndex: trig.abilityIndex,
@@ -907,7 +918,7 @@ export class Game {
     const card = s.cards[iid];
     if (!card || card.zone !== opts.from) return;
 
-    const script = getScript(card.oracleId);
+    const script = getScript(scriptIdOf(card));
     const face = frontFace(card.oracleId);
 
     // Onto the stack first (CR 601.2a).
@@ -1239,7 +1250,7 @@ export class Game {
     const s = this.state;
     const source = s.cards[iid];
     if (!source) return;
-    const script = getScript(source.oracleId);
+    const script = getScript(scriptIdOf(source));
     const ability = script?.abilities?.[index];
     if (!ability || ability.kind !== 'activated') return;
 
@@ -1334,8 +1345,11 @@ export class Game {
     }
 
     const objIid = s.nextIid++;
+    // As above: the ability has to remember it came from a token, because by
+    // the time it resolves the token may have been the cost of activating it.
     const obj: CardInstance = {
       ...makeCard(objIid, source.oracleId, player, 'stack'),
+      ...(source.isToken ? { isToken: true, token: source.token } : {}),
       isAbility: true,
       abilitySource: iid,
       abilityIndex: index,
@@ -1436,7 +1450,7 @@ export class Game {
 
   private *resolveSpell(spell: CardInstance): Eff {
     const s = this.state;
-    const script = getScript(spell.oracleId);
+    const script = getScript(scriptIdOf(spell));
 
     // CR 608.2b — a spell whose targets are all illegal does not resolve.
     if (spell.targets && spell.targets.length > 0) {
@@ -1478,7 +1492,7 @@ export class Game {
        * Animate Dead is the exception that proves it: it enchants nothing on the
        * way in and attaches to what its own trigger makes.
        */
-      const script = getScript(spell.oracleId);
+      const script = getScript(scriptIdOf(spell));
       if (script?.enchant && spell.targets?.[0]?.kind === 'permanent') {
         spell.attachedTo = spell.targets[0].iid;
       }
@@ -1498,7 +1512,7 @@ export class Game {
     const s = this.state;
     const sourceIid = obj.abilitySource!;
     const source = s.cards[sourceIid];
-    const script = source ? getScript(source.oracleId) : getScript(obj.oracleId);
+    const script = source ? getScript(scriptIdOf(source)) : getScript(scriptIdOf(obj));
     const ability = script?.abilities?.[obj.abilityIndex!];
 
     if (obj.targets && obj.targets.length > 0) {
@@ -1540,7 +1554,7 @@ export class Game {
     const s = this.state;
     const spell = s.cards[spellIid];
     if (!spell || spell.zone !== 'stack') return false;
-    const script = getScript(spell.oracleId);
+    const script = getScript(scriptIdOf(spell));
     const lier = spellsUncounterableBy(s)[0];
     if (lier) {
       logLine(s, `${cardName(spell)} can't be countered (${cardName(lier)})`, {
@@ -1636,7 +1650,7 @@ export class Game {
   ): Eff<boolean> {
     const s = this.state;
     const card = s.cards[iid];
-    const script = getScript(card.oracleId);
+    const script = getScript(scriptIdOf(card));
     // The face matters: Inundated Archive's "enters tapped" belongs to the back face.
     const prevFace = card.face;
     if (opts.face) card.face = opts.face;
@@ -2230,7 +2244,7 @@ export class Game {
     for (const bfIid of s.zones[player].battlefield) {
       const aura = s.cards[bfIid];
       if (!aura || aura.attachedTo !== iid || !aura.namedChoice) continue;
-      if (!getScript(aura.oracleId)?.enchantedTapBonus) continue;
+      if (!getScript(scriptIdOf(aura))?.enchantedTapBonus) continue;
       const bonus = aura.namedChoice as ManaKind;
       s.players[player].manaPool[bonus]++;
       logLine(s, `${cardName(aura)} adds an extra {${bonus}}`, { player, iids: [bfIid] });
@@ -2728,7 +2742,7 @@ export class Game {
       chooseNewTargetsFor: function* (iid, chooser) {
         const spell = s.cards[iid];
         if (!spell || spell.zone !== 'stack') return false;
-        const defs = getScript(spell.oracleId)?.targets;
+        const defs = getScript(scriptIdOf(spell))?.targets;
         if (!defs || defs.length === 0) return false;
         // Asked as the new controller, so "target spell you don't control" now
         // means the ones *they* don't control — a commandeered Mana Drain points
@@ -3002,7 +3016,7 @@ export function producedManaOf(card: CardInstance, state: GameState): ManaKind[]
    * imprinted that is no colours at all, which is why the automatic derivation
    * refuses to guess and the card carries a real mana ability instead.
    */
-  const imprintAbility = getScript(card.oracleId)?.abilities?.find(
+  const imprintAbility = getScript(scriptIdOf(card))?.abilities?.find(
     (a) => a.kind === 'mana' && a.fromImprint,
   );
   if (imprintAbility) {
@@ -3052,7 +3066,7 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
    */
   const splitSecond = state.stack.some((iid) => {
     const c = state.cards[iid];
-    return c && !c.isAbility && getScript(c.oracleId)?.splitSecond;
+    return c && !c.isAbility && getScript(scriptIdOf(c))?.splitSecond;
   });
 
   const ps = state.players[player];
@@ -3123,7 +3137,7 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
     // rather than from a resolved effect. They stop the moment it leaves.
     for (const c of battlefield(state, player)) {
       if (c.faceDown) continue;
-      const rules = getScript(c.oracleId)?.staticRules;
+      const rules = getScript(scriptIdOf(c))?.staticRules;
       if (!rules) continue;
       for (const iid of rules.graveyardFlashbackFor?.(state, c) ?? []) {
         const card = state.cards[iid];
@@ -3195,7 +3209,7 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
     const timingOk = timing === 'instant' || flashAll || sorceryTiming;
     if (!timingOk) continue;
 
-    const script = getScript(c.oracleId);
+    const script = getScript(scriptIdOf(c));
     if (script?.canCast && !script.canCast(state, player, c)) continue;
     // An aura's "enchant" line is its target: no legal host, no legal cast.
     if (script?.enchant && script.enchant.candidates(state, player).length === 0) continue;
@@ -3298,7 +3312,7 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
   // Escape: the card's own way back out of the graveyard.
   if (!splitSecond) {
     for (const c of cardsIn(state, player, 'graveyard')) {
-      const script = getScript(c.oracleId);
+      const script = getScript(scriptIdOf(c));
       if (!script?.escape) continue;
       if (unimplementedReason(c.oracleId)) continue;
       const timing = spellTiming(c.oracleId);
@@ -3324,7 +3338,7 @@ export function enumerateLegalActions(state: GameState, player: PlayerId): Legal
 
   // Activated abilities.
   for (const c of battlefield(state, player)) {
-    const script = getScript(c.oracleId);
+    const script = getScript(scriptIdOf(c));
     if (!script?.abilities) continue;
     script.abilities.forEach((ab, index) => {
       if (ab.kind !== 'activated') return;
@@ -3441,7 +3455,7 @@ function* noChoices(): Eff {
  */
 export function hasKeywordNow(state: GameState, card: CardInstance, kw: string): boolean {
   if (hasKeyword(card, kw)) return true;
-  const granted = getScript(card.oracleId)?.grantsKeywords?.(state, card) ?? [];
+  const granted = getScript(scriptIdOf(card))?.grantsKeywords?.(state, card) ?? [];
   if (granted.includes(kw)) return true;
   return state.effects.some(
     (e) => e.kind === 'grantKeyword' && e.keyword === kw && e.iids.includes(card.iid),
@@ -3451,7 +3465,7 @@ export function hasKeywordNow(state: GameState, card: CardInstance, kw: string):
 /** Whoever is stopping spells being countered right now (Lier). */
 export function spellsUncounterableBy(state: GameState): CardInstance[] {
   return battlefield(state).filter(
-    (c) => !c.faceDown && getScript(c.oracleId)?.staticRules?.spellsCantBeCountered,
+    (c) => !c.faceDown && getScript(scriptIdOf(c))?.staticRules?.spellsCantBeCountered,
   );
 }
 

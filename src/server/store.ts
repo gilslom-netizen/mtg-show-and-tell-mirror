@@ -52,6 +52,12 @@ export interface RoomMeta {
   phase?: RoomPhase;
   /** Seed for the draft, which shuffles a different pool from the game. */
   draftSeed?: number;
+  /**
+   * Coins each player opens the draft with. Absent on rooms made before the
+   * purse was settable, which is why every read of it goes through
+   * `draftCoins` — an absent value and a bad one mean the same thing.
+   */
+  coins?: number;
   /** What each player took, so the pool survives the log being cleared. */
   drafted?: Partial<Record<PlayerId, string[]>>;
   /** The decks players built, used from the next game on. */

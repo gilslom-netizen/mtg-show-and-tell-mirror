@@ -36,6 +36,7 @@ import { CUBE_INTERACTION } from './interaction-cube.js';
 import { CUBE_CREATURES } from './cube-creatures.js';
 import { CUBE_PERMANENTS } from './cube-permanents.js';
 import { CUBE_WALKERS } from './cube-walkers.js';
+import { TOKEN_SCRIPTS } from './tokens.js';
 
 /**
  * The script registry.
@@ -95,7 +96,9 @@ const ALL: CardScript[] = [
 ];
 
 const REGISTRY: Record<OracleId, CardScript> = {};
-for (const s of ALL) {
+// Tokens are registered alongside the cards: a Clue on the battlefield needs its
+// activated ability looked up exactly the way a Chrome Mox needs its imprint.
+for (const s of [...ALL, ...TOKEN_SCRIPTS]) {
   if (REGISTRY[s.oracleId]) throw new Error(`Duplicate card script: ${s.oracleId}`);
   REGISTRY[s.oracleId] = s;
 }
@@ -108,7 +111,12 @@ export function getScript(oracleId: OracleId): CardScript | undefined {
 provideScriptLookup((id) => REGISTRY[id]);
 
 export function scriptedOracleIds(): OracleId[] {
-  return Object.keys(REGISTRY).sort();
+  // Printed cards only. A token script has no oracle entry behind it, so
+  // anything that walks this list to look a card up would throw on one.
+  const tokens = new Set(TOKEN_SCRIPTS.map((s) => s.oracleId));
+  return Object.keys(REGISTRY)
+    .filter((id) => !tokens.has(id))
+    .sort();
 }
 
 /**

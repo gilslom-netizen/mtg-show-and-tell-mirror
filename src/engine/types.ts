@@ -195,8 +195,26 @@ export interface TokenSpec {
   types: CardType[];
   subtypes: string[];
   colors: Color[];
-  power: number;
-  toughness: number;
+  /**
+   * Only a creature token has these. A Clue is an artifact and nothing else, and
+   * giving it 0/0 did not merely print the wrong numbers on it — a 0/0 with no
+   * counters is a creature state-based actions put into the graveyard, so the
+   * token only survived because nothing else agreed it was a creature either.
+   */
+  power?: number;
+  toughness?: number;
+  /**
+   * The script that governs this token, by registry id.
+   *
+   * A token has no oracle entry to look a script up under, which is why the Clue
+   * arrived with no way to sacrifice it: `getScript` was being asked about the
+   * literal id `'token'` and answering, correctly, that it had never heard of it.
+   * Naming the script here keeps GameState plain JSON — it is an id, not a
+   * function — while giving a token the same abilities as any other permanent.
+   */
+  scriptId?: OracleId;
+  /** Reminder text, so the card on the table says what it does. */
+  text?: string;
 }
 
 // ---------------------------------------------------------------------------
