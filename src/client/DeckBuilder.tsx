@@ -288,6 +288,7 @@ export function fitNote(fit: FittedDeck): string | null {
 export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
   const pool = useStore((s) => s.pool);
   const ready = useStore((s) => s.deckReady);
+  const submitted = useStore((s) => s.deckSubmitted);
   const sendDeck = useStore((s) => s.sendDeck);
   const error = useStore((s) => s.error);
   const dismissError = useStore((s) => s.dismissError);
@@ -387,7 +388,9 @@ export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
       setNote((e as Error).message);
     }
   };
-  const iAmReady = ready.includes(viewer);
+  // Either the server has confirmed it or this client has just sent it; both
+  // mean the same thing to the person looking at the button.
+  const iAmReady = ready.includes(viewer) || submitted.includes(viewer);
   const opponent: PlayerId = viewer === 'p1' ? 'p2' : 'p1';
 
   // A drafted card with no engine script can be put in a list but not cast, so
@@ -412,7 +415,7 @@ export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
         <span className="spacer" />
         <span className="bid-note">
           {iAmReady
-            ? 'Locked in. Waiting for your opponent…'
+            ? 'Waiting for your opponent…'
             : ready.includes(opponent)
               ? 'They are ready and waiting for you.'
               : 'Both players must lock in before the game starts.'}
@@ -423,7 +426,7 @@ export function DeckBuilder({ viewer }: { viewer: PlayerId }) {
           disabled={!legal || iAmReady}
           onClick={() => sendDeck(entries, viewer)}
         >
-          {iAmReady ? 'Locked in' : 'Lock in deck'}
+          {iAmReady ? 'You locked in your deck' : 'Lock in deck'}
         </button>
       </header>
 

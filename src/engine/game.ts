@@ -2136,34 +2136,54 @@ export class Game {
       if (s.zones[p].hand.length === 0) this.draw(p, 7);
     }
 
-    // Both players decide at once. Asking in turn meant the second player's new
-    // hand arrived only after the first had finished thinking, which reads as a
-    // frozen client rather than as waiting.
+    /*
+     * One player at a time, in turn order — the player on the play decides
+     * first, which is how the rules have always had it (CR 103.4) and how it is
+     * done across a table.
+     *
+     * This was simultaneous for a while, to stop the second player reading the
+     * first's decision before making their own. What that traded away is the
+     * thing the rule exists for: across a table you *watch* them ship it back
+     * and reshuffle before you decide whether to keep a hand that beats a fresh
+     * six. Hiding it does not make the format fairer, it makes it a different
+     * format — and it is not information either player could have been denied.
+     *
+     * The frozen-client problem that drove the change is real and is handled
+     * where it belongs: each answer is applied the moment it is given, so a
+     * player who mulligans has their new hand in front of them while the other
+     * seat is still thinking, and the client is told whose turn it is so it can
+     * say so rather than showing a live button nobody may press.
+     */
     for (;;) {
       const undecided = order.filter((p) => !s.players[p].keptHand);
       if (undecided.length === 0) break;
 
-      s.mulliganResponses = {};
-      const res = (yield this.request({
-        kind: 'mulligan',
-        player: null,
-        awaiting: [...undecided],
-        lockedIn: [],
-        hands: Object.fromEntries(
-          order.map((p) => [
-            p,
-            {
-              handSize: s.zones[p].hand.length,
-              mulligansTaken: s.players[p].mulligansTaken,
-            },
-          ]),
-        ) as Record<PlayerId, { handSize: number; mulligansTaken: number }>,
-        prompt: 'Keep this hand?',
-      })) as ChoiceResponse;
-      const answers = res.kind === 'mulliganRound' ? res.keep : {};
-
-      // Resolved in turn order so the log and the shuffles stay deterministic.
+      const decidedThisRound: PlayerId[] = [];
       for (const p of undecided) {
+        s.mulliganResponses = {};
+        const res = (yield this.request({
+          kind: 'mulligan',
+          player: null,
+          // Exactly one seat may answer. The other is shown its hand and told to
+          // wait, which is the whole of the sequencing as far as the client goes.
+          awaiting: [p],
+          lockedIn: [...decidedThisRound],
+          hands: Object.fromEntries(
+            order.map((q) => [
+              q,
+              {
+                handSize: s.zones[q].hand.length,
+                mulligansTaken: s.players[q].mulligansTaken,
+              },
+            ]),
+          ) as Record<PlayerId, { handSize: number; mulligansTaken: number }>,
+          prompt: 'Keep this hand?',
+        })) as ChoiceResponse;
+        const answers = res.kind === 'mulliganRound' ? res.keep : {};
+        decidedThisRound.push(p);
+
+        // Applied here rather than at the end of the round, so a mulligan is
+        // dealt immediately instead of waiting on the other seat.
         if (answers[p] ?? true) {
           s.players[p].keptHand = true;
           // The London bottoming has not happened yet, so the kept size is the

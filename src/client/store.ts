@@ -14,6 +14,13 @@ import type { DraftView } from '../draft/redact';
 import type { DraftAction } from '../draft/types';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from './settings';
 import {
+  applyEventsToKnownTop,
+  emptyKnownTop,
+  knownTopFromChoice,
+  learnOnTop,
+  type KnownTopEntry,
+} from './known-top';
+import {
   MAX_REPEATS,
   describePrompt,
   isTurnStructurePrompt,
@@ -68,22 +75,8 @@ function sameIntentShape(a: Intent, b: Intent): boolean {
 
 export type AutoPassMode = 'off' | 'endOfTurn' | 'myNextTurn';
 
-export interface KnownTopEntry {
-  iid: IID;
-  /**
-   * The card's identity, remembered at the moment it was seen.
-   *
-   * This panel is the player's memory, not a live query - and it was written as
-   * a live query. The name was looked up in the current view on every render,
-   * and the moment redaction stopped including the card (it went back under the
-   * top of the library), the lookup returned "a card" and the memory read as
-   * two anonymous placeholders. What you learned does not expire because the
-   * card is face down again; that is the entire point of having learned it.
-   */
-  oracleId: OracleId;
-  /** How the player came to know about this card. */
-  via: 'brainstorm' | 'surveil' | 'sanctuary' | 'other';
-}
+export type { KnownTopEntry };
+
 
 interface StoreState {
   connection: Connection | null;
@@ -100,6 +93,16 @@ interface StoreState {
   lastDeck: DeckEntry[] | null;
   /** Seats that have locked a decklist in for the game about to start. */
   deckReady: PlayerId[];
+  /**
+   * Seats this client has sent a deck for and not yet seen confirmed.
+   *
+   * Submitting is a POST, and until it comes back the server's `deckReady` still
+   * says nobody is ready — so the button stayed live and readable as "Lock in
+   * deck" after it had been pressed, which invites pressing it again and reads,
+   * on a slow connection, as a click that did nothing. Held here rather than in
+   * the builder because the builder is remounted between games of a series.
+   */
+  deckSubmitted: PlayerId[];
   /** Whose side of the table we are looking at. */
   viewSeat: PlayerId;
   views: Record<PlayerId, PlayerView | null>;
@@ -259,10 +262,6 @@ interface StoreState {
   controls(seat: PlayerId): boolean;
 }
 
-function emptyKnownTop(): Record<PlayerId, KnownTopEntry[]> {
-  return { p1: [], p2: [] };
-}
-
 export const useStore = create<StoreState>((set, get) => ({
   connection: null,
   connInfo: null,
@@ -272,6 +271,7 @@ export const useStore = create<StoreState>((set, get) => ({
   pool: null,
   lastDeck: null,
   deckReady: [],
+  deckSubmitted: [],
   viewSeat: 'p1',
   views: { p1: null, p2: null },
   settings: typeof localStorage === 'undefined' ? DEFAULT_SETTINGS : loadSettings(),
@@ -306,6 +306,8 @@ export const useStore = create<StoreState>((set, get) => ({
       connInfo: conn.info(),
       viewSeat,
       knownTop: emptyKnownTop(),
+      // A new session has locked nothing in, whatever the last one did.
+      deckSubmitted: [],
       autoPass: 'off',
       actionHistory: [],
       historySeat: null,
@@ -328,6 +330,7 @@ export const useStore = create<StoreState>((set, get) => ({
       connInfo: null,
       views: { p1: null, p2: null },
       knownTop: emptyKnownTop(),
+      deckSubmitted: [],
       error: null,
     });
   },
@@ -399,6 +402,8 @@ export const useStore = create<StoreState>((set, get) => ({
       pool: conn.cardPool(mySeat),
       lastDeck: conn.lastDeck(),
       deckReady: conn.deckReady(),
+      // A new build — the next game of a series — is a fresh decision.
+      ...(conn.phase() === 'build' ? {} : { deckSubmitted: [] }),
       ...(infoChanged ? { connInfo: nextInfo } : {}),
       ...(reveal ? { revealing: reveal } : {}),
       ...(dropped ? { actedFrom: { p1: null, p2: null }, actedFromDraft: null } : {}),
@@ -507,7 +512,7 @@ export const useStore = create<StoreState>((set, get) => ({
     }));
     if (learned) {
       set((st) => ({
-        knownTop: { ...st.knownTop, [s]: learned.concat(st.knownTop[s]).slice(0, 12) },
+        knownTop: { ...st.knownTop, [s]: learnOnTop(st.knownTop[s], learned) },
       }));
     }
     conn.submitChoice(s, choice.id, response);
@@ -781,7 +786,13 @@ export const useStore = create<StoreState>((set, get) => ({
   sendDeck(deck, seat) {
     const conn = get().connection;
     if (!conn) return;
-    conn.submitDeck(seat ?? get().viewSeat, deck);
+    const s = seat ?? get().viewSeat;
+    // Locally first, so the button goes dead on the click rather than on the
+    // round trip. The server's own list takes over as soon as it answers.
+    set((st) => ({
+      deckSubmitted: st.deckSubmitted.includes(s) ? st.deckSubmitted : [...st.deckSubmitted, s],
+    }));
+    conn.submitDeck(s, deck);
   },
 
   setArtAvailable(v) {
@@ -804,67 +815,6 @@ export const useStore = create<StoreState>((set, get) => ({
     return get().connection?.seats().includes(seat) ?? false;
   },
 }));
-
-// ---------------------------------------------------------------------------
-// Known top of library
-// ---------------------------------------------------------------------------
-
-/**
- * Maintains the "you saw this" tracker. Everything here comes from information the
- * player was legitimately shown; the server still never sends library order.
- */
-function applyEventsToKnownTop(
-  current: Record<PlayerId, KnownTopEntry[]>,
-  events: GameEvent[],
-  /** Identity lookup at the moment of learning — the views forget, this must not. */
-  oracleIdOf: (iid: IID) => OracleId | undefined,
-): Record<PlayerId, KnownTopEntry[]> {
-  let next = current;
-  const mutate = (p: PlayerId, fn: (list: KnownTopEntry[]) => KnownTopEntry[]) => {
-    next = { ...next, [p]: fn(next[p]) };
-  };
-
-  for (const ev of events) {
-    switch (ev.t) {
-      case 'shuffle':
-        // Any shuffle invalidates everything. This is the whole reason a
-        // fetchland after a Brainstorm is a real decision.
-        mutate(ev.player, () => []);
-        break;
-      case 'draw':
-        mutate(ev.player, (list) => list.slice(1));
-        break;
-      case 'zoneChange':
-        if (ev.to === 'library' && ev.position === 'top') {
-          mutate(ev.owner, (list) => [
-            { iid: ev.iid, oracleId: oracleIdOf(ev.iid) ?? '', via: 'other' as const },
-            ...list,
-          ]);
-        } else if (ev.from === 'library' && ev.to !== 'library') {
-          mutate(ev.owner, (list) => list.filter((e) => e.iid !== ev.iid));
-        }
-        break;
-      default:
-        break;
-    }
-  }
-  return next;
-}
-
-/** Surveil: the cards you looked at and did not bin are still sitting on top. */
-function knownTopFromChoice(
-  choice: NonNullable<PlayerView['choice']>,
-  response: ChoiceResponse,
-): KnownTopEntry[] | null {
-  if (choice.kind !== 'chooseCards' || choice.from !== 'library') return null;
-  if (response.kind !== 'cards') return null;
-  // Postponing is not an answer: nothing was looked past, so nothing was learned.
-  if (response.deferred) return null;
-  const isSurveil = /surveil/i.test(choice.prompt);
-  if (!isSurveil) return null;
-  const kept = choice.options.map((o) => o.iid).filter((iid) => !response.iids.includes(iid));
-  return kept.map((iid) => ({ iid, oracleId: '', via: 'surveil' as const }));
-}
 
 // ---------------------------------------------------------------------------
 // Show and Tell reveal

@@ -66,39 +66,68 @@ export function seatHasSomethingToDo(view: PlayerView, seat: PlayerId): boolean 
   return Boolean(c) || canAct(view, seat);
 }
 
+/**
+ * Whether the thing about to resolve is worth being asked about.
+ *
+ * The top of the stack, not anywhere in it. "An opposing spell is on the stack"
+ * sounds like the same question and is not. Pile four of your own free spells on
+ * top of their Atraxa and their Atraxa is still on the stack — so every single
+ * one of your own casts stopped, and the client looked like it was holding
+ * priority on your own spells by default. Nobody asked it to.
+ *
+ * What you want to be asked about is the thing that is about to resolve. If that
+ * is yours, there is nothing of theirs to answer yet; when yours has resolved and
+ * theirs is on top again, the stop comes back on its own, which is the window
+ * that actually matters.
+ */
+function stopsForTheStack(
+  view: PlayerView,
+  settings: Settings,
+  actions: LegalAction[],
+): boolean {
+  if (view.stack.length === 0) return false;
+  const top = view.cards[view.stack[view.stack.length - 1]];
+  if (!top || top.controller === view.viewer) return false;
+  const mode = settings.stops.opponentSpellOnStack;
+  if (mode === 'never') return false;
+  if (mode === 'always') return true;
+  // The setting that matters for this deck: stop only when Mana Drain, Veil,
+  // Bowmasters or Hullbreaker could actually be cast right now.
+  return canRespond(actions);
+}
+
 export function shouldStop(view: PlayerView, settings: Settings, autoPass: AutoPassMode): boolean {
   const actions = meaningful(view);
   // Nothing to do — the engine passes for us anyway.
   if (actions.length === 0) return false;
-  // An explicit "pass until…" run overrides every stop setting.
-  if (autoPass !== 'off') return false;
+
+  /*
+   * A "pass until…" run is a decision about phases, not a decision to stop
+   * reading the stack.
+   *
+   * It used to override every stop there is, which got the feature exactly
+   * backwards and is what a playtester was describing: it passed on *cards* —
+   * their Show and Tell went on the stack in your end step and the client passed
+   * priority on it without asking, spending the Mana Drain window the whole deck
+   * is built around — while the phases it was supposed to skip looked, from the
+   * seat, as though nothing had happened at all.
+   *
+   * F6 means "do not ask me about steps". It has never meant "do not tell me
+   * they are comboing off". So the phase stops are overridden and the stack stop
+   * is not, on the same setting that governs it the rest of the time — which for
+   * this deck defaults to "only when I could actually answer".
+   *
+   * A repeat run is the one thing that really does override everything, and it
+   * has to: a round of the loop only comes back round when the stack drains, and
+   * the stack only drains because this layer keeps passing. That override lives
+   * in the caller, which is also where the deadlock it prevents is explained.
+   */
+  if (autoPass !== 'off') return stopsForTheStack(view, settings, actions);
 
   const me = view.viewer;
   const stops = settings.stops;
 
-  if (view.stack.length > 0) {
-    /*
-     * The top of the stack, not anywhere in it.
-     *
-     * "An opposing spell is on the stack" sounds like the same question and is
-     * not. Pile four of your own free spells on top of their Atraxa and their
-     * Atraxa is still on the stack — so every single one of your own casts
-     * stopped, and the client looked like it was holding priority on your own
-     * spells by default. Nobody asked it to.
-     *
-     * What you want to be asked about is the thing that is about to resolve. If
-     * that is yours, there is nothing of theirs to answer yet; when yours has
-     * resolved and theirs is on top again, the stop comes back on its own, which
-     * is the window that actually matters.
-     */
-    const top = view.cards[view.stack[view.stack.length - 1]];
-    if (!top || top.controller === me) return false;
-    if (stops.opponentSpellOnStack === 'never') return false;
-    if (stops.opponentSpellOnStack === 'always') return true;
-    // The setting that matters for this deck: stop only when Mana Drain, Veil,
-    // Bowmasters or Hullbreaker could actually be cast right now.
-    return canRespond(actions);
-  }
+  if (view.stack.length > 0) return stopsForTheStack(view, settings, actions);
 
   const myTurn = view.activePlayer === me;
   const isMain = view.phase === 'precombat_main' || view.phase === 'postcombat_main';

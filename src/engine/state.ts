@@ -371,8 +371,23 @@ export function tokenFace(spec: TokenSpec): OracleFace {
  * entry of its own to be looked up under — see TokenSpec.scriptId.
  */
 export function scriptIdOf(card: CardInstance): OracleId {
+  /*
+   * CR 708.2 — a face-down permanent has no abilities at all.
+   *
+   * The same guard `currentFace` uses, deliberately: those two are the only
+   * things that decide what an object on the battlefield *is*, and if they ever
+   * disagree the board shows a 2/2 with no text while the engine quietly plays
+   * the card underneath it. That is what was happening — a manifested Orcish
+   * Bowmasters kept pinging, a manifested Mystic Sanctuary kept tapping for
+   * blue, because every ability lookup went to the real card. Face down is not a
+   * costume.
+   */
+  if (card.faceDown && card.zone === 'battlefield') return FACE_DOWN_SCRIPT;
   return card.isToken ? (card.token?.scriptId ?? 'token') : card.oracleId;
 }
+
+/** A registry id nothing answers to, which is the point. */
+const FACE_DOWN_SCRIPT = '';
 
 export function currentFace(card: CardInstance): OracleFace {
   // CR 708.2 — face down on the battlefield: a 2/2 creature with no name, no

@@ -179,6 +179,12 @@ read is reported by number rather than silently dropped, and a list carrying a
 house-ruled card says so in the file itself. The deckbuilder has the same three
 buttons, where an imported list is fitted to the cards that player actually owns.
 
+Mulligans are taken in turn order: the player on the play decides first, and the
+other seat is looking at its own seven the whole time with the buttons dead and a
+line saying whose turn it is. A mulligan is dealt the moment it is taken rather
+than when both have answered — the second seat learns *that* you shipped it, the
+same way it would across a table, and never what was in it.
+
 Series length is chosen in the lobby: best of 1, 3 (default) or 5. It applies to
 everything you start from there — drafted rooms, classic rooms and the solo modes
 alike. Online it belongs to whoever opens the room, so the second player joins into
@@ -456,7 +462,7 @@ suggests, because the work is bound by memory bandwidth rather than by CPU.
 | `offline.test.ts` | A request that never reaches the server: the move says it was not sent, the join keeps trying, and neither throws |
 | `data-sync.test.ts` | The generated card data still matches `data/*.json` |
 | `priority-windows.test.ts` | Acting in the opponent's turn — the fetch in every step — and each form of passing |
-| `opening.test.ts` | The simultaneous mulligan, including that neither player can read the other's decision early |
+| `opening.test.ts` | The mulligan in turn order — the player on the play decides first, the other seat sees its hand but may not act, and a mulligan is dealt at once rather than when the other seat finishes |
 | `art.test.ts` | Art resolution and every mana symbol in the deck |
 | `draft.test.ts` | The auction rule by rule, who pays what, and that neither player's private card or picks leak |
 | `draft-room.test.ts` | A drafted room end to end over the replay-the-log path, and decklist legality |

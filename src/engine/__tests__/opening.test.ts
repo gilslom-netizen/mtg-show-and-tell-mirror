@@ -5,12 +5,18 @@ import { redact } from '../redact.js';
 import type { PlayerId } from '../types.js';
 
 /**
- * The opening hand, from both seats at once.
+ * The opening hand, one seat at a time.
  *
- * Mulligans used to be asked one player at a time: you mulliganed, and your next
- * hand only arrived once your opponent had finished deciding — with nothing on
- * screen saying so, which reads as a frozen client rather than as waiting. Both
- * players are asked together now, and these tests hold that shape in place.
+ * In turn order: the player on the play decides first (CR 103.4), and the other
+ * seat is shown its hand with nothing it may press yet.
+ *
+ * This was simultaneous for a while, so that the second to answer could not read
+ * the first's decision. What that traded away is the thing the rule is for —
+ * across a table you watch them ship it back and reshuffle before deciding
+ * whether to keep a hand that beats a fresh six. The problem that drove the
+ * change was that a mulligan was not dealt until both had answered, which reads
+ * as a frozen client; that is fixed by applying each answer as it is given,
+ * rather than by hiding the order of play.
  */
 function opening(seed = 5, startingPlayer: PlayerId = 'p1'): Game {
   const game = Game.create({ gameId: 'mull', seed, deck: MAINDECK, startingPlayer });
@@ -25,79 +31,103 @@ function mulliganChoice(game: Game) {
 }
 
 describe('the opening hand', () => {
-  it('asks both players at the same time', () => {
-    const game = opening();
-    const c = mulliganChoice(game);
-    expect(c.awaiting.sort()).toEqual(['p1', 'p2']);
-    expect(game.state.zones.p1.hand).toHaveLength(7);
-    expect(game.state.zones.p2.hand).toHaveLength(7);
+  it('asks the player on the play first, and only them', () => {
+    for (const onThePlay of ['p1', 'p2'] as PlayerId[]) {
+      const game = opening(5, onThePlay);
+      const c = mulliganChoice(game);
+      expect(c.awaiting).toEqual([onThePlay]);
+      // Both hands are dealt up front: the other seat is looking at its seven
+      // the whole time, it just may not act on it yet.
+      expect(game.state.zones.p1.hand).toHaveLength(7);
+      expect(game.state.zones.p2.hand).toHaveLength(7);
+    }
   });
 
-  it('keeps the choice open for one player after the other has answered', () => {
-    const game = opening();
+  it('will not take an answer from the seat that is not to act', () => {
+    const game = opening(5, 'p1');
     const c = mulliganChoice(game);
-    game.submitChoice('p1', c.id, { kind: 'yesNo', value: false });
-
-    const still = mulliganChoice(game);
-    expect(still.awaiting).toEqual(['p2']);
-    expect(still.lockedIn).toEqual(['p1']);
-    // p1's hand has NOT been replaced yet — the round resolves together, so
-    // nobody learns what the other did from the timing of their own redraw.
-    expect(game.state.players.p1.mulligansTaken).toBe(0);
-  });
-
-  it('deals the new hand as soon as the round closes', () => {
-    const game = opening();
-    const c = mulliganChoice(game);
-    const before = [...game.state.zones.p1.hand];
-    game.submitChoice('p1', c.id, { kind: 'yesNo', value: false });
-    game.submitChoice('p2', c.id, { kind: 'yesNo', value: true });
-
-    expect(game.state.players.p1.mulligansTaken).toBe(1);
-    expect(game.state.players.p2.keptHand).toBe(true);
-    expect(game.state.zones.p1.hand).toHaveLength(7);
-    expect(game.state.zones.p1.hand).not.toEqual(before);
-    // And p1 is immediately asked again, rather than waiting on anything.
+    expect(() => game.submitChoice('p2', c.id, { kind: 'yesNo', value: true })).toThrow(
+      /already decided/i,
+    );
+    // And nothing moved.
+    expect(game.state.players.p2.keptHand).toBeFalsy();
     expect(mulliganChoice(game).awaiting).toEqual(['p1']);
   });
 
-  it('tells each player where the other one is, without leaking the decision', () => {
-    const game = opening();
-    const c = mulliganChoice(game);
-    game.submitChoice('p1', c.id, { kind: 'yesNo', value: false });
+  it('passes the decision to the other seat once the first has answered', () => {
+    const game = opening(5, 'p1');
+    game.submitChoice('p1', mulliganChoice(game).id, { kind: 'yesNo', value: true });
 
-    const p2View = redact(game.state, 'p2').choice;
-    expect(p2View?.kind).toBe('mulligan');
-    if (p2View?.kind !== 'mulligan') throw new Error('unreachable');
-    expect(p2View.opponentDecided).toBe(true);
-    expect(p2View.iHaveDecided).toBe(false);
-
-    const p1View = redact(game.state, 'p1').choice;
-    if (p1View?.kind !== 'mulligan') throw new Error('unreachable');
-    expect(p1View.iHaveDecided).toBe(true);
-    expect(p1View.opponentDecided).toBe(false);
+    const next = mulliganChoice(game);
+    expect(next.awaiting).toEqual(['p2']);
+    expect(next.lockedIn).toEqual(['p1']);
   });
 
-  it('shows p2 the same thing whichever way p1 decided', () => {
-    // The point of resolving the round together: until it closes, "they have
-    // decided" is all anyone learns. If these two differed by a single byte,
-    // p2 could read the opponent's keep off their own screen.
-    const views = [true, false].map((p1Keeps) => {
-      const game = opening();
-      const c = mulliganChoice(game);
-      game.submitChoice('p1', c.id, { kind: 'yesNo', value: p1Keeps });
-      const v = redact(game.state, 'p2');
-      return JSON.stringify({ choice: v.choice, players: v.players, hand: v.hand });
-    });
-    expect(views[0]).toEqual(views[1]);
+  /**
+   * The frozen client this sequencing had to avoid: a player who mulligans gets
+   * their new hand at once, rather than when the other seat finishes thinking.
+   */
+  it('deals a mulligan immediately, while the other seat is still deciding', () => {
+    const game = opening(5, 'p1');
+    const before = [...game.state.zones.p1.hand];
+    game.submitChoice('p1', mulliganChoice(game).id, { kind: 'yesNo', value: false });
+
+    expect(game.state.players.p1.mulligansTaken).toBe(1);
+    expect(game.state.zones.p1.hand).toHaveLength(7);
+    expect(game.state.zones.p1.hand).not.toEqual(before);
+    // p2 has still not been asked to do anything but is now the one to act.
+    expect(game.state.players.p2.mulligansTaken).toBe(0);
+    expect(mulliganChoice(game).awaiting).toEqual(['p2']);
+  });
+
+  it('comes back round to the first seat only after the second has answered', () => {
+    const game = opening(5, 'p1');
+    game.submitChoice('p1', mulliganChoice(game).id, { kind: 'yesNo', value: false });
+    expect(mulliganChoice(game).awaiting).toEqual(['p2']);
+    game.submitChoice('p2', mulliganChoice(game).id, { kind: 'yesNo', value: true });
+
+    expect(game.state.players.p2.keptHand).toBe(true);
+    expect(mulliganChoice(game).awaiting).toEqual(['p1']);
+  });
+
+  it('tells each seat whose turn it is', () => {
+    const game = opening(5, 'p1');
+
+    let p1 = redact(game.state, 'p1').choice;
+    let p2 = redact(game.state, 'p2').choice;
+    if (p1?.kind !== 'mulligan' || p2?.kind !== 'mulligan') throw new Error('unreachable');
+    expect(p1.myTurnToDecide).toBe(true);
+    expect(p2.myTurnToDecide).toBe(false);
+
+    game.submitChoice('p1', mulliganChoice(game).id, { kind: 'yesNo', value: false });
+
+    p1 = redact(game.state, 'p1').choice;
+    p2 = redact(game.state, 'p2').choice;
+    if (p1?.kind !== 'mulligan' || p2?.kind !== 'mulligan') throw new Error('unreachable');
+    expect(p1.myTurnToDecide).toBe(false);
+    expect(p1.iHaveDecided).toBe(true);
+    expect(p2.myTurnToDecide).toBe(true);
+    expect(p2.opponentDecided).toBe(true);
+  });
+
+  it('shows the second seat that the first shipped it, and never what was in it', () => {
+    const game = opening(5, 'p1');
+    game.submitChoice('p1', mulliganChoice(game).id, { kind: 'yesNo', value: false });
+
+    const v = redact(game.state, 'p2');
+    if (v.choice?.kind !== 'mulligan') throw new Error('unreachable');
+    // Across a table you watch them reshuffle, so this is theirs to know.
+    expect(v.choice.opponentMulligansTaken).toBe(1);
+    // What was in either hand is still nobody else's business.
+    for (const iid of game.state.zones.p1.hand) expect(v.cards[iid]).toBeUndefined();
   });
 
   it('refuses a second answer from the same player', () => {
-    const game = opening();
+    const game = opening(5, 'p1');
     const c = mulliganChoice(game);
     game.submitChoice('p1', c.id, { kind: 'yesNo', value: true });
     expect(() => game.submitChoice('p1', c.id, { kind: 'yesNo', value: false })).toThrow(
-      /already decided/i,
+      /Stale choice id|already decided/i,
     );
   });
 

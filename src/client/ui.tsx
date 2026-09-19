@@ -269,6 +269,7 @@ function labelFor(view: PlayerView, iid?: number): string {
 export function cardTitle(view: PlayerView, iid: number): string {
   const c = view.cards[iid];
   if (!c) return 'a card';
+  if (c.faceDown) return 'Face-down creature';
   if (c.isToken) return c.tokenName ?? 'Token';
   const card = oracle(c.oracleId);
   return card.faces ? card.faces[c.face === 'back' ? 1 : 0].name : card.name;

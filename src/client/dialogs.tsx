@@ -554,6 +554,20 @@ function MulliganDialog({
   // What shipping this hand would leave you with — seven, while the free one is
   // still going. Reading "Mulligan to 7" off the button is the whole feature.
   const next = handSizeAfter(choice.mulligansTaken + 1);
+  /*
+   * The seats decide one at a time, in turn order, so most of the time one of
+   * them is looking at a hand it may not act on yet.
+   *
+   * The buttons stay on screen and go dead rather than being swapped out for a
+   * spinner. Which two choices you are about to have is part of reading the
+   * hand — "would I ship this to six" is answered while you wait, not after the
+   * control to do it appears — and a dialog whose contents move around the
+   * moment it becomes your turn is a dialog you can misclick.
+   */
+  const myTurn = choice.myTurnToDecide;
+  const waiting = choice.iHaveDecided
+    ? 'You have decided. Waiting for your opponent…'
+    : 'Waiting for your opponent to decide…';
   return (
     <div className="overlay">
       <div className="dialog">
@@ -568,9 +582,9 @@ function MulliganDialog({
             ? 'You are on the play — you skip your first draw.'
             : 'You are on the draw.'}
         </div>
-        <div className="prompt">
-          {choice.iHaveDecided
-            ? 'Decision locked in. Waiting for your opponent…'
+        <div className="prompt" data-testid="mulligan-prompt">
+          {!myTurn
+            ? waiting
             : bottoming > 0
               ? `Keep? You will put ${bottoming} card${bottoming > 1 ? 's' : ''} on the bottom.`
               : choice.prompt}
@@ -582,32 +596,36 @@ function MulliganDialog({
           ))}
         </div>
 
-        {/* Both players decide at the same time, so both states are worth showing. */}
+        {/* Whose turn it is, and how far down the other seat has gone. */}
         <div className="mulligan-status">
-          <span className={choice.iHaveDecided ? 'is-done' : ''}>
-            You {choice.iHaveDecided ? 'have decided' : 'are deciding'}
+          <span className={myTurn ? '' : 'is-done'}>
+            You {myTurn ? 'are deciding' : choice.iHaveDecided ? 'have decided' : 'are waiting'}
           </span>
-          <span className={choice.opponentDecided ? 'is-done' : ''}>
-            Opponent {choice.opponentDecided ? 'has decided' : 'is deciding'}
+          <span className={myTurn ? 'is-done' : ''}>
+            Opponent {myTurn ? 'has decided' : 'is deciding'}
             {choice.opponentMulligansTaken > 0 &&
               ` · down to ${handSizeAfter(choice.opponentMulligansTaken)}`}
           </span>
         </div>
 
-        {choice.iHaveDecided ? (
-          <div className="actions">
-            <span className="spinner" aria-label="waiting" />
-          </div>
-        ) : (
-          <div className="actions">
-            <button onClick={() => onAnswer({ kind: 'yesNo', value: false })}>
-              {next === 7 ? 'Free mulligan' : `Mulligan to ${next}`}
-            </button>
-            <button className="primary" onClick={() => onAnswer({ kind: 'yesNo', value: true })}>
-              Keep {view.hand.length - bottoming}
-            </button>
-          </div>
-        )}
+        <div className="actions">
+          {!myTurn && <span className="spinner" aria-label="waiting" />}
+          <button
+            data-testid="mulligan-no"
+            disabled={!myTurn}
+            onClick={() => onAnswer({ kind: 'yesNo', value: false })}
+          >
+            {next === 7 ? 'Free mulligan' : `Mulligan to ${next}`}
+          </button>
+          <button
+            className="primary"
+            data-testid="mulligan-keep"
+            disabled={!myTurn}
+            onClick={() => onAnswer({ kind: 'yesNo', value: true })}
+          >
+            {myTurn ? `Keep ${view.hand.length - bottoming}` : 'Waiting for opponent…'}
+          </button>
+        </div>
       </div>
     </div>
   );

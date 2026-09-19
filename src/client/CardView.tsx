@@ -1,6 +1,6 @@
 import { memo, useState } from 'react';
 import { errataFor, faceOf, frontFace, oracle } from '@engine/oracle';
-import type { CardView as CardData } from '@engine/redact';
+import { FACE_DOWN_ORACLE_ID, type CardView as CardData } from '@engine/redact';
 import type { OracleFace, OracleId, PlayerId } from '@engine/types';
 import { ManaCost } from './mana';
 import { useStore } from './store';
@@ -93,7 +93,37 @@ export function probeCardArt(timeoutMs = 3500): Promise<boolean> {
   });
 }
 
+/** Whether this seat is allowed to know what a card actually is. */
+export function identityKnown(card: CardData): boolean {
+  return !card.faceDown || card.oracleId !== FACE_DOWN_ORACLE_ID;
+}
+
 export function faceOfCard(card: CardData): OracleFace {
+  if (card.faceDown) {
+    /*
+     * CR 708.2 — face down it is a 2/2 creature with no name, no other types and
+     * no abilities, and that is true for its controller as well as its opponent.
+     * The difference between the two seats is not what the card *is*, it is only
+     * who may turn it over and look; see identityKnown, which the reader uses.
+     */
+    return {
+      name: 'Face-down creature',
+      manaCost: null,
+      mv: 0,
+      typeLine: 'Creature',
+      types: ['Creature'],
+      subtypes: [],
+      supertypes: [],
+      colors: [],
+      oracleText: '',
+      power: String(card.power ?? 2),
+      toughness: String(card.toughness ?? 2),
+      keywords: [],
+      producedMana: [],
+      imageUri: null,
+      loyalty: null,
+    };
+  }
   if (card.isToken) {
     /*
      * Built from what the view was sent rather than assumed. Assuming
@@ -419,7 +449,7 @@ export function CardPreview({ viewer }: { viewer: PlayerId }) {
   return (
     <CardDetail
       face={faceOfCard(card)}
-      full={card.isToken ? null : oracle(card.oracleId)}
+      full={card.isToken || !identityKnown(card) ? null : oracle(card.oracleId)}
     />
   );
 }

@@ -235,7 +235,9 @@ function boardSignature(view: PlayerView, seat: PlayerId): string {
     .map((iid) => {
       const c = view.cards[iid];
       if (!c) return '';
-      return !c.isToken && frontFace(c.oracleId).types.includes('Land') ? 'L' : 'N';
+      // A face-down permanent is a creature, whatever the card under it is —
+      // and for the opponent its id is a placeholder that resolves to nothing.
+      return !c.isToken && !c.faceDown && frontFace(c.oracleId).types.includes('Land') ? 'L' : 'N';
     })
     .join('');
 }
@@ -380,7 +382,7 @@ function PhaseSummary({ view }: { view: PlayerView }) {
 function isLandPermanent(view: PlayerView, iid: IID): boolean {
   const c = view.cards[iid];
   if (!c) return false;
-  return !c.isToken && frontFace(c.oracleId).types.includes('Land');
+  return !c.isToken && !c.faceDown && frontFace(c.oracleId).types.includes('Land');
 }
 
 /**

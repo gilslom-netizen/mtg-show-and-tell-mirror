@@ -563,6 +563,7 @@ describe('the mulligan', () => {
         mulligansTaken,
         opponentMulligansTaken: 0,
         opponentHandSize: 7,
+        myTurnToDecide: true,
         iHaveDecided: false,
         opponentDecided: false,
       },

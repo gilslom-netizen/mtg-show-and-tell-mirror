@@ -41,6 +41,11 @@ export interface CardView {
   counters: Record<string, number>;
   face: 'front' | 'back';
   isToken: boolean;
+  /**
+   * A face-down permanent (CR 708). Its `oracleId` is the placeholder above for
+   * everyone except its controller, who is allowed to look at their own.
+   */
+  faceDown?: true;
   tokenName?: string;
   /**
    * A token's printed line and reminder text.
@@ -101,7 +106,13 @@ export type ChoiceView =
       mulligansTaken: number;
       opponentMulligansTaken: number;
       opponentHandSize: number;
-      /** Both players answer at once, so each side needs to see where the other is. */
+      /**
+       * Whose turn it is to answer. The seats decide one at a time, in turn
+       * order, so the other one is shown its hand with the buttons dead rather
+       * than a live control it is not allowed to use yet.
+       */
+      myTurnToDecide: boolean;
+      /** Where each side is in this round, for the status line. */
       iHaveDecided: boolean;
       opponentDecided: boolean;
     }
@@ -165,11 +176,27 @@ export interface PlayerView {
   omniscienceActive: boolean;
 }
 
-function viewCard(state: GameState, c: CardInstance): CardView {
+/**
+ * The oracle id a face-down permanent is sent under.
+ *
+ * Not the real one, which was the bug: a manifested card arrived at both seats
+ * naming itself, so the opponent's client had the card it was about to be asked
+ * to play around sitting in its own state. Nothing was drawn from it yet — the
+ * face is a 2/2 either way — which is exactly what makes that kind of leak worth
+ * refusing to send rather than remembering not to render.
+ *
+ * It resolves to nothing in the oracle, so a client that forgets to check
+ * `faceDown` throws instead of quietly showing the card.
+ */
+export const FACE_DOWN_ORACLE_ID = 'face_down';
+
+function viewCard(state: GameState, c: CardInstance, viewer: PlayerId): CardView {
   const face = currentFace(c);
+  const hidden = c.faceDown && c.zone === 'battlefield' && c.controller !== viewer;
   const out: CardView = {
     iid: c.iid,
-    oracleId: c.oracleId,
+    // Its controller may look at their own face-down permanents; nobody else may.
+    oracleId: hidden ? FACE_DOWN_ORACLE_ID : c.oracleId,
     owner: c.owner,
     controller: c.controller,
     zone: c.zone,
@@ -180,6 +207,7 @@ function viewCard(state: GameState, c: CardInstance): CardView {
     face: c.face,
     isToken: c.isToken,
   };
+  if (c.faceDown && c.zone === 'battlefield') out.faceDown = true;
   if (c.isToken && c.token) {
     out.tokenName = c.token.name;
     out.tokenTypeLine = face.typeLine;
@@ -277,8 +305,15 @@ function redactChoice(state: GameState, viewer: PlayerId): ChoiceView | null {
 
   if (pc.kind === 'mulligan') {
     const opponent: PlayerId = viewer === 'p1' ? 'p2' : 'p1';
-    // What each player decided stays hidden until the round resolves — otherwise
-    // the second to answer would know whether they are facing a fresh seven.
+    /*
+     * The opponent's mulligan count is sent, and that is deliberate now.
+     *
+     * It used to be withheld until the round closed, on the grounds that the
+     * second to answer would otherwise know whether they were facing a fresh
+     * seven. They are entitled to know: across a table you watch them ship the
+     * hand back and reshuffle. The one thing still never sent is what is *in*
+     * either hand.
+     */
     return {
       kind: 'mulligan',
       id: pc.id,
@@ -286,6 +321,7 @@ function redactChoice(state: GameState, viewer: PlayerId): ChoiceView | null {
       mulligansTaken: pc.hands[viewer].mulligansTaken,
       opponentMulligansTaken: pc.hands[opponent].mulligansTaken,
       opponentHandSize: pc.hands[opponent].handSize,
+      myTurnToDecide: pc.awaiting.includes(viewer),
       iHaveDecided: pc.lockedIn.includes(viewer),
       opponentDecided: pc.lockedIn.includes(opponent),
     };
@@ -330,7 +366,7 @@ export function redact(state: GameState, viewer: PlayerId): PlayerView {
   const cards: Record<IID, CardView> = {};
   for (const iid of visible) {
     const c = state.cards[iid];
-    if (c) cards[iid] = viewCard(state, c);
+    if (c) cards[iid] = viewCard(state, c, viewer);
   }
 
   const publicOf = (p: PlayerId): PlayerPublicView => {

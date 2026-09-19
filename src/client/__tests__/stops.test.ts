@@ -114,6 +114,60 @@ describe('stopping for the stack', () => {
   });
 
   /**
+   * What "pass to end of turn" is and is not.
+   *
+   * A playtester put it exactly right: instead of passing the phases and letting
+   * you answer cards, it was passing the cards and looking, from the seat, like
+   * it had not passed anything. The run used to override every stop there is, so
+   * their Show and Tell went on the stack in your end step and the client spent
+   * the Mana Drain window without asking — the one window the whole deck is
+   * built around.
+   *
+   * F6 means "do not ask me about steps". It has never meant "do not tell me
+   * they are comboing off".
+   */
+  describe('during a "pass until…" run', () => {
+    it('still stops for their spell', () => {
+      const t = stacked();
+      const view = redact(t.state, 'p1');
+      for (const mode of ['endOfTurn', 'myNextTurn'] as const) {
+        expect(shouldStop(view, DEFAULT_SETTINGS, mode)).toBe(true);
+      }
+    });
+
+    it('respects the same setting it does the rest of the time', () => {
+      const t = stacked();
+      const view = redact(t.state, 'p1');
+      expect(shouldStop(view, withStops({ opponentSpellOnStack: 'never' }), 'endOfTurn')).toBe(
+        false,
+      );
+      expect(shouldStop(view, withStops({ opponentSpellOnStack: 'always' }), 'endOfTurn')).toBe(
+        true,
+      );
+    });
+
+    it('does not stop for a spell of your own on top of theirs', () => {
+      const t = stacked();
+      t.p1.cast('Orcish Bowmasters');
+      const view = redact(t.state, 'p1');
+      expect(shouldStop(view, DEFAULT_SETTINGS, 'endOfTurn')).toBe(false);
+    });
+
+    it('still skips the phase stops, which is the whole point of the run', () => {
+      const t = testGame();
+      t.p1.hand('Brainstorm');
+      t.p1.manaBase(4);
+      t.begin();
+      const view = redact(t.state, 'p1');
+      // My own main phase with something to do: an ordinary stop, and one the
+      // run is explicitly there to skip.
+      expect(view.stack).toHaveLength(0);
+      expect(shouldStop(view, DEFAULT_SETTINGS, 'off')).toBe(true);
+      expect(shouldStop(view, DEFAULT_SETTINGS, 'endOfTurn')).toBe(false);
+    });
+  });
+
+  /**
    * The report this whole thing started from: two blue cards and a Commandeer in
    * hand, their spell on the stack, and the client passed without stopping.
    *

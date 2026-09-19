@@ -112,6 +112,32 @@ export class RandomBot {
     game.submitChoice(player, c.id, response!);
   }
 
+  /**
+   * One iteration of the same loop `play` runs, so a caller can look at the game
+   * between moves — which is what a test of anything event-driven needs.
+   * Returns false when there is nothing left to do.
+   */
+  step(game: Game): boolean {
+    if (game.state.winner !== null) return false;
+    if (game.state.pendingChoice) {
+      this.answer(game);
+      return true;
+    }
+    const p = game.state.priorityPlayer;
+    if (p === null) {
+      game.advance();
+      return true;
+    }
+    const actions = game.legalActions(p);
+    const meaningful = actions.filter((a) => !a.isManaAbility);
+    if (meaningful.length === 0 || this.randomInt(3) === 0) {
+      game.submitIntent(p, { t: 'passPriority' });
+    } else {
+      game.submitIntent(p, this.pick(meaningful).intent);
+    }
+    return true;
+  }
+
   /** Plays until the game ends or the step budget runs out. */
   play(game: Game, maxSteps = 3000): BotResult {
     let steps = 0;
